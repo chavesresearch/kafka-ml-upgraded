@@ -1,0 +1,49 @@
+on:
+  push:
+    paths:
+      - frontend-vue/**/*
+    branches:
+      - "master"
+      - "main"
+      - "latest"
+      - "dev*"
+  pull_request:
+    paths:
+      - frontend-vue/**/*
+  release:
+    types:
+      - created
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-vue
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend-vue/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm run test:run
+      - name: Build
+        run: npm run build
+
+  build-frontend-vue:
+    needs: test
+    # Only publish an image from pushes/releases, never from a PR.
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/build.yml
+    with:
+      context: frontend-vue
+      dockerfile: frontend-vue/Dockerfile
+      name: kafka-ml-frontend-vue
+      platforms: linux/amd64
+    secrets: inherit
