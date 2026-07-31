@@ -50,6 +50,10 @@ baseline.json
 
 # Created by https://www.gitignore.io
 migrations/
+# backend-litestar's Alembic migrations are meant to be committed (unlike
+# Django's auto-regenerated ones), so keep them out of the exclusion above.
+!backend-litestar/migrations/
+!backend-litestar/migrations/**
 
 ### OSX ###
 .DS_Store
