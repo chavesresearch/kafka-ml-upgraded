@@ -1,0 +1,249 @@
+/* Design tokens layered on top of the active PrimeVue theme (Lara Light/Dark
+   Indigo — swapped wholesale by src/theme.ts). Everything below reads
+   PrimeVue's CSS variables (--surface-*, --text-color*, --primary-color)
+   rather than hardcoding colors, so it repaints automatically on toggle. */
+
+:root {
+  --font-sans: 'Inter Variable', Inter, 'Helvetica Neue', sans-serif;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --sidebar-w: 248px;
+  --topbar-h: 60px;
+}
+
+:root.dark {
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--surface-ground);
+  color: var(--text-color);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#app {
+  min-height: 100%;
+}
+
+/* ---------- Page shell ---------- */
+
+.page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1.75rem clamp(1rem, 3vw, 2.25rem) 3rem;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.page-header h1 {
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--text-color);
+}
+
+.page-header .subtitle {
+  color: var(--text-color-secondary);
+  font-weight: 400;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+/* ---------- Surfaces ---------- */
+
+.surface {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-card {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.form-card .p-card,
+.surface.p-card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.p-card .p-card-title {
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+
+/* ---------- Forms ---------- */
+
+.full-width {
+  width: 100%;
+}
+
+.field {
+  margin-bottom: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field > label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-color-secondary);
+}
+
+.field-row {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.row-buttons {
+  display: flex;
+  gap: 0.6rem;
+  padding: 1.25rem 0 0;
+  justify-content: flex-end;
+  border-top: 1px solid var(--surface-border);
+  margin-top: 0.5rem;
+}
+
+.text-danger {
+  color: var(--red-500, #e93030);
+  font-size: 0.8rem;
+}
+
+h3,
+h4 {
+  color: var(--text-color);
+}
+
+/* ---------- Cards grid (configurations / deployments) ---------- */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.1rem;
+}
+
+.dashboard-card {
+  max-height: 440px;
+  overflow-y: auto;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.dashboard-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.dashboard-card h3 {
+  margin: 0.7rem 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.dashboard-card .p-button {
+  margin: 0.15rem 0.25rem 0.15rem 0;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.card-title-row .title {
+  flex: 1;
+}
+
+.card-title-row h6 {
+  margin: 0.15rem 0 0;
+  font-weight: 400;
+  color: var(--text-color-secondary);
+}
+
+/* ---------- Status colors (kept close to the legacy palette, but token-driven) ---------- */
+
+.status-created {
+  color: var(--text-color-secondary);
+}
+.status-deployed {
+  color: var(--primary-color);
+}
+.status-stopped {
+  color: #e93030;
+}
+.status-finished {
+  color: #17a673;
+}
+.status-connected {
+  color: #17a673;
+}
+.status-disconnected {
+  color: #e93030;
+}
+
+.chip-created {
+  background: var(--surface-400, #94a3b8);
+  color: #fff;
+}
+.chip-deployed {
+  background: var(--primary-color);
+  color: var(--primary-color-text, #fff);
+}
+.chip-stopped {
+  background: #e93030;
+  color: #fff;
+}
+.chip-finished {
+  background: #17a673;
+  color: #fff;
+}
+
+/* ---------- Code editor container (Monaco) ---------- */
+
+.code-field {
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.code-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.75rem;
+  background: var(--surface-100, var(--surface-hover));
+  border-bottom: 1px solid var(--surface-border);
+  font-size: 0.75rem;
+  color: var(--text-color-secondary);
+  font-family: var(--font-sans);
+}
+
+.code-field-header .lang-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 650;
+}
+
+.code-editor {
+  width: 100%;
+}
