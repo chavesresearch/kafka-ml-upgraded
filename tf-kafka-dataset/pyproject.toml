@@ -1,0 +1,14 @@
+[project]
+name = "tf-kafka-dataset"
+version = "0.1.0"
+description = "tf.data.Dataset sources that read directly from Apache Kafka, without tensorflow-io"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "kafka-python==3.0.9",
+    "tensorflow>=2.16",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.22,<0.10.0"]
+build-backend = "uv_build"

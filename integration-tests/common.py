@@ -2,11 +2,11 @@
 
 Every test in this suite drives the *real* backend-litestar REST API
 (create a model, a configuration, a deployment - the same calls the
-frontend makes) and sends *real* data over a *real* Kafka broker, then
-polls for a real training/inference result. Nothing here talks to the
-database directly or fabricates a Kubernetes Job by hand - if the backend
-can't actually deploy a real Job against the real cluster, these tests
-fail, which is the point.
+frontend makes) via `kafkaml-client`, and sends *real* data over a *real*
+Kafka broker, then polls for a real training/inference result. Nothing
+here talks to the database directly or fabricates a Kubernetes Job by
+hand - if the backend can't actually deploy a real Job against the real
+cluster, these tests fail, which is the point.
 
 Requires (see README.md): the local Docker Desktop Kubernetes cluster
 with the `kafkaml` namespace running backend/kafka/tfexecutor/pthexecutor,
@@ -15,9 +15,7 @@ LoadBalancer service type - see docker-desktop kafka-deployment.yaml's
 `PLAINTEXT_HOST://localhost:9094` listener - no port-forward needed).
 """
 
-import time
-
-import httpx
+from kafkaml_client import KafkaMLClient
 
 BACKEND_URL = "http://localhost:8000"
 BOOTSTRAP_SERVERS = "localhost:9094"
@@ -26,12 +24,12 @@ RETRY_TIMEOUT_S = 120
 RETRY_INTERVAL_S = 2
 
 
-def api_client() -> httpx.Client:
-    return httpx.Client(base_url=BACKEND_URL, timeout=30)
+def api_client() -> KafkaMLClient:
+    return KafkaMLClient(BACKEND_URL, timeout=30)
 
 
 def create_model(
-    client: httpx.Client,
+    client: KafkaMLClient,
     name: str,
     code: str,
     framework: str = "tf",
@@ -39,78 +37,38 @@ def create_model(
     distributed: bool = False,
     father: int | None = None,
 ) -> int:
-    """POSTs to /models/ (validated live against tfexecutor/pthexecutor,
-    same as the frontend's model editor) and returns the new model id."""
-    payload = {
-        "name": name,
-        "code": code,
-        "framework": framework,
-        "imports": imports,
-        "distributed": distributed,
-    }
-    if father is not None:
-        payload["father"] = father
-    resp = client.post("/models/", json=payload)
-    assert resp.status_code == 201, f"create_model({name}) failed: {resp.status_code} {resp.text}"
-
-    models = client.get("/models/").json()
-    matches = [m for m in models if m["name"] == name]
-    assert matches, f"model {name} not found in /models/ after creation"
-    return matches[-1]["id"]
+    return client.create_model(
+        name=name, code=code, framework=framework, imports=imports, distributed=distributed, father=father
+    )
 
 
-def create_configuration(client: httpx.Client, name: str, model_ids: list[int]) -> int:
-    resp = client.post("/configurations/", json={"name": name, "ml_models": model_ids})
-    assert resp.status_code == 201, f"create_configuration({name}) failed: {resp.status_code} {resp.text}"
-
-    configs = client.get("/configurations/").json()
-    matches = [c for c in configs if c["name"] == name]
-    assert matches, f"configuration {name} not found in /configurations/ after creation"
-    return matches[-1]["id"]
+def create_configuration(client: KafkaMLClient, name: str, model_ids: list[int]) -> int:
+    return client.create_configuration(name=name, model_ids=model_ids)
 
 
-def create_deployment(client: httpx.Client, **fields) -> int:
-    """POSTs to /deployments/ - this is the call that makes backend-litestar
+def create_deployment(client: KafkaMLClient, **fields) -> int:
+    """Creates a deployment - this is the call that makes backend-litestar
     submit a real Kubernetes training Job. `fields` must include at least
     `configuration` (id) and `batch`; anything else (tf_kwargs_fit,
     incremental, federated, optimizer, ...) is passed straight through -
-    see `app/controllers/deployments.py`'s `_PASSTHROUGH_FIELDS`."""
-    before = {d["id"] for d in client.get("/deployments/").json()}
-    resp = client.post("/deployments/", json=fields)
-    assert resp.status_code == 201, f"create_deployment failed: {resp.status_code} {resp.text}"
-
-    after = client.get("/deployments/").json()
-    new_ids = [d["id"] for d in after if d["id"] not in before]
-    assert new_ids, "no new deployment id found after create_deployment"
-    return new_ids[-1]
-
-
-def get_results_for_deployment(client: httpx.Client, deployment_id: int) -> list[dict]:
-    results = client.get("/results/").json()
-    return [r for r in results if r["deployment"]["id"] == deployment_id]
+    see `KafkaMLClient.create_deployment`'s docstring for the full field
+    reference."""
+    return client.create_deployment(**fields)
 
 
 def wait_for_status(
-    client: httpx.Client,
+    client: KafkaMLClient,
     deployment_id: int,
     expected_status: str = "finished",
     timeout_s: int = RETRY_TIMEOUT_S,
     min_results: int = 1,
 ) -> list[dict]:
-    """Polls /results/ until every TrainingResult for `deployment_id`
-    reaches `expected_status` (default: "finished"), or raises on timeout.
-    Returns the final result rows."""
-    deadline = time.time() + timeout_s
-    last_seen: list[dict] = []
-    while time.time() < deadline:
-        rows = get_results_for_deployment(client, deployment_id)
-        last_seen = rows
-        if len(rows) >= min_results and all(r["status"] == expected_status for r in rows):
-            return rows
-        time.sleep(RETRY_INTERVAL_S)
-    raise AssertionError(
-        f"deployment {deployment_id} did not reach status={expected_status!r} "
-        f"within {timeout_s}s - last seen: {last_seen}"
+    return client.wait_for_results(
+        deployment_id,
+        status=expected_status,
+        timeout=timeout_s,
+        poll_interval=RETRY_INTERVAL_S,
+        min_results=min_results,
     )
 
 

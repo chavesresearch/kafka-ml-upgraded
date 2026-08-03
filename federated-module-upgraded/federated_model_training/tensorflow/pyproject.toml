@@ -16,8 +16,14 @@ dependencies = [
     # as model_training-upgraded/tensorflow/pyproject.toml.
     "setuptools<81",
     "tensorflow==2.21.0",
+    "tf-kafka-dataset",
     "web3==5.28.0",
 ]
+
+[tool.uv.sources]
+# Same shared package as model_training-upgraded/tensorflow - see that
+# pyproject.toml's comment.
+tf-kafka-dataset = { path = "../../../tf-kafka-dataset" }
 
 [tool.uv]
 # web3 (blockchain federated learning feature) depends on a pre-release

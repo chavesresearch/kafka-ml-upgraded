@@ -20,8 +20,18 @@ dependencies = [
     # still has it, 83.0.0 doesn't), not assumed from changelogs.
     "setuptools<81",
     "tensorflow==2.21.0",
+    "tf-kafka-dataset",
     "web3==5.28.0",
 ]
+
+[tool.uv.sources]
+# Local sibling package - the tensorflow-io-replacement Kafka dataset
+# helpers (get_bounded_kafka_dataset/get_streaming_kafka_batches) were
+# extracted out to ../../tf-kafka-dataset since they're generically useful
+# (not Kafka-ML-specific) and are now shared with
+# federated-module-upgraded/federated_model_training/tensorflow instead of
+# being duplicated in both places.
+tf-kafka-dataset = { path = "../../tf-kafka-dataset" }
 
 [tool.uv]
 # web3 (blockchain federated learning feature) depends on a pre-release

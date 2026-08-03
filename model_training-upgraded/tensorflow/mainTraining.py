@@ -1,6 +1,6 @@
 from utils import *
 import json
-from kafka_dataset import get_bounded_kafka_dataset, get_streaming_kafka_batches
+from tf_kafka_dataset import get_bounded_kafka_dataset, get_streaming_kafka_batches
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt

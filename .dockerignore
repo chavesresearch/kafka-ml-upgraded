@@ -1,0 +1,16 @@
+# Root-level .dockerignore - needed once any Dockerfile is built with the
+# repo root as its build context (e.g. model_training-upgraded/tensorflow's
+# and federated-module-upgraded/federated_model_training/tensorflow's,
+# which need ../tf-kafka-dataset alongside them). Keeps "sending build
+# context to Docker daemon" fast by excluding every subproject's own
+# venvs/caches/node_modules - each subproject's own .dockerignore still
+# applies too when building with that subproject as the context directly.
+.venv/
+__pycache__/
+*.pyc
+.git/
+node_modules/
+dist/
+*.h5
+*.pth
+db.sqlite3

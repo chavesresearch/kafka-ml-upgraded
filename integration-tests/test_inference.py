@@ -65,21 +65,15 @@ def test_tensorflow_inference():
 
         input_topic = f"it-inf-input-{run_id}"
         output_topic = f"it-inf-output-{run_id}"
-        resp = client.post(
-            f"/results/inference/{result_id}",
-            json={
-                "replicas": 1,
-                "input_format": "RAW",
-                "input_config": json.dumps({"data_type": "float32", "data_reshape": "1"}),
-                "input_topic": input_topic,
-                "output_topic": output_topic,
-                "gpumem": 0,
-            },
+        inference_id = client.deploy_inference(
+            result_id,
+            input_topic=input_topic,
+            output_topic=output_topic,
+            input_format="RAW",
+            input_config=json.dumps({"data_type": "float32", "data_reshape": "1"}),
+            replicas=1,
+            gpumem=0,
         )
-        assert resp.status_code in (200, 201), f"deploy_inference failed: {resp.status_code} {resp.text}"
-
-        inferences = client.get("/inferences/").json()
-        inference_id = next(i["id"] for i in inferences if i["model_result"] == result_id)
 
         try:
             # Give the ReplicationController's pod time to start, download
@@ -110,8 +104,8 @@ def test_tensorflow_inference():
             # Real inference deployments are long-running (a
             # ReplicationController, not a Job) - clean up after the test
             # regardless of outcome.
-            client.post(f"/inferences/{inference_id}")
-            client.delete(f"/inferences/{inference_id}")
+            client.stop_inference(inference_id)
+            client.delete_inference(inference_id)
 
 
 if __name__ == "__main__":

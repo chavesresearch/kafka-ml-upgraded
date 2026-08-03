@@ -2,7 +2,7 @@ from utils import *
 import json
 import time
 
-from kafka_dataset import get_bounded_kafka_dataset, get_streaming_kafka_batches
+from tf_kafka_dataset import get_bounded_kafka_dataset, get_streaming_kafka_batches
 from confluent_kafka.admin import AdminClient, NewTopic
 
 from KafkaModelEngine import KafkaModelEngine

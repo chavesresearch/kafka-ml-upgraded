@@ -7,10 +7,12 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "httpx==0.28.1",
     "kafka-python==3.0.9",
+    "kafkaml-client",
     "kafkaml-datasources",
     "numpy==2.5.1",
     "pytest==8.4.2",
 ]
 
 [tool.uv.sources]
+kafkaml-client = { path = "../kafkaml-client", editable = true }
 kafkaml-datasources = { path = "../datasources-package", editable = true }
