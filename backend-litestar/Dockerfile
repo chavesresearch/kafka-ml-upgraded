@@ -7,17 +7,23 @@ WORKDIR /usr/src/app
 # set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV UV_PROJECT_ENVIRONMENT=/usr/src/app/.venv
+ENV UV_COMPILE_BYTECODE=1
 
-# install dependencies
+# install uv
 RUN pip install --upgrade pip
 RUN pip install uv
-COPY ./requirements.txt /usr/src/app/requirements.txt
-# --prerelease=allow: web3 (blockchain feature) depends on a pre-release
-# build of ipfshttpclient, same as the original backend's build flags.
-RUN uv pip install -r requirements.txt --prerelease=allow --system
+
+# install dependencies (separate layer from the source copy below, so
+# dependency installs are cached across code-only changes)
+COPY pyproject.toml uv.lock ./
+# --prerelease allow is set in pyproject.toml's [tool.uv] table: web3
+# (blockchain feature) depends on a pre-release build of ipfshttpclient.
+RUN uv sync --locked --no-install-project
 
 # copy project
 COPY . /usr/src/app/
+RUN uv sync --locked
 
 EXPOSE 8000
 

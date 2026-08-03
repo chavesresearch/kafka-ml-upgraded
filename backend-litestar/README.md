@@ -22,27 +22,29 @@ A brief introduction of the important files:
 
 ## Installation for local development
 
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) - `pyproject.toml` + `uv.lock`, no `requirements.txt`.
+
 ```
-python -m pip install -r requirements.txt
+uv sync
 ```
 
 Then create the local SQLite database:
 
 ```
-alembic upgrade head
+uv run alembic upgrade head
 ```
 
 This creates `db.sqlite3` in this directory, same as before. After changing `app/models.py`, generate a new migration instead of hand-editing the schema:
 
 ```
-alembic revision --autogenerate -m "describe the change"
-alembic upgrade head
+uv run alembic revision --autogenerate -m "describe the change"
+uv run alembic upgrade head
 ```
 
 ## Running development server
 
 ```
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --ws wsproto
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --ws wsproto
 ```
 
 `--ws wsproto` is required: `web3` (the optional blockchain feature) pins `websockets<10`, so `wsproto` is used as uvicorn's websocket implementation instead of the `websockets` package. See the comment in `requirements.txt`.

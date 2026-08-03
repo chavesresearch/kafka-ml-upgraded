@@ -1,0 +1,20 @@
+[project]
+name = "kafka-ml-tfexecutor"
+version = "0.1.0"
+# Pinned to match the Python version the official tensorflow/tensorflow:2.21.0
+# Docker image actually ships (3.11.x) - not our choice, TF's base image
+# controls this. Keep this in sync if the TFTAG build arg in Dockerfile
+# changes to a different TF release.
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastavro==1.12.2",
+    "kafka-python==3.0.9",
+    "litestar==2.24.0",
+    "multipart==2.0.0",
+    # 2.5.x dropped Python 3.11 wheels - 2.4.6 is the latest release that
+    # still supports the interpreter tensorflow/tensorflow:2.21.0 ships.
+    "numpy==2.4.6",
+    "tensorflow==2.21.0",
+    "tensorflow-datasets==4.9.10",
+    "uvicorn[standard]==0.52.1",
+]

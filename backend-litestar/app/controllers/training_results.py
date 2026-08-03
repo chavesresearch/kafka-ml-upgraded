@@ -77,7 +77,7 @@ class MetricsUpload(msgspec.Struct):
     data: str
 
 
-@post("/results_metrics/{result_id:int}", tags=["results"])
+@post("/results_metrics/{result_id:int}", tags=["results"], status_code=200)
 async def upload_epoch_metrics(
     result_id: int,
     data: Annotated[MetricsUpload, Body(media_type=RequestEncodingType.URL_ENCODED)],
@@ -106,7 +106,7 @@ class TrainingResultUpload(msgspec.Struct):
     confussion_matrix: Optional[UploadFile] = None
 
 
-@post("/results/{result_id:int}", tags=["results"])
+@post("/results/{result_id:int}", tags=["results"], status_code=200)
 async def upload_result(
     result_id: int,
     data: Annotated[TrainingResultUpload, Body(media_type=RequestEncodingType.MULTI_PART)],

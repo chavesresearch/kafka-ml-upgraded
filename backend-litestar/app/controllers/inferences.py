@@ -34,7 +34,7 @@ async def get_inference(inference_id: int, db_session: AsyncSession) -> dict[str
     return inference_dict(inference)
 
 
-@post("/inferences/{inference_id:int}", tags=["inferences"])
+@post("/inferences/{inference_id:int}", tags=["inferences"], status_code=200)
 async def stop_inference(inference_id: int, db_session: AsyncSession) -> None:
     inference = await db_session.get(Inference, inference_id)
     if inference is None or inference.status != "deployed":

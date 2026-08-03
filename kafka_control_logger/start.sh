@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-python logger.py
+set -e
+exec uv run logger.py

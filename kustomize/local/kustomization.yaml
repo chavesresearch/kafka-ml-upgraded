@@ -13,5 +13,61 @@ configMapGenerator:
       - brokers=kafka:9092
 images:
   - name: kafka
-    newName: docker.io/bitnami/kafka
-    newTag: "3.4.0-debian-11-r22"
+    newName: docker.io/apache/kafka
+    newTag: "4.3.1"
+  # Locally-built images from this session's Litestar/uv rewrite - not
+  # published anywhere, only present in the local Docker image cache (this
+  # cluster is Docker Desktop's own Kubernetes, which shares that cache -
+  # no registry push or `minikube image load` needed). See the
+  # imagePullPolicy patches below: without them, the base Deployments'
+  # `imagePullPolicy: Always` would try and fail to pull these from a
+  # registry that doesn't have them.
+  #
+  # NB: these `name:` values match what ../v1.0's own `images:` transformer
+  # already renamed the base's `kafka-ml-*` placeholders to
+  # (`ertis/kafka-ml-*:v1.0`) - kustomize's image transformer matches
+  # against the *current* name in the resource tree, not the original base
+  # name, so overriding an already-remapped nested kustomization means
+  # matching its output, not the placeholder.
+  - name: ertis/kafka-ml-backend
+    newName: kafka-ml-backend-litestar
+    newTag: "test"
+  - name: ertis/kafka-ml-kafka_control_logger
+    newName: kafka-ml-control-logger
+    newTag: "test"
+  - name: ertis/kafka-ml-tfexecutor
+    newName: kafka-ml-tfexecutor
+    newTag: "test"
+  - name: ertis/kafka-ml-pthexecutor
+    newName: kafka-ml-pthexecutor
+    newTag: "test"
+
+patches:
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target:
+      kind: Deployment
+      name: kafka-control-logger
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target:
+      kind: Deployment
+      name: tfexecutor
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target:
+      kind: Deployment
+      name: pthexecutor
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent

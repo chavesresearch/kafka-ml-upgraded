@@ -1,0 +1,13 @@
+[project]
+name = "kafkaml-datasources"
+version = "0.1.0"
+description = "Kafka producer clients for streaming training/inference data to Apache Kafka for Kafka-ML"
+requires-python = ">=3.9"
+dependencies = [
+    "fastavro==1.12.2",
+    "kafka-python==3.0.9",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.22,<0.10.0"]
+build-backend = "uv_build"

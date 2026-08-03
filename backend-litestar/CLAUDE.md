@@ -21,7 +21,9 @@ committed, but nothing points `kustomize` at its image yet.
   the Django backend used
 - Alembic — migrations are meant to be committed here (unlike Django's
   `makemigrations`, which this project never committed for `../backend`)
-- `aiokafka` — Kafka producer (datasources) and consumer (`/ws/` relay)
+- `aiokafka` — consumer only (`/ws/` relay). There's no Kafka producer in
+  this backend (see the removed-republish note below) - datasource creation
+  is pure DB persistence.
 - `kubernetes-asyncio` — Job/ReplicationController management
 - `httpx.AsyncClient` — calls to the tf/pth `mlcode_executor` services
   (**not ported** — still Flask, called over plain HTTP, out of scope here)
@@ -35,7 +37,7 @@ committed, but nothing points `kustomize` at its image yet.
 | `app/config.py` | Environment-driven settings, equivalent of `autoweb/settings.py`. Same env var names as the Django backend (see README) so kustomize manifests don't need to change. |
 | `app/models.py` | SQLAlchemy models, equivalent of `automl/models.py`. Includes a `before_flush` event listener that reproduces django-model-utils' `MonitorField` (bumps `status_changed` whenever `status` changes on `TrainingResult`/`Inference`). |
 | `app/db.py` | Async engine + `provide_db_session` dependency. **One transaction per request** (`session.begin()` wraps the whole handler) — a deliberate improvement over Django's per-statement autocommit: if anything fails partway through (e.g. a Kubernetes call in `deployments.py`), the whole request's DB writes roll back automatically. Don't add manual compensating deletes; let exceptions propagate. |
-| `app/clients.py` | `LazyKafkaProducer` and the shared `httpx.AsyncClient`, provided via DI. Both connect **lazily on first use**, not at app startup — see "Gotchas" below. |
+| `app/clients.py` | The shared `httpx.AsyncClient`, provided via DI. |
 | `app/schemas/__init__.py` | Plain-function response dict builders, field-for-field equivalents of `automl/serializers.py`'s `ModelSerializer` classes. Add a new field here (not a new abstraction) when a model gains one. |
 | `app/controllers/*.py` | Route handlers, one module per resource, equivalent of `automl/views/*.py`. Request bodies are typed `dict[str, Any]` (not per-field structs) to mirror the original's own `json.loads(request.body)` + manual validation style — this was a deliberate choice for a faithful port, not an oversight. |
 | `app/job_manifest_generator.py` | Kubernetes Job manifest builders. Ported **unchanged** from `automl/views/utils/job_manifest_generator.py` — it never depended on Django, just takes a `settings`-like object. |
@@ -61,29 +63,38 @@ committed, but nothing points `kustomize` at its image yet.
    `wsproto` + `httptools` and run with `--ws wsproto` (see `start.sh`).
    Litestar itself doesn't need the `websockets` package — it implements
    WebSocket over raw ASGI messages.
-3. **`web3`'s `ipfshttpclient==0.8.0a2` dependency is a pre-release** — pip/uv
-   installs need `--prerelease=allow` (see `Dockerfile`), matching the flag
-   the original `backend/Dockerfile` already used.
-4. **`greenlet` must be an explicit dependency.** SQLAlchemy's async ORM
+3. **`web3`'s `ipfshttpclient==0.8.0a2` dependency is a pre-release** —
+   installs need `prerelease = "allow"`, set once in `pyproject.toml`'s
+   `[tool.uv]` table rather than a flag you have to remember to pass every
+   time (matches the `--prerelease=allow` flag the original `backend/
+   Dockerfile` used).
+4. **`msgspec==0.18.6` has no prebuilt wheel for Python 3.13** and fails to
+   *compile* from source against it (3.13 removed/changed private C API
+   symbols like `_PyLong_AsByteArray`'s signature) — `uv add`/`uv lock` will
+   pick whatever Python `uv` defaults to (which may float to 3.13+ if you
+   don't pin one) and this build error is what you'll hit. `requires-python
+   = ">=3.12,<3.13"` in `pyproject.toml` pins it away; if you ever bump
+   `msgspec` past this, re-check whether the upper bound is still needed.
+5. **`greenlet` must be an explicit dependency.** SQLAlchemy's async ORM
    needs it even with a fully-async driver like `aiosqlite` (it bridges the
    sync unit-of-work internals), but plain `sqlalchemy` (without the
    `[asyncio]` extra) doesn't pull it in — you get `ValueError: the
    greenlet library is required` at the first `session.begin()`.
-5. **Kafka producer and Kubernetes client connect lazily, not at app
-   startup.** `AIOKafkaProducer.start()` (or `kubernetes_asyncio.config.
-   load_incluster_config()`) run eagerly in the app lifespan would make the
-   whole pod fail to boot if Kafka/K8s aren't reachable yet — a real risk
-   given Kubernetes doesn't guarantee pod startup order. `confluent_kafka.
-   Producer` (what Django used) only ever connected on first `.produce()`;
-   `LazyKafkaProducer` in `app/clients.py` reproduces that. Kubernetes calls
-   are made per-request inside the handler for the same reason — don't move
-   `load_incluster_config()` into the lifespan.
-6. **The multipart field name `confussion_matrix` (misspelled, missing an
+6. **The Kubernetes client connects lazily, not at app startup.**
+   `kubernetes_asyncio.config.load_incluster_config()` run eagerly in the
+   app lifespan would make the whole pod fail to boot if Kubernetes isn't
+   reachable yet — a real risk given Kubernetes doesn't guarantee pod
+   startup order. Kubernetes calls are made per-request inside the handler
+   instead — don't move `load_incluster_config()` into the lifespan.
+   (There used to be an equivalent note here about a lazily-connecting
+   Kafka producer for datasource creation - removed along with the producer
+   itself, see the bug list below.)
+7. **The multipart field name `confussion_matrix` (misspelled, missing an
    "o") is a real wire contract**, not a typo to fix — `model_training/
    tensorflow/mainTraining.py` and friends send exactly that field name to
    `POST /results/{id}`. Renaming it here would silently break every
    training container, which this rewrite doesn't touch.
-7. **Litestar disambiguates static path segments from typed params
+8. **Litestar disambiguates static path segments from typed params
    correctly** — e.g. `/results/chart/{result_id:int}` vs
    `/results/{result_id:int}` never collide because they're different path
    depths, and `/models/distributed` (literal) vs `/models/{model_id:int}`
@@ -115,16 +126,58 @@ cross-checking behavior:
    that filter on it never had anything to find. Now persisted in
    `app/controllers/datasources.py`.
 4. The Kafka control-topic message key was `bytes([deployment_id])` — caps
-   deployment ids at 255, raises `ValueError` above that. Widened to a
-   4-byte big-endian key; verified every consumer (`model_training/*`,
-   `mlcode_executor/tfexecutor/app.py`) decodes it generically via
-   `int.from_bytes(msg.key, byteorder="big")`, so this stays wire-compatible.
+   deployment ids at 255, raises `ValueError` above that. This code path
+   (the backend's own control-topic publish) no longer exists at all - see
+   #7 below - so the fix now lives at the actual source instead: the
+   `KafkaMLSink` client library (`../datasources`) widens its deployment-id
+   key encoding to 4 bytes big-endian. Every consumer (`model_training/*`,
+   `mlcode_executor/tfexecutor/app.py`, `kafka_control_logger`) decodes it
+   generically via `int.from_bytes(msg.key, byteorder="big")`, so this
+   stays wire-compatible regardless of key width.
 5. `DatasourceList.post` and `DatasourceToKafka.post` were byte-for-byte
    duplicated code; deduped into one handler mounted at both routes.
 6. `autoweb/create_blockchain_token.py` resolved its Solidity contract path
    via `os.getcwd()` — only worked if the process's cwd happened to match
    the Docker `WORKDIR`. `app/blockchain.py` anchors it to the module's own
    file location instead.
+7. **`POST /datasources/` re-published every payload back onto
+   `CONTROL_TOPIC`** ("so training jobs pick it up" - the original,
+   plausible-sounding rationale, kept in the Django version too). This is
+   an unbounded feedback loop: this endpoint is only ever called by
+   `kafka_control_logger`, which itself got the message by consuming
+   `CONTROL_TOPIC` in the first place (client-side `KafkaMLSink.close()`
+   publishes there directly). Re-publishing back onto the same topic means
+   `kafka_control_logger` sees its own round-trip and forwards it again -
+   every datasource submission would duplicate its `Datasource` row and
+   re-publish to Kafka forever, with nothing ever breaking the cycle.
+   Training jobs (`model_training/*`) already consume `CONTROL_TOPIC`
+   directly and filter by the deployment-id key, so the republish added no
+   information they didn't already have. Removed entirely - `app/
+   controllers/datasources.py`'s `_create_datasource` is now pure DB
+   persistence, no Kafka producer involved (`app/clients.py`'s
+   `LazyKafkaProducer` and the `kafka_producer` DI dependency were removed
+   as a result - nothing else used them). If you're auditing `../backend`
+   (Django) or old deployment configs: this loop is still live there: it
+   wasn't in scope to patch the reference implementation, only this port.
+8. **`POST /datasources/` passed `data["time"]` (a JSON string) straight
+   into `Datasource(time=...)`** - works fine against the Django
+   `DatasourceSerializer`, which has a typed `DateTimeField` that parses
+   ISO 8601 strings automatically, but this port's controllers take
+   `data: dict[str, Any]` and skip that typed validation entirely (a
+   deliberate choice, see the "Layout" table above) - so the raw string
+   reached SQLAlchemy directly, which raised `TypeError: SQLite DateTime
+   type only accepts Python datetime and date objects as input` at flush
+   time for *every* call. `GET /datasources/` never surfaced this because
+   no row had ever successfully been created (bug #3 above meant the table
+   was permanently empty until this session, so nothing had exercised this
+   path with a real insert). Fixed with `datetime.fromisoformat(data["time"])`
+   in `app/controllers/datasources.py`. This makes `kafka_control_logger`'s
+   output format a real wire contract now: it must send a
+   `datetime.isoformat()`-produced string (or anything else
+   `datetime.fromisoformat` accepts - `Z`-suffixed UTC works too on
+   Python ≥3.11). Caught by actually inserting a row against a throwaway
+   in-memory SQLite DB, not by inspection - worth doing for any other
+   `dict[str, Any]` field that maps to a typed (non-string) column.
 
 ## Things that look like bugs but are intentionally preserved for parity
 
@@ -153,9 +206,8 @@ exists for the Django side; nothing analogous here yet). What was actually
 done to verify this port, worth repeating for further changes:
 
 ```bash
-uv venv --python 3.12 .venv && source .venv/bin/activate
-uv pip install -r requirements.txt --prerelease=allow
-alembic upgrade head
+uv sync --locked
+uv run alembic upgrade head
 ```
 
 Then exercise routes with Litestar's `TestClient` against the real sqlite

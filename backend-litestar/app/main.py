@@ -9,7 +9,7 @@ from litestar import Litestar
 from litestar.config.cors import CORSConfig
 from litestar.di import Provide
 
-from app.clients import LazyKafkaProducer, provide_http_client, provide_kafka_producer
+from app.clients import provide_http_client
 from app.config import settings
 from app.controllers import (
     configurations,
@@ -62,12 +62,10 @@ async def lifespan(app: Litestar) -> AsyncIterator[None]:
     _maybe_create_blockchain_token()
 
     app.state.http_client = httpx.AsyncClient()
-    app.state.kafka_producer = LazyKafkaProducer(bootstrap_servers=settings.BOOTSTRAP_SERVERS)
 
     try:
         yield
     finally:
-        await app.state.kafka_producer.stop()
         await app.state.http_client.aclose()
 
 
@@ -76,7 +74,6 @@ cors_config = CORSConfig(allow_origins=settings.CORS_ALLOWED_ORIGINS)
 dependencies = {
     "db_session": Provide(provide_db_session),
     "http_client": Provide(provide_http_client),
-    "kafka_producer": Provide(provide_kafka_producer),
 }
 
 app = Litestar(

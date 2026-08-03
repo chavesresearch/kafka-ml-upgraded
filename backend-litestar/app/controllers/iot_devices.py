@@ -201,7 +201,7 @@ async def download_iot_script(token: str, db_session: AsyncSession) -> File:
     return File(path=path, filename="autoexec.be", media_type="application/octet-stream")
 
 
-@post("/results/inference-iot/{result_id:int}", tags=["iot-devices"])
+@post("/results/inference-iot/{result_id:int}", tags=["iot-devices"], status_code=200)
 async def deploy_to_iot_devices(
     result_id: int,
     data: dict[str, Any],
