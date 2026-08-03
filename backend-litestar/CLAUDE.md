@@ -1,0 +1,188 @@
+# Kafka-ML Litestar backend — instructions for AI assistants
+
+This is a from-scratch async port of the Django/DRF backend that lives in
+`../backend`. The Django app is the **reference implementation for
+behavior** — same URL paths, same JSON field names, same status codes, so
+the Angular/Vue frontends work unchanged. When in doubt about what an
+endpoint should do, read the matching view under
+`../backend/automl/views/<name>.py` and its serializer in
+`../backend/automl/serializers.py`. Don't "improve" the API shape without
+being asked; the frontends depend on exact field names.
+
+**Status: functionally complete, not yet cut over.** `../backend` (Django)
+is still what's actually deployed (see `kustomize/base/resources/
+backend-deployment.yaml`). This directory is untracked-no-longer — it's
+committed, but nothing points `kustomize` at its image yet.
+
+## Stack (do not swap pieces without being asked)
+
+- [Litestar](https://litestar.dev/) 2.x — async request handlers throughout
+- SQLAlchemy 2.0 (async) + `aiosqlite` — same single-file local `db.sqlite3`
+  the Django backend used
+- Alembic — migrations are meant to be committed here (unlike Django's
+  `makemigrations`, which this project never committed for `../backend`)
+- `aiokafka` — Kafka producer (datasources) and consumer (`/ws/` relay)
+- `kubernetes-asyncio` — Job/ReplicationController management
+- `httpx.AsyncClient` — calls to the tf/pth `mlcode_executor` services
+  (**not ported** — still Flask, called over plain HTTP, out of scope here)
+- Native Litestar `WebSocket`, no channel layer — the `/ws/` relay is a
+  plain `asyncio.Task` per subscription, not Django Channels
+
+## Layout
+
+| Path | Purpose |
+|---|---|
+| `app/config.py` | Environment-driven settings, equivalent of `autoweb/settings.py`. Same env var names as the Django backend (see README) so kustomize manifests don't need to change. |
+| `app/models.py` | SQLAlchemy models, equivalent of `automl/models.py`. Includes a `before_flush` event listener that reproduces django-model-utils' `MonitorField` (bumps `status_changed` whenever `status` changes on `TrainingResult`/`Inference`). |
+| `app/db.py` | Async engine + `provide_db_session` dependency. **One transaction per request** (`session.begin()` wraps the whole handler) — a deliberate improvement over Django's per-statement autocommit: if anything fails partway through (e.g. a Kubernetes call in `deployments.py`), the whole request's DB writes roll back automatically. Don't add manual compensating deletes; let exceptions propagate. |
+| `app/clients.py` | `LazyKafkaProducer` and the shared `httpx.AsyncClient`, provided via DI. Both connect **lazily on first use**, not at app startup — see "Gotchas" below. |
+| `app/schemas/__init__.py` | Plain-function response dict builders, field-for-field equivalents of `automl/serializers.py`'s `ModelSerializer` classes. Add a new field here (not a new abstraction) when a model gains one. |
+| `app/controllers/*.py` | Route handlers, one module per resource, equivalent of `automl/views/*.py`. Request bodies are typed `dict[str, Any]` (not per-field structs) to mirror the original's own `json.loads(request.body)` + manual validation style — this was a deliberate choice for a faithful port, not an oversight. |
+| `app/job_manifest_generator.py` | Kubernetes Job manifest builders. Ported **unchanged** from `automl/views/utils/job_manifest_generator.py` — it never depended on Django, just takes a `settings`-like object. |
+| `app/blockchain.py` | ERC20 token deployment for the optional `ENABLE_FEDML_BLOCKCHAIN` feature. Contract sources are under `app/contracts/` (copied from `../backend/autoweb/contracts/`). |
+| `app/websocket.py` | The `/ws/` Kafka→browser visualization relay. |
+| `app/main.py` | App wiring: routes, CORS, DI providers, startup/shutdown lifecycle. |
+| `migrations/` | Alembic; `env.py` is async (`async_engine_from_config` + `run_sync`). |
+
+## Gotchas learned the hard way (keep these)
+
+1. **Litestar's request-body parameter must be named `data`.** It's one of
+   `RESERVED_KWARGS` (`litestar.constants`) — annotate it with
+   `Annotated[SomeStruct, Body(media_type=RequestEncodingType.MULTI_PART)]`
+   (or `URL_ENCODED`) same as any other param, but if you name it anything
+   else (e.g. `payload`), Litestar silently treats it as a plain **query**
+   parameter instead and you get a confusing `Missing required query
+   parameter` `ValidationException` — no error about the mismatched body
+   annotation at all. Hit this once in `training_results.py`'s multipart
+   upload handler; caught it via the smoke test, not by inspection.
+2. **`web3==5.28.0` (kept for the blockchain feature) pins `websockets<10`;
+   `uvicorn[standard]` pins `websockets>=10.4`.** These directly conflict.
+   Fix: don't install `uvicorn[standard]`; install plain `uvicorn` +
+   `wsproto` + `httptools` and run with `--ws wsproto` (see `start.sh`).
+   Litestar itself doesn't need the `websockets` package — it implements
+   WebSocket over raw ASGI messages.
+3. **`web3`'s `ipfshttpclient==0.8.0a2` dependency is a pre-release** — pip/uv
+   installs need `--prerelease=allow` (see `Dockerfile`), matching the flag
+   the original `backend/Dockerfile` already used.
+4. **`greenlet` must be an explicit dependency.** SQLAlchemy's async ORM
+   needs it even with a fully-async driver like `aiosqlite` (it bridges the
+   sync unit-of-work internals), but plain `sqlalchemy` (without the
+   `[asyncio]` extra) doesn't pull it in — you get `ValueError: the
+   greenlet library is required` at the first `session.begin()`.
+5. **Kafka producer and Kubernetes client connect lazily, not at app
+   startup.** `AIOKafkaProducer.start()` (or `kubernetes_asyncio.config.
+   load_incluster_config()`) run eagerly in the app lifespan would make the
+   whole pod fail to boot if Kafka/K8s aren't reachable yet — a real risk
+   given Kubernetes doesn't guarantee pod startup order. `confluent_kafka.
+   Producer` (what Django used) only ever connected on first `.produce()`;
+   `LazyKafkaProducer` in `app/clients.py` reproduces that. Kubernetes calls
+   are made per-request inside the handler for the same reason — don't move
+   `load_incluster_config()` into the lifespan.
+6. **The multipart field name `confussion_matrix` (misspelled, missing an
+   "o") is a real wire contract**, not a typo to fix — `model_training/
+   tensorflow/mainTraining.py` and friends send exactly that field name to
+   `POST /results/{id}`. Renaming it here would silently break every
+   training container, which this rewrite doesn't touch.
+7. **Litestar disambiguates static path segments from typed params
+   correctly** — e.g. `/results/chart/{result_id:int}` vs
+   `/results/{result_id:int}` never collide because they're different path
+   depths, and `/models/distributed` (literal) vs `/models/{model_id:int}`
+   don't collide because `"distributed"` fails `int` conversion and
+   Litestar backtracks to the static route. No special ordering needed in
+   `Router(route_handlers=[...])`.
+
+## Bugs found in the Django backend and fixed here
+
+Don't reintroduce these while porting more of `../backend`'s history or
+cross-checking behavior:
+
+1. `settings.DEVICES_ROOT` / `TFLITE_PARSED_MODELS_DIR` were referenced by
+   IoT device code (`automl/serializers.py`, `automl/views/iot_devices.py`)
+   but **never defined anywhere** — creating an IoT device or deploying a
+   model to one crashed with `AttributeError`. Now defined in
+   `app/config.py`.
+2. `GET /models/result/{id}` was dead: `automl/views/models.py`'s
+   `ModelResultID` class defined `get()` **twice** in the same class body;
+   Python keeps only the second, silently shadowing the correct
+   implementation with ~90 lines of copy-pasted `InferenceResultID` logic
+   that returned the wrong JSON shape. The frontend's `getModelResultID()`
+   (inference views) was getting `{input_format, input_config}` instead of
+   an `MLModel`. Fixed in `app/controllers/models.py`.
+3. `Datasource` rows were validated (`DatasourceSerializer(data=data)`) but
+   **never `.save()`d** in either `DatasourceList.post` or
+   `DatasourceToKafka.post` — the table was permanently empty, so
+   `GET /datasources/` and the input-format lookups in `InferenceResultID`
+   that filter on it never had anything to find. Now persisted in
+   `app/controllers/datasources.py`.
+4. The Kafka control-topic message key was `bytes([deployment_id])` — caps
+   deployment ids at 255, raises `ValueError` above that. Widened to a
+   4-byte big-endian key; verified every consumer (`model_training/*`,
+   `mlcode_executor/tfexecutor/app.py`) decodes it generically via
+   `int.from_bytes(msg.key, byteorder="big")`, so this stays wire-compatible.
+5. `DatasourceList.post` and `DatasourceToKafka.post` were byte-for-byte
+   duplicated code; deduped into one handler mounted at both routes.
+6. `autoweb/create_blockchain_token.py` resolved its Solidity contract path
+   via `os.getcwd()` — only worked if the process's cwd happened to match
+   the Docker `WORKDIR`. `app/blockchain.py` anchors it to the module's own
+   file location instead.
+
+## Things that look like bugs but are intentionally preserved for parity
+
+- `GET /deployments/{pk:int}` treats `pk` as a **Configuration** id (lists
+  its deployments); `DELETE` on the *same path* treats `pk` as a
+  **Deployment** id. Confusing, but it's the existing
+  `DeploymentsConfigurationID` contract — `frontend`/`frontend-vue` already
+  rely on it. Don't "fix" by splitting the route without checking both
+  frontends first.
+- `TrainingResult.train_metrics/val_metrics/test_metrics` default to `None`,
+  not `{}`, matching Django's `JSONField(null=True)` with no explicit
+  default — even though some downstream code (chart endpoint) assumes a
+  dict once training starts reporting metrics. This only matters before a
+  training job has posted its first metrics.
+- `parse_kwargs_fit` still uses Python `eval()` on user-typed kwargs
+  values. Not hardened, on purpose — it matches the app's existing trust
+  model (the whole platform already `exec()`s user-submitted model code in
+  `mlcode_executor`), and this wasn't in scope to change.
+- Django admin (`/admin`) was **not** replicated. Confirmed via grep that
+  neither frontend links to it — it was registered but unused.
+
+## Testing approach
+
+There's no committed test suite yet (`../backend/automl/test_views.py`
+exists for the Django side; nothing analogous here yet). What was actually
+done to verify this port, worth repeating for further changes:
+
+```bash
+uv venv --python 3.12 .venv && source .venv/bin/activate
+uv pip install -r requirements.txt --prerelease=allow
+alembic upgrade head
+```
+
+Then exercise routes with Litestar's `TestClient` against the real sqlite
+DB (`from litestar.testing import TestClient; from app.main import app`).
+For anything that calls the tf/pth executor (`_check_model_code` in
+`app/controllers/models.py`), mock it:
+`patch('app.controllers.models._check_model_code', new=AsyncMock(return_value=True))`.
+For endpoints needing a `TrainingResult`/`Deployment` to exist without going
+through the full k8s-dependent create flow, seed rows directly via
+`app.db.async_session_maker()` in the test script. Confirm
+`alembic revision --autogenerate` produces no unexpected diffs after model
+changes, and that `alembic upgrade head` actually creates the tables.
+
+## Definition of done for any change here
+
+1. Confirm the equivalent Django view/serializer to check the exact field
+   names and status codes expected — don't guess from the frontend alone.
+2. Run the manual `TestClient` smoke test above against the touched
+   endpoint(s); this backend has no CI wired up yet, so nothing else will
+   catch a regression.
+3. If you touched `app/models.py`, generate a migration
+   (`alembic revision --autogenerate -m "..."`) and run `alembic upgrade
+   head` to confirm it applies cleanly — don't hand-edit the schema.
+4. If you touched Kubernetes manifest generation
+   (`app/job_manifest_generator.py`, `app/controllers/deployments.py` or
+   `inferences.py`), there's no way to verify against a real cluster from
+   here — say so explicitly rather than claiming it's tested.
+5. Keep `requirements.txt`'s comments about the `websockets`/`web3`
+   conflict and the `--prerelease=allow` requirement intact if you touch
+   dependencies — the reasons aren't obvious from the pins alone.
