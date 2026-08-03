@@ -1,12 +1,14 @@
 # model_training-upgraded/tensorflow — status and continuation notes
 
-**Status: all 4 reachable training modes (CASE 1-4) fully verified
-end-to-end against the live local cluster; CASE 5-9 (federated/blockchain)
-verified at import/compile level only, by design.** Originally written
-mid-session as a token-budget checkpoint before the CASE 1/2/3/4 retests
-were finished - kept up to date since as each mode was confirmed, so this
-now doubles as the definition-of-done record for the TensorFlow port, not
-just a resume-point. Read this fully before touching the code further.
+**Status: CASE 1-5 fully verified end-to-end against the live local
+cluster; CASE 6-8 (federated incremental/distributed) fixed by code-level
+analogy to CASE 5 but not separately end-to-end verified; CASE=9
+(blockchain) verified at import/compile level only, by design.**
+Originally written mid-session as a token-budget checkpoint before the
+CASE 1/2/3/4 retests were finished - kept up to date since as each mode
+was confirmed, so this now doubles as the definition-of-done record for
+the TensorFlow port, not just a resume-point. Read this fully before
+touching the code further.
 
 ## What this module is
 
@@ -314,25 +316,68 @@ y-replication fix), and both results (`result_id=5` and `6`) reached
 `status: "finished"`. No new bugs found here - this case just validates
 the CASE=2 and CASE=3 fixes compose correctly.
 
-**All 4 reachable modes (CASE 1-4) are now fully verified end-to-end.**
-CASE 5-8 (federated) and CASE=9 (blockchain) remain import/compile-level
-only, per the user's own explicit scoping decision (see below) - this is
-by design, not an oversight.
+## CASE=5 (SingleFederatedTraining) - CONFIRMED PASSED, real multi-service round
+
+Once `federated-module-upgraded` was ported (see its own `CLAUDE.md`),
+CASE=5 was run as a **real, complete, multi-service end-to-end federated
+round** - not mocked, not import-only. Full cast: this trainer
+(`EdgeBasedTraining(SingleFederatedTraining())`), `federated_model_control_logger`,
+`federated_data_control_logger`, `federated_backend` (Django, real
+Kubernetes Job creation), and a real `federated_model_training/tensorflow`
+edge worker Job. Sequence, all real:
+
+1. This pod downloaded the pre-model, sent it (4 layer-weight messages +
+   control message, `version=-1` since `AGGREGATION_ROUNDS=1` made this
+   the only/last round) to `FED-{federated_string_id}-model_data_topic`/
+   `model_control_topic` via `FederatedKafkaMLModelSink`.
+2. `generate_and_send_data_standardization()` published to
+   `MODEL_LOGGER_TOPIC` (`FEDERATED_MODEL_CONTROL_TOPIC`);
+   `federated_model_control_logger` relayed it to `federated_backend`,
+   registering a `ModelSource` row.
+3. A real datasource was sent via `datasources-package`'s
+   `FederatedRawSink` (40 RAW messages); `federated_data_control_logger`
+   relayed the registration to `federated_backend`, registering a
+   `Datasource` row.
+4. `federated_backend`'s collision check matched the two (real bug found
+   and fixed here - see `federated-module-upgraded/CLAUDE.md` - a blank
+   Kubernetes `Configuration()` was discarding the in-cluster default,
+   `LocationValueError: No host specified` on every attempt) and created
+   a **real** `batch/v1 Job` via the real Kubernetes API.
+5. That Job ran `federated_model_training/tensorflow`, which downloaded
+   the model via `KafkaModelEngine` (`model_from_json`/`set_weights` -
+   the Keras-3 JSON-architecture round-trip verified here for the first
+   time under real training, not just an isolated probe), replayed the 40
+   messages via the shared `kafka_dataset.py`, trained one local epoch,
+   and sent results back via `FederatedKafkaMLAggregationSink`.
+6. This trainer received the edge's weights via
+   `KafkaModelEngine.setWeights`, ran `aggregate_model()`'s `FedAvg` path,
+   and - since this was the last round - sent the final model and real
+   metrics (`accuracy: 0.375, loss: 0.71...`) to `backend-litestar`.
+
+Both the main trainer pod and the edge worker Job reached `Completed`
+cleanly; `GET /results/{id}` showed `status: "finished"` with the real
+metrics above. **No code bugs found on this trainer's own side** during
+this run - `FederatedKafkaMLModelSink`, `KafkaModelEngine.setWeights`, and
+`aggregate_model`'s `FedAvg` logic all worked correctly as already-shipped
+code (the JSON-architecture round-trip in particular was a real Keras-3
+risk that turned out fine, not assumed).
 
 ## Remaining work, in priority order
 
-1. **CASE 5-8 (federated modes) and CASE=9 (blockchain)** - per the user's
-   own explicit scoping decision earlier this session, these only need
-   import/compile-level verification (**already done**), not full runtime
-   runs, since they need `federated-module` (a separate, unported module)
-   running as the edge side, and CASE=9 additionally needs a real Ethereum
-   node. State this plainly if asked "is the blockchain mode tested" - it
-   is not, by design/agreement, not by oversight. Worth a quick look at
-   `edgeBasedTraining.py`'s own training loop for the same y_true/y_pred
+1. **CASE 6-8 (federated incremental/distributed variants) and CASE=9
+   (blockchain)** - CASE 6-8 got the same code-level fixes as CASE 5 (the
+   y_true/y_pred structure fix in particular - see
+   `federated-module-upgraded/CLAUDE.md`) but were **not** separately
+   run end-to-end - that would need either a distributed-and-federated
+   scenario (2+ real edge devices each training a different submodel) or
+   a real streaming datasource feeding an incremental federated round,
+   neither attempted given time. CASE=9 additionally needs a real or
+   local-testnet Ethereum node - still import/compile-level only, by
+   design, not oversight. State this plainly if asked. Worth a quick look
+   at `edgeBasedTraining.py`'s own training loop for the same y_true/y_pred
    structure class of bug found in CASE=3/4 (not yet checked - it doesn't
    call `train_classic_model`/`train_incremental_model` directly, so it
-   may or may not share the bug; not chased down since full runtime
-   testing of these modes is out of scope anyway).
+   may or may not share the bug).
 2. **Write `../CLAUDE.md`** (one level up, `model_training-upgraded/`
    root) - hasn't been created yet. Should summarize this file's contents
    at a higher level once TensorFlow is fully done, the way

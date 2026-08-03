@@ -1,0 +1,13 @@
+[project]
+name = "kafka-ml-federated-backend"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "confluent-kafka==2.15.0",
+    "django==6.0.7",
+    "django-cors-headers==4.9.0",
+    "django-model-utils==5.0.0",
+    "djangorestframework==3.17.1",
+    "gunicorn==26.0.0",
+    "kubernetes==36.0.3",
+]
