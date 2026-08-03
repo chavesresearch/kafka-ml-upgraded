@@ -1,0 +1,16 @@
+[project]
+name = "kafka-ml-integration-tests"
+version = "0.1.0"
+description = "Real API-driven integration tests for Kafka-ML: create model/configuration/deployment via backend-litestar's REST API, send real Kafka data, poll for a real training/inference result."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx==0.28.1",
+    "kafka-python==3.0.9",
+    "kafkaml-datasources",
+    "numpy==2.5.1",
+    "pytest==8.4.2",
+]
+
+[tool.uv.sources]
+kafkaml-datasources = { path = "../datasources-package", editable = true }

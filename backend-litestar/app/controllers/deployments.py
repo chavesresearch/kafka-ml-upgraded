@@ -168,7 +168,17 @@ async def create_deployment(
             results_by_model_id[model.id] = result
         await db_session.flush()
 
-        await k8s_config.load_incluster_config()
+        # Real bug, found via an actual API-driven deployment test (not by
+        # inspection): `kubernetes_asyncio.config.load_incluster_config` is
+        # a *sync* function in kubernetes-asyncio==32.0.0 (confirmed with
+        # `inspect.iscoroutinefunction` - returns `False`) - it returns
+        # `None`, not a coroutine, so `await`ing it raised `TypeError:
+        # object NoneType can't be used in 'await' expression` on every
+        # single call, 100% of the time. This is the first time this
+        # method has actually been exercised against a real cluster (the
+        # original port's own CLAUDE.md flagged Job/RC creation as
+        # untested for exactly this reason).
+        k8s_config.load_incluster_config()
         api_client = kubernetes_api_client(
             token=os.environ.get("KUBE_TOKEN"), external_host=os.environ.get("KUBE_HOST")
         )

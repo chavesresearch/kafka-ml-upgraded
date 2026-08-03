@@ -41,7 +41,10 @@ async def stop_inference(inference_id: int, db_session: AsyncSession) -> None:
         raise HTTPException(status_code=400, detail="Inference not found or not running")
 
     try:
-        await k8s_config.load_incluster_config()
+        # kubernetes_asyncio.config.load_incluster_config is sync in
+        # kubernetes-asyncio==32.0.0 - see deployments.py's create_deployment
+        # for the full explanation of this real, found-via-testing bug.
+        k8s_config.load_incluster_config()
 
         if not is_blank(inference.external_host) and not is_blank(inference.token):
             token, external_host = inference.token, inference.external_host
@@ -186,7 +189,10 @@ async def deploy_inference(
         db_session.add(inference)
         await db_session.flush()
 
-        await k8s_config.load_incluster_config()
+        # kubernetes_asyncio.config.load_incluster_config is sync in
+        # kubernetes-asyncio==32.0.0 - see deployments.py's create_deployment
+        # for the full explanation of this real, found-via-testing bug.
+        k8s_config.load_incluster_config()
 
         if not is_blank(inference.external_host) and not is_blank(inference.token):
             token, external_host = inference.token, inference.external_host
