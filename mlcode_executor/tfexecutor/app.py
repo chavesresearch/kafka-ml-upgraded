@@ -216,7 +216,16 @@ def _convert_model_to_tflite(model_bytes: bytes, filename: str, quantization_par
         f.write(model_bytes)
 
     try:
-        model = tf.keras.models.load_model(model_path)
+        # compile=False: TFLiteConverter only needs the forward-pass graph
+        # and weights, never the compiled loss/optimizer. Loading compiled
+        # (the default) hits a real Keras 3 legacy-H5 bug for any model
+        # whose loss was set via a string shorthand (e.g. 'mse') -
+        # deserialization resolves it to `keras.metrics.mse` (a metric
+        # function) instead of the loss class, then rejects it with
+        # "Could not deserialize 'keras.metrics.mse' because it is not a
+        # KerasSaveable subclass". Reproduced directly against a bare
+        # `tf.keras.models.load_model()` call, independent of this service.
+        model = tf.keras.models.load_model(model_path, compile=False)
 
         converter = tf.lite.TFLiteConverter.from_keras_model(model)
 

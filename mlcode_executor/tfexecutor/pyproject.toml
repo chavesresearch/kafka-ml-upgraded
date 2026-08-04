@@ -18,3 +18,11 @@ dependencies = [
     "tensorflow-datasets==4.9.10",
     "uvicorn[standard]==0.52.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

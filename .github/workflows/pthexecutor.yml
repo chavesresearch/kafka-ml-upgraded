@@ -7,17 +7,37 @@ on:
       - "main"
       - "latest"
       - "dev*"
+  pull_request:
+    paths:
+      - mlcode_executor/pthexecutor/**/*
   release:
     types:
       - created
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mlcode_executor/pthexecutor
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.9.x"
+      - name: Run tests
+        run: uv run pytest -v
+
   build-pthexecutor:
+    needs: test
+    if: github.event_name != 'pull_request'
     strategy:
       matrix:
         include:
           - name: kafka-ml-pthexecutor
           - name: kafka-ml-pthexecutor-gpu
-            build-args: "BASEIMG=pytorch/pytorch:1.10.0-cuda11.3-cudnn8-runtime"
+            build-args: "BASEIMG=pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime"
     uses: ./.github/workflows/build.yml
     with:
       context: mlcode_executor/pthexecutor
