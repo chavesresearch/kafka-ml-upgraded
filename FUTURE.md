@@ -8,10 +8,15 @@ section. Originally written from a pass over the whole tree as of
 `model_inference`/`federated-module`/`datasources` ports were all cut over
 into their original directory names (`backend/`, `frontend/`, etc. - the
 old implementations now live only in the separate `../kafka-ml` reference
-checkout, not in this repo). Items resolved by that cutover are marked
-**done** below rather than removed, so the history of what used to be true
-here isn't lost. Re-evaluate before acting — some items may already be
-stale by the time you read this.
+checkout, not in this repo); revisited again later the same day after a
+second frontend rewrite (React 19 + shadcn/ui, replacing Vue) was cut over
+the same way — except this time the Vue implementation it replaced was
+deleted outright rather than preserved anywhere, since Vue was itself a
+rework artifact from this same project, not part of the original
+pre-rework codebase `../kafka-ml` preserves. Items resolved by these
+cutovers are marked **done** below rather than removed, so the history of
+what used to be true here isn't lost. Re-evaluate before acting — some
+items may already be stale by the time you read this.
 
 Severity guide: **Critical** = security/availability risk or actively
 breaks correctness guarantees today. **High** = real cost or risk, no active
@@ -91,13 +96,22 @@ nice-to-have polish.
 ## High
 
 1. ~~Two frontends now coexist (`frontend/` Angular + `frontend-vue/`
-   Vue).~~ — **done** (2026-08-04): cut over. `frontend/` is now the Vue
+   Vue).~~ — **done** (2026-08-04): cut over. `frontend/` became the Vue
    app; the old Angular implementation is preserved for reference at
-   `../kafka-ml/frontend`. `kustomize/base/resources/frontend-deployment.yaml`
-   points at the Vue image (same image name the Angular build used, so no
-   manifest edit was needed - see `frontend/CLAUDE.md`).
+   `../kafka-ml/frontend`. Superseded the same day by a second cutover
+   (see next item) — `frontend/` is React now, not Vue.
 
-2. ~~Cluster credentials are handled as plaintext freeform input.~~ —
+2. ~~Two frontends now coexist (`frontend/` Vue + `frontend-react/`
+   React).~~ — **done** (2026-08-04): cut over. `frontend/` is now the
+   React 19 + shadcn/ui rewrite; the Vue implementation it replaced was
+   deleted outright, not preserved anywhere (unlike the Angular cutover
+   above, Vue isn't part of the original pre-rework codebase `../kafka-ml`
+   exists to preserve — it's in git history before this cutover's commit
+   if it's ever needed). `kustomize/base/resources/frontend-deployment.yaml`
+   needed zero changes - same image name (`kafka-ml-frontend`) the Vue and
+   Angular builds both used. See `frontend/CLAUDE.md`.
+
+3. ~~Cluster credentials are handled as plaintext freeform input.~~ —
    **partially done** (2026-08-04). The RBAC scope-down turned out to
    already be a non-issue: `kustomize/base/resources/role.yaml` (and
    `federated-module/kustomize/base/resources/role.yaml`) were already a
@@ -124,7 +138,7 @@ nice-to-have polish.
    otherwise manage) and would need real app-level encryption to close,
    not just a Secret reference.
 
-3. ~~Python 3.8 base images across the board (`backend/Dockerfile`,
+4. ~~Python 3.8 base images across the board (`backend/Dockerfile`,
    `kafka_control_logger/Dockerfile`,
    `federated-module/federated_backend/Dockerfile` all pinned
    `FROM python:3.8.6`, EOL October 2024).~~ — **done** (2026-08-04): all
@@ -135,7 +149,7 @@ nice-to-have polish.
    (see each service's own `CLAUDE.md` for the specific versions/reasoning
    already checked).
 
-4. ~~Kustomize version sprawl.~~ — **investigated and partially
+5. ~~Kustomize version sprawl.~~ — **investigated and partially
    consolidated (2026-08-04).** The premise turned out to be partly
    wrong: read all 10 `kustomization.yaml` files side by side (not just
    the directory listing) before concluding. 8 of the 10
@@ -168,15 +182,16 @@ nice-to-have polish.
    directory that doesn't exist, and was missing `v1.3`/`v1.3-gpu`, which
    do.
 
-5. ~~No dependency update automation.~~ — **done** (2026-08-04):
+6. ~~No dependency update automation.~~ — **done** (2026-08-04):
    `.github/dependabot.yml` now covers every ecosystem in the repo — 16
-   `uv` entries (one per `pyproject.toml`/`uv.lock` pair), 2 `npm` entries
-   (`frontend`, `frontend-react`), 14 `docker` entries (one per
-   Dockerfile), and `github-actions`, all weekly. `frontend-react` uses
-   pnpm but that's still the `npm` ecosystem value — Dependabot
-   auto-detects the lockfile type per directory.
+   `uv` entries (one per `pyproject.toml`/`uv.lock` pair), 1 `npm` entry
+   (`frontend`), 13 `docker` entries (one per Dockerfile), and
+   `github-actions`, all weekly. `frontend` uses pnpm but that's still the
+   `npm` ecosystem value — Dependabot auto-detects the lockfile type per
+   directory. (Counts as of the React cutover - was 2 npm/14 docker
+   entries before `frontend-react`'s entries merged into `frontend`'s.)
 
-6. **CASE=2 (`SingleIncrementalTraining`) can crash and get stuck
+7. **CASE=2 (`SingleIncrementalTraining`) can crash and get stuck
    "deployed" forever if zero streaming data batches arrive before its
    stream timeout.** Found 2026-08-04 while re-running `integration-tests/`
    as a final check after this session's security/CI hardening pass -
@@ -275,48 +290,68 @@ nice-to-have polish.
    history is ever needed, but it's out of scope to clean up a repo that's
    no longer deployed.
 
-2. **`frontend`'s dev dependencies currently report ~12 npm audit
-   findings** (vite/vitest/esbuild/glob transitive chain) — all dev-tooling
-   only, no production runtime exposure. Not urgent; will resolve on the
-   next routine `npm update` once upstream patches land.
+2. ~~`frontend`'s dev dependencies currently report ~12 npm audit
+   findings~~ — **obsolete** (2026-08-04): moot now that `frontend` is the
+   React/pnpm rewrite - a different dependency tree entirely (see the
+   `frontend`-specific follow-ups section below for this rewrite's own
+   remaining items). The Vue app these findings were against no longer
+   exists in this tree.
 
 3. ~~No syntax highlighting in the model code/imports textareas~~ — **done**
-   (2026-07-31): `frontend` now uses a Monaco-editor field
-   (`src/components/CodeEditor.vue`) for model imports/code and Tasmota
-   Berry scripts.
+   (2026-07-31): the (now-removed) Vue `frontend` added a Monaco-editor
+   field for model imports/code and Tasmota Berry scripts; carried forward
+   unchanged into the React rewrite (`src/components/CodeEditor.tsx`).
 
 4. ~~`frontend` only ships PrimeVue's default Lara Light theme~~ —
    **done** (2026-07-31): light/dark toggle added, persisted, applied
-   before first paint.
+   before first paint. Carried forward into the React rewrite (shadcn/
+   Tailwind CSS variables + a `dark` class, replacing PrimeVue's
+   two-separate-stylesheets approach) - see `frontend/CLAUDE.md`'s
+   "Gotchas" item 2 equivalent in its Layout table (`src/theme.ts`).
 
 ## `frontend`-specific follow-ups
 
-These are scoped to the new frontend itself, called out separately since
-they're closer to "next PR" than "someday":
+These are scoped to the current frontend itself (React 19 + shadcn/ui,
+cut over from Vue 2026-08-04), called out separately since they're closer
+to "next PR" than "someday". Items from the Vue-era version of this list
+are marked done/obsolete rather than deleted, per this file's usual
+policy.
 
-1. **No end-to-end tests.** The current suite (`npm run test:run`) is unit
+1. **No end-to-end tests.** The current suite (`pnpm test:run`) is unit
    tests for `src/logic/*.ts` plus a handful of component-level tests with
    the API mocked — solid regression coverage for business logic, but
    nothing exercises a real click-through (create model → configuration →
    deploy → train → infer) against a live or mocked backend. There's ad hoc
    Playwright coverage from manual verification passes (not checked in as a
    repeatable suite/CI job) — worth formalizing once the UI stabilizes.
-2. ~~No TypeScript~~ — **done** (2026-07-31): the whole app (`src/**/*.ts`
-   and every `.vue` SFC's `<script setup lang="ts">`) is now typed, gated by
-   `vue-tsc --noEmit` in `npm run build` and CI.
-3. **Feature-parity audit vs. the old Angular app hasn't been done by a
-   human yet** — the rewrite was verified against the live backend (CRUD +
-   WebSocket smoke tests, plus a Playwright pass of the new theme/Monaco UI)
-   but not clicked through screen-by-screen by a person. The directory
-   cutover already happened (the old Angular `frontend/` is gone, preserved
-   at `../kafka-ml/frontend` if a side-by-side comparison is needed) - this
-   audit is still worth doing, just no longer a gate on deleting anything.
-4. **Monaco adds ~594 kB gzipped as its own lazy chunk** (only fetched when a
-   screen with a code field is visited — see `CLAUDE.md`'s "Code editor"
-   section). Acceptable for now; if it becomes a real problem, evaluate a
+   Same gap the Vue app had before it; never got formalized there either.
+2. ~~No TypeScript~~ — **done**, both in the original Vue rewrite
+   (2026-07-31) and carried forward into the React rewrite (2026-08-04) -
+   the whole app is typed, gated by `tsc -b` in `pnpm build` and CI.
+3. **Feature-parity audit vs. the previous frontend hasn't been done by a
+   human yet.** Applies transitively through both rewrites: the Angular→Vue
+   audit was never done (noted here since 2026-07-31), and neither has a
+   Vue→React one. Each rewrite was verified against the live backend
+   (CRUD + WebSocket smoke tests, Playwright passes of the UI) but not
+   clicked through screen-by-screen by a person. Not a gate on anything -
+   both older implementations are already fully retired (Angular preserved
+   at `../kafka-ml/frontend`; Vue not preserved anywhere, see this file's
+   intro) - just still worth doing.
+4. **Monaco adds ~579 kB gzipped as its own lazy chunk** (only fetched when
+   a screen with a code field is visited — see `frontend/CLAUDE.md`'s
+   Gotcha #5). Acceptable for now; if it becomes a real problem, evaluate a
    lighter editor (CodeMirror 6) or loading Monaco from a CDN instead of
-   bundling it.
-5. **No accessibility pass on the new sidebar/theme-toggle shell or on
+   bundling it. Same order of magnitude as the Vue app's own ~594 kB figure.
+5. **`reactflow` and `@tanstack/react-query` are installed but unused** -
+   `reactflow` was requested for pipeline-topology visualization, but no
+   current view is actually a topology diagram; `react-query` was
+   installed as an option but every view still hand-rolls its own
+   `useEffect` fetch, matching the old Vue app's "no state library"
+   philosophy. Neither is costing anything today (tree-shaken if truly
+   unused, or a small fixed cost) but worth revisiting if a real
+   pipeline-topology view gets requested, or if a view's loading/error/
+   refetch logic grows complex enough to justify react-query.
+6. **No accessibility pass on the sidebar/theme-toggle shell or on
    Monaco fields** — keyboard navigation and screen-reader behavior haven't
    been specifically verified (Monaco in particular is known to need extra
    ARIA wiring for full accessibility).

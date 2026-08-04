@@ -1,206 +1,246 @@
-# Kafka-ML Vue frontend — instructions for AI assistants
+# Kafka-ML React frontend — instructions for AI assistants
 
-This is the Vue 3 + TypeScript rewrite of the original Angular frontend,
-preserved at `../../kafka-ml/frontend` (a separate, git-tracked sibling
-checkout kept purely as historical reference — not deployed, not part of
-this repo). The Angular app is the **reference implementation for
-behavior**: when in doubt about what a screen should *do* (fields, validation,
-API calls), read the matching component under
-`../../kafka-ml/frontend/src/app/<name>/`. It is **not** the reference for
-*look* — this app has its own 2026-era design system (sidebar shell,
-light/dark themes, Monaco code fields); don't copy Angular Material markup
-or classes.
+This is a full framework rewrite of the project's second-generation
+frontend (Vue 3 + PrimeVue, itself a rewrite of the original Angular app)
+into React 19 + TypeScript, using shadcn/ui + Tailwind CSS v4. Same design
+philosophy as every other port in this project: same route paths, same API
+contract, same field names — a different stack, not a different product.
+
+**Status: this is the deployed frontend**, cut over 2026-08-04. It was
+built as a sibling directory (`frontend-react/`), verified end-to-end
+against the live backend, then renamed into `frontend/`'s place — same
+pattern every other rewrite in this repo went through. The Vue
+implementation that used to live at this path has been deleted outright
+(not preserved anywhere, unlike the Angular/Django originals this whole
+project rewrote, which still live on in the separate `../kafka-ml`
+checkout) — the "Vue app" comparisons throughout this file describe code
+that no longer exists in this tree, kept only because they explain *why*
+something here is shaped the way it is. If you need to see the actual Vue
+source, it's in git history before the cutover commit, not on disk.
 
 ## Stack (do not swap pieces without being asked)
 
-- Vue 3, Composition API, `<script setup lang="ts">` SFCs, **TypeScript throughout**
-  (`vue-tsc --noEmit` gates every build — see Definition of done)
-- Vite (dev server + build), `vue-router` 4
-- PrimeVue 3 (components), PrimeIcons, Chart.js via `primevue/chart`
-- Monaco Editor (`monaco-editor`, trimmed build — see "Code editor" below) for
-  every code-shaped field (model imports/code, Tasmota Berry scripts)
-- `@fontsource-variable/inter` for type; no CSS framework beyond PrimeVue + `src/styles.css`
-- No state library. Each view fetches its own data with the functions in `src/api.ts`.
+- React 19, TypeScript, Vite (same build tool the Vue app used)
+- **pnpm, not npm** — the only module in this repo that does. `pnpm-lock.yaml`
+  is the real lockfile; there's deliberately no `package-lock.json`. The
+  Dockerfile installs pnpm itself (`npm install -g pnpm@11`) before using
+  it, on a `node:22-alpine` base image (pnpm 11 requires Node ≥22.13).
+  `pnpm-workspace.yaml` is not a real workspace config here - it only holds
+  pnpm 11's auto-generated `minimumReleaseAgeExclude` list (packages
+  pnpm's supply-chain-safety "minimum release age" gate would otherwise
+  block); keep it committed, don't delete it as unused.
+- [shadcn/ui](https://ui.shadcn.com/) (`radix-nova` preset, Radix
+  primitives) + Tailwind CSS v4 — CSS variables in `src/index.css`,
+  indigo accent chosen to match the old PrimeVue `lara-indigo` theme's
+  brand color, not shadcn's default neutral gray
+- `react-router-dom` v7 (`<BrowserRouter>` + `<Routes>`, not the v7 data
+  router APIs — kept close to how the Vue app's router worked)
+- `@tanstack/react-table` **v8.21.3, deliberately not v9** — see Gotchas
+- `@tanstack/react-query` — installed, available, but **not used yet**;
+  every view still does its own `useEffect` + `useState` fetch, matching
+  the Vue app's "no state library, each view fetches its own data"
+  philosophy. Worth adopting per-view if a view's loading/error/refetch
+  logic grows past what a plain `useEffect` handles cleanly.
+- `recharts` + shadcn's `chart.tsx` wrapper (`ChartContainer`,
+  `ChartTooltip`, etc.) — replaces `primevue/chart` (Chart.js). This is
+  shadcn's own recommended charting pairing (they ship an official
+  Recharts-based chart recipe), not an arbitrary choice.
+- `reactflow` — **installed, not used anywhere yet.** The user's stack
+  request listed it conditionally ("if visualizing Kafka topic
+  producer→consumer pipelines"); no current view is actually a topology
+  diagram (Visualization is a live metrics chart, not a pipeline graph),
+  so it wasn't forced in. Worth revisiting if a real pipeline-topology
+  view gets requested.
+- `monaco-editor` **pinned to exactly `0.50.0`** — see Gotchas
+- `sonner` (toast) — replaces PrimeVue's `Toast`/`useToast`
+- Vitest + React Testing Library — replaces Vue Test Utils, same overall
+  approach (mock `@/api`/`@/notify`, mount, assert)
 
 ## Layout
 
 | Path | Purpose |
 |---|---|
-| `src/api.ts` | Every backend REST call, fully typed against `src/types.ts`. One exported function per endpoint. Add new endpoints here, nowhere else. |
-| `src/types.ts` | Shapes of backend REST payloads. Field names mirror `../backend/app/schemas/__init__.py`'s response dict builders — check there before renaming anything. |
-| `src/ws.ts` | WebSocket helper for the Visualization view. |
-| `src/env.ts` | Reads `window.env` (from `public/env.js`). Exports `baseUrl`, `enableFederatedBlockchain`. |
-| `src/theme.ts` | Light/dark theme state (`useTheme()` → `{isDark, toggle}`) and `setTheme()`, which swaps the PrimeVue theme `<link>` and persists to `localStorage`. |
-| `src/notify.ts` | `useNotify()` → `.ok(msg)` / `.error(msg)` toasts. Use this instead of raw `useToast`. |
-| `src/router.ts` | All routes. Paths must stay identical to the Angular app (external links depend on them). |
-| `src/monacoEnvironment.ts` | Registers Monaco's web worker + the (only) languages we use. **Dynamically imported from `CodeEditor.vue`'s `onMounted`, never imported eagerly** — see "Code editor". |
-| `src/components/CodeEditor.vue` | The Monaco-backed code field. `v-model`, `language`, `height`, `placeholder`, `readOnly` props. |
-| `src/views/*.vue` | One file per screen. Lists use PrimeVue `DataTable`; forms use `Card` + `.field` divs. |
-| `src/App.vue` | Persistent left sidebar (nav + theme toggle) + topbar, collapsing to a `Sidebar` drawer under 900px. Hosts `<Toast>` + `<ConfirmDialog>`. |
-| `src/styles.css` | Design tokens and shared classes (`.page`, `.page-header`, `.surface`, `.card-grid`, `.field`, `.chip-*`, `.status-*`, `.code-field`) — all color values read PrimeVue CSS variables (`--surface-*`, `--text-color*`, `--primary-color`) so they repaint automatically on theme swap. Don't hardcode hex colors in component `<style>` blocks; use the variables or add a token here. |
-| `src/test-mocks/monaco-editor.ts` | Test-only stub of the Monaco API, aliased in via `vite.config.ts`'s `test.alias`. See "Automated tests". |
+| `src/api.ts` | REST client — **byte-for-byte the same file** as the Vue app's, just re-pathed imports (`@/types` instead of `./types`). Zero framework dependency, ported unchanged. |
+| `src/types.ts` | Same payload shapes as the Vue app — copied unchanged. |
+| `src/logic/*.ts` | `deployment.ts`, `visualization.ts`, `plot.ts`, `format.ts` — **copied unchanged** from the Vue app, including their `.test.ts` files (60 of the 72 tests in this project are these ported-as-is tests). These were already framework-free pure functions in the Vue app for exactly this reason: portable business logic, independent of the UI layer. Don't let framework-specific code creep back into these files. |
+| `src/env.ts`, `src/ws.ts` | Same — framework-free, copied unchanged. |
+| `src/theme.ts` | Simplified vs. the Vue version: Tailwind v4 + shadcn theme entirely via a `dark` class + CSS variables, no separate PrimeVue stylesheet to swap (the Vue app had to physically swap a `<link>` `href` between two compiled theme CSS files; shadcn doesn't need that). Uses `useSyncExternalStore`, not a Vue `ref`. |
+| `src/notify.ts` | Thin wrapper around `sonner`'s `toast`, same `{ok, error}` shape the Vue app's `useNotify()` had. |
+| `src/hooks/useConfirm.tsx` | Replaces PrimeVue's imperative `useConfirm()` — same call shape (`confirm({header, message, accept})`), backed by shadcn's `AlertDialog` instead of a global singleton. Every view that needs it renders `{dialog}` somewhere in its own tree (no app-wide `<ConfirmDialog/>` singleton like the Vue app had). |
+| `src/components/DataTable.tsx` | Generic sortable/filterable/paginated table shared by every list view (`ModelList`, `InferenceList`, `DatasourceList`, `IoTDeviceList`, `ResultList`) — mirrors the *one* PrimeVue `<DataTable>` component reused the same way throughout the Vue app. Built on `@tanstack/react-table`. |
+| `src/components/MultiSelect.tsx` | Hand-rolled multi-select (trigger + popover + checkbox list) — shadcn/ui doesn't ship one. Used by `ConfigurationView` (`ml_models`), `InferenceIoTView` (`device_token`), `PlotView` (metric picker). Not a `<select multiple>` — needs chip-style selected-item display to match the old UX. |
+| `src/components/CodeEditor.tsx` | Hand-rolled Monaco wrapper (refs + `useEffect`, not `@monaco-editor/react` — deliberately not using that library, see Gotchas). Same lazy-loading contract as the Vue version: `monacoEnvironment.ts` + Monaco's core editor module are both loaded via a runtime `import()` inside a mount effect, never from `main.tsx`, so Monaco never lands in the app's main chunk. |
+| `src/monacoEnvironment.ts` | Copied unchanged from the Vue app (framework-free side-effect module: worker wiring + python/lua language registration only, not the full 40+-language bundle). |
+| `src/components/Layout.tsx` | Sidebar + topbar shell (`<Outlet/>`-based), replaces `App.vue`. Desktop sidebar always visible; mobile uses a shadcn `Sheet` slide-over instead of PrimeVue's `Sidebar`. |
+| `src/routes.tsx` | Route table — same paths as the old Vue router, each view `React.lazy`-imported for the same per-route code-splitting the Vue app had. |
+| `src/views/*.tsx` | One file per screen, matching the old Vue app's `src/views/*.vue` 1:1 by filename (minus the extension). |
 
-## Theme system (light/dark)
+## Gotchas learned the hard way (keep these)
 
-PrimeVue ships light/dark as **two separate compiled stylesheets**
-(`lara-light-indigo`, `lara-dark-indigo`), not a single CSS-variable theme —
-so switching is done by swapping a `<link id="theme-css">` href, not a CSS
-class alone (the `dark` class on `<html>` is used by *our own* styles.css and
-CodeEditor's Monaco theme, but does nothing to PrimeVue's own component CSS).
-
-- `public/themes/{lara-light-indigo,lara-dark-indigo}/theme.css` are
-  generated by `npm run sync-themes` (copied from
-  `node_modules/primevue/resources/themes/`), wired as `predev`/`prebuild` npm
-  hooks — **don't commit `public/themes/`, don't hand-edit it**.
-- `index.html` has an inline boot script that reads `localStorage` (falling
-  back to `prefers-color-scheme`) and sets the theme *before first paint*, so
-  there's no light→dark flash. Keep it in sync with `src/theme.ts` if you
-  change the storage key or theme file paths.
-- To add a themed value in your own CSS: use a PrimeVue variable
-  (`var(--surface-card)`, `var(--text-color-secondary)`, etc.) — it updates
-  automatically when the stylesheet swaps. Don't write `@media
-  (prefers-color-scheme: dark)` overrides; that's what the explicit toggle is for.
-
-## Code editor (Monaco)
-
-`CodeEditor.vue` replaces every place the app used a plain `<textarea>` for
-user-authored code: `ModelView.vue` (imports + code, Python),
-`InferenceIoTView.vue` (Berry script, highlighted as Lua — closest built-in
-grammar). Two things matter if you touch this:
-
-1. **Bundle size.** The bare `monaco-editor` package resolves to
-   `editor.main.js`, which unconditionally bundles *every* language (40+:
-   dart, csharp, sql, php, ruby, solidity, ...) plus the full TypeScript/CSS/
-   HTML/JSON language services — multiple MB we'd never use. Always import
-   from `monaco-editor/esm/vs/editor/editor.api` (core only) and register
-   languages explicitly — see `monacoEnvironment.ts`.
-2. **Lazy loading.** Both `monacoEnvironment.ts` and
-   `monaco-editor/esm/vs/editor/editor.api` are loaded via a runtime
-   `import()` inside `CodeEditor.vue`'s `onMounted`, not a top-level static
-   import, and `monacoEnvironment.ts` is **not** imported from `main.ts`.
-   This keeps Monaco (~594 kB gzipped even trimmed) out of the app's main
-   chunk — it only downloads when a screen with a `<CodeEditor>` is visited.
-   If you ever see the main `index-*.js` chunk balloon past ~100 kB gzipped
-   after a change here, something reintroduced an eager import — check with
-   `npm run build` and read the per-chunk sizes.
-
-To use a new language, add its `basic-languages/<lang>/<lang>.contribution`
-side-effect import to `monacoEnvironment.ts`, same pattern as python/lua.
-
-## Conventions
-
-- Confirmations: `useConfirm().require({header, message, accept})` — never `window.confirm`.
-- Errors: catch every API call and call `notify.error(...)`; success messages via `notify.ok(...)`.
-- Forms: local `ref` object named `form`, a `formInvalid` computed, submit button
-  `:disabled="formInvalid"`. Build the POST payload explicitly (do not spread form
-  state blindly if some fields are conditional).
-- Lists refresh in place after delete (filter the array) rather than refetching.
-- Prefer `Array.prototype` methods over manual loops for filtering/mapping API
-  results; type the array (`ref<MLModel[]>([])`) rather than leaving it `any[]`.
+1. **shadcn's CLI silently mis-resolved the `@/*` path alias the first
+   time it ran**, writing every generated file under a literal
+   `./@/components/ui/*` directory instead of `./src/components/ui/*` -
+   even though its own "Validating import alias ✔" preflight check
+   passed. Root cause: the alias was only declared in
+   `tsconfig.app.json` (referenced from the root `tsconfig.json` via
+   TS project references), and the CLI's tsconfig reader apparently
+   doesn't follow `references` to find `paths`. Fixed by **also**
+   declaring the same `paths` entry directly in the root
+   `tsconfig.json`'s own `compilerOptions` (TypeScript itself ignores
+   this, since the root file's `"files": []` applies to nothing, but
+   it's there for any tool that reads the root file directly instead of
+   following references). Confirmed fixed by successfully running
+   `npx shadcn add chart` afterward and seeing it land in the right
+   place. If any future `shadcn add` run creates a stray top-level `@`
+   directory again, this is why - move the files, don't just delete and
+   retry.
+2. **`monaco-editor` is pinned to exactly `0.50.0`, not the current
+   latest (`0.56.0`).** `0.56.0` restructured `esm/vs/basic-languages/`
+   away from per-language directories (`basic-languages/python/
+   python.contribution.js` etc. no longer exist - confirmed by listing
+   the installed package's actual contents, not assumed from a
+   changelog) into some consolidated form. `monacoEnvironment.ts`'s
+   `import 'monaco-editor/esm/vs/basic-languages/python/python.contribution'`-style
+   imports depend on that per-language layout existing. `0.50.0` is the
+   exact version the old Vue app used successfully with this identical
+   lazy-loading pattern, so pinning to it (via `npm install
+   monaco-editor@0.50.0 --save-exact`) was the pragmatic fix over
+   reverse-engineering 0.56.0's new structure. Bonus: this also happens
+   to drop a `pnpm audit` `dompurify` advisory that comes in transitively
+   via 0.56.0's dependency chain - not why it was pinned, but worth
+   knowing if someone re-checks `pnpm audit` later and wonders why it's
+   clean here specifically.
+3. **`@tanstack/react-table` is pinned to `8.21.3`, not the current
+   latest (`9.x`).** v9 is a from-scratch rewrite with a completely
+   different API (feature-based `TableFeatures` generic constraints;
+   no more free-standing `getCoreRowModel()`/`useReactTable()` functions
+   in the shape every existing tutorial, the shadcn data-table recipe,
+   and this file's own `DataTable.tsx` all assume). Confirmed by
+   actually hitting the resulting type errors (`Type 'T' does not
+   satisfy the constraint 'TableFeatures'`) before pinning back to the
+   v8 line, not assumed from a version number alone. Re-evaluate v9 only
+   as a deliberate, scoped migration - not as a side effect of a routine
+   `pnpm update`.
+4. **TypeScript's very-new `"exports"`-strict module resolution can't
+   find `monaco-editor`'s deep-import subpaths at all**, even the ones
+   that physically exist with real `.d.ts` content
+   (`esm/vs/editor/editor.api.d.ts`, the two `basic-languages/{python,lua}/
+   *.contribution.d.ts` files) - `monaco-editor`'s own `package.json`
+   `exports` map only declares a `types` condition for its root `.`
+   entry, not for the `./*` wildcard deep-import pattern this project
+   relies on. Vite/esbuild resolve the runtime `.js` for the same
+   specifiers fine (bundlers respect the wildcard's plain JS mapping);
+   this is purely a `tsc` type-resolution gap. Fixed with explicit
+   `paths` entries in `tsconfig.app.json` pointing straight at the
+   physical `.d.ts` files, bypassing `exports` resolution entirely for
+   just those three specifiers. If `monaco-editor` ever ships a `types`
+   condition on that wildcard, these path overrides become redundant
+   (harmless to leave, but worth removing then).
+5. **`@monaco-editor/react` was deliberately *not* used**, even though
+   it's the obvious/default React+Monaco pairing. It wants to own the
+   Monaco import/loader lifecycle itself (CDN by default, or its own
+   `loader.config({monaco})` bundling path), which conflicts with this
+   project's bundle-size-conscious core-only-import strategy
+   (`monaco-editor/esm/vs/editor/editor.api`, not the bare
+   `monaco-editor` package, which pulls in every language + full
+   TS/CSS/HTML/JSON language services - several MB never used here).
+   `CodeEditor.tsx` hand-rolls the same ref-based
+   create/dispose/watch-props lifecycle the old `CodeEditor.vue` used,
+   just expressed as `useEffect`s instead of Vue's `onMounted`/`watch`.
+   This is more code than `<Editor/>` would have been, but keeps the
+   exact bundle-size guarantee the old Vue app's own "Code editor"
+   documentation described and tested for (confirmed: this app's
+   `editor.api` chunk is 579 kB gzipped after `pnpm build` - same order
+   of magnitude as the Vue app's own documented ~594 kB figure, not the
+   multi-MB full bundle `@monaco-editor/react`'s default CDN path would
+   pull down).
+6. **The Dockerfile must copy all three tsconfig files, not just
+   `tsconfig.json`.** This project uses TS project references
+   (`tsconfig.json` has `"files": []` + `"references"` to
+   `tsconfig.app.json`/`tsconfig.node.json`, no `compilerOptions` of its
+   own for the actual source). `pnpm build` runs `tsc -b`, which follows
+   those references - copying only `tsconfig.json` into the build stage
+   would fail the Docker build the moment `tsc -b` tries to resolve a
+   reference to a file that was never copied in. Caught by actually
+   building the image, not by inspection - `pnpm build` run locally
+   against the full source tree never exercises this, since every file
+   is already present there regardless of what a Dockerfile's `COPY`
+   list says.
 
 ## Backend contract gotchas (learned the hard way — keep these)
 
-1. **Model create/edit executes the code.** POST `/models/` sends the code to the
-   tf/pth executor pod, which runs it. A TF model **must call `model.compile(...)`**
-   or the backend returns 400 "Information not valid". Slow response (~seconds) is normal.
-2. **IoT inference deploy** (POST `/results/inference-iot/{id}`) expects keys
-   `code` (Berry script), `device_token` (array of tokens), `model_result` (id),
-   `applyIntQuant` (bool). NOT `berry_script`/`iot_device_token` (those were only
-   the Angular class field names).
-3. **Federated deploy** expects `agg_strategy`. The old Angular form posted
-   `strategy` (a bug — the value was silently ignored and the backend default used).
-   The Vue form sends `agg_strategy`; don't "fix" it back.
-4. **Deployment payload** must omit optional empty fields (see
-   `buildDeploymentPayload()` in `src/logic/deployment.ts`) and always include
-   `tf_kwargs_fit/val`, `pth_kwargs_fit/val` (empty string when unused).
-5. **Trained model download**: GET `/results/model/{id}` returns a blob; the file
-   extension comes from the `ML-Framework` response header (`tf`→`.h5`, `pth`→`.pth`).
-6. **Chart data**: GET `/results/chart/{id}` returns
-   `{metrics: [{name, series: [{name, value}]}], conf_mat}` (ngx-charts shape).
-   Metric names ending in `_val` are hidden from the selector but plotted when
-   their base metric is selected.
-7. **Visualization WebSocket**: connect to `<baseUrl>/ws/`, then send
+Backend wire-contract facts, not frontend-framework-specific — apply to
+any frontend that talks to this backend:
+
+1. Model create/edit executes the code server-side (tf/pth executor); a
+   TF model must call `model.compile(...)`.
+2. IoT inference deploy (`POST /results/inference-iot/{id}`) expects keys
+   `code`, `device_token` (array), `model_result`, `applyIntQuant`.
+3. Federated deploy expects `agg_strategy` (not `strategy`).
+4. Deployment payload must omit optional empty fields - see
+   `buildDeploymentPayload()` in `src/logic/deployment.ts` (ported
+   unchanged, same function, same tests).
+5. Trained model download (`GET /results/model/{id}`) returns a blob; the
+   file extension comes from the `ML-Framework` response header.
+6. Chart data (`GET /results/chart/{id}`) returns
+   `{metrics: [{name, series: [{name, value}]}], conf_mat}`; metric names
+   ending in `_val` are hidden from the selector but plotted when their
+   base metric is selected.
+7. Visualization WebSocket: connect to `<baseUrl>/ws/`, then send
    `{"topic": "...", "classification": true|false}` once open.
 
-## Runtime configuration (no rebuild needed)
+## Runtime configuration / Docker
 
-`index.html` loads `/env.js` before the app. In the Docker image, `start.sh`
-regenerates it from `env.template.js` using `$BACKEND_URL` and
-`$ENABLE_FEDML_BLOCKCHAIN`, and nginx proxies `/api` → `$BACKEND_PROXY_URL`
-(strips the `/api` prefix) and `/api/ws/` with WebSocket upgrade. This is the
-same contract the old Angular image used, so the k8s deployment YAML never
-needed to change.
+`Dockerfile`, `nginx-custom.conf`, `start.sh`, `public/env.template.js` all
+use the same contract the deployed frontend has always used — same
+`BACKEND_URL`/`BACKEND_PROXY_URL`/`ENABLE_FEDML_BLOCKCHAIN` env vars, same
+`/api` nginx proxy + WebSocket upgrade handling, same `window.env`
+runtime-config pattern. This is why the cutover needed zero changes to the
+k8s deployment YAML beyond what already pointed at image name
+`kafka-ml-frontend`.
 
-## Developing against the live cluster
+## Testing approach
 
-- The backend runs in namespace `kafkaml-iot`. Its LoadBalancer external IP is
-  `<pending>`, so use node IP + NodePort: check with
-  `kubectl get svc -n kafkaml-iot` (backend shows `8000:<nodeport>/TCP`) and use
-  `http://192.168.218.2:<nodeport>`.
-- The backend only accepts `Host: localhost` (`ALLOWED_HOSTS`). The Vite proxy
-  in `vite.config.ts` already rewrites the Host header. For manual curl tests
-  add `-H "Host: localhost"`.
-- Start dev server: `npm run dev` (optionally
-  `KAFKAML_BACKEND=http://<node-ip>:<nodeport> npm run dev`). The app is at
-  http://localhost:5173, API at http://localhost:5173/api/....
-  `predev` runs `sync-themes` automatically first.
+```bash
+pnpm test:run     # Vitest + React Testing Library, 72 tests
+pnpm typecheck    # tsc -b --noEmit
+pnpm build        # tsc -b && vite build (also typechecks)
+```
 
-## Automated tests
+72 tests total: 60 are the ported `src/logic/*.test.ts` +
+`src/api.test.ts` + `src/ws.test.ts` files (unchanged from the Vue app,
+proving the ported business logic still behaves identically), plus
+`routes.test.ts` (every view module resolves without throwing - same
+cheap regression net the Vue app's `router.test.ts` had) and two
+component-level tests (`ModelList.test.tsx`, `ConfigurationView.test.tsx`
+- same scenarios the Vue app's own two component tests covered,
+translated to React Testing Library idioms).
 
-Stack: Vitest + `@vue/test-utils`, jsdom environment. Config lives in the
-`test` block of `vite.config.ts`; global test env shims are in
-`src/test-setup.ts`.
+**Real end-to-end verification performed, not just unit tests**: started
+`pnpm dev` against the live local backend (`localhost:8000`, via this
+same `/api` proxy pattern the old Vue `vite.config.ts` used -
+`KAFKAML_BACKEND` env var overrides the target), then drove it with a
+headless Playwright script (`npx playwright`, not committed as a
+dependency - ad hoc verification only) through all main views plus the
+model create form and a dark-mode toggle. Confirmed: real data rendered
+from the live backend, zero browser console errors across every page,
+Monaco editor renders correctly with syntax highlighting, dark mode
+repaints correctly (indigo accent, proper contrast). Also verified as the
+actual production nginx Docker image, deployed to the local Kubernetes
+cluster and driven the same way. Screenshots were not committed (ad hoc
+verification artifacts, not a repeatable suite).
 
-- `npm test` — watch mode. `npm run test:run` — single run (what CI uses).
-  `npm run typecheck` — `vue-tsc --noEmit` alone (also runs as part of `npm run build`).
-- **Business logic lives in `src/logic/*.ts` as framework-free, fully typed
-  functions, specifically so it can be unit tested without mounting a
-  component.** When a view's behavior grows more than a couple of
-  conditionals (payload building, validation, stateful reducers), extract it
-  there first — see `deployment.ts` (deployment payload/validation) and
-  `visualization.ts` (the classification/regression WebSocket state machine)
-  for the pattern. Test the logic module directly; keep the component test
-  (if any) focused on wiring, not on re-deriving every branch through the DOM.
-- Component tests mock `../api` and `../notify` with `vi.mock` (and
-  `primevue/useconfirm` when a delete/confirm flow is involved — the mock
-  `require()` immediately calls `accept()`, simulating the user confirming).
-  Mount with `PrimeVue` config plugin + a real `vue-router` instance
-  (`createMemoryHistory`) since views use `<router-link>`.
-- `<script setup>` components hide their internal refs from
-  `wrapper.vm` by default. If a test needs to set/read form state directly
-  instead of driving a PrimeVue overlay (MultiSelect, Dropdown) through the
-  DOM, add a narrow `defineExpose({ form })` to that component — see
-  `ConfigurationView.vue`. Don't expose more than the test needs.
-- **Monaco is aliased to a stub in tests** (`src/test-mocks/monaco-editor.ts`,
-  wired via `vite.config.ts`'s `test.alias`). Real Monaco needs a browser and
-  its module-only `package.json` (no `main`/`exports`) doesn't resolve under
-  Vitest's SSR module graph anyway. The alias key is the **exact** subpath
-  `monaco-editor/esm/vs/editor/editor.api`, not the bare package name —
-  Vite's string alias replaces only the matched prefix and appends the rest
-  of the specifier verbatim, so aliasing `monaco-editor` would turn
-  `.../editor.api` into a bogus nested path. If you add another Monaco
-  subpath import (e.g. a new worker), it needs its own exact alias entry too.
-- You'll see `Could not parse CSS stylesheet` / `@layer` warnings on stderr
-  during test runs — that's jsdom failing to parse PrimeVue's runtime-injected
-  theme CSS (jsdom doesn't support `@layer`). It's harmless noise, not a test
-  failure; don't chase it.
-- CI (`.github/workflows/frontend.yml`) runs `npm run test:run` then
-  `npm run build` (which typechecks) on every push/PR touching
-  `frontend/**`, before the Docker image is built.
+## Remaining work
 
-## Definition of done for any change
-
-1. `npm run test:run` and `npm run build` both pass with no errors (build
-   includes `vue-tsc --noEmit` — don't skip this by only running `vite build`
-   directly).
-2. New or changed business logic (form validation, payload building, data
-   transforms) has a corresponding test in `src/logic/*.test.ts`.
-3. If an API call changed: verify against the live backend with curl through the
-   dev proxy (e.g. `curl -s http://localhost:5173/api/models/`).
-4. If you created backend objects while testing, delete them afterwards.
-5. Route paths, payload keys and displayed columns stay consistent with the
-   Angular reference unless the task says otherwise. Visual design does not
-   need to match Angular — match `src/styles.css`'s existing tokens instead.
-6. If you touched anything under `src/components/CodeEditor.vue` or
-   `src/monacoEnvironment.ts`, re-check the main chunk's gzip size in the
-   `npm run build` output hasn't grown (see "Code editor" above).
+1. **Feature-parity audit vs. the old Vue app hasn't been done by a human
+   yet** - same caveat the Vue app itself had against the Angular app it
+   replaced. This rewrite was verified against the live backend
+   end-to-end (see above) but not clicked through screen-by-screen by a
+   person yet.
+2. **No end-to-end/integration test suite** - same gap the Vue app had
+   (see `FUTURE.md`'s "No end-to-end tests" entry, written against the
+   Vue app but equally applicable here).
+3. **`reactflow` is installed but unused** - see Stack section above.
+4. **`@tanstack/react-query` is installed but unused** - every view still
+   hand-rolls its own fetch effect. Low priority unless a view's
+   load/error/refetch logic grows complex enough to justify it.

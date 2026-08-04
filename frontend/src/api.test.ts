@@ -24,7 +24,7 @@ function errorResponse(text: string, { status = 400, statusText = 'Bad Request' 
 
 describe('api.ts REST client', () => {
   beforeEach(() => {
-    global.fetch = vi.fn()
+    globalThis.fetch = vi.fn()
   })
 
   afterEach(() => {
@@ -32,65 +32,65 @@ describe('api.ts REST client', () => {
   })
 
   it('GETs the correct path and parses JSON', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse([{ id: 1, name: 'Model' }]))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse([{ id: 1, name: 'Model' }]))
     const models = await api.getModels()
-    expect(global.fetch).toHaveBeenCalledWith('/api/models/', { method: 'GET', headers: {} })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/models/', { method: 'GET', headers: {} })
     expect(models).toEqual([{ id: 1, name: 'Model' }])
   })
 
   it('POSTs a JSON body with the correct content type', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({}))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse({}))
     await api.createModel({ name: 'foo', description: '', framework: 'tf', imports: '', code: '' })
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/models/',
       expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' } })
     )
   })
 
   it('builds nested resource paths correctly', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({}))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse({}))
     await api.getModel(42)
-    expect(global.fetch).toHaveBeenCalledWith('/api/models/42', { method: 'GET', headers: {} })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/models/42', { method: 'GET', headers: {} })
 
-    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse([]))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse([]))
     await api.getDistributedModels()
-    expect(global.fetch).toHaveBeenLastCalledWith('/api/models/distributed', {
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/models/distributed', {
       method: 'GET',
       headers: {}
     })
   })
 
   it('PUTs edits and DELETEs by id', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({}))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse({}))
     await api.editModel(3, { name: 'renamed', description: '', framework: 'tf', imports: '', code: '' })
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/models/3',
       expect.objectContaining({ method: 'PUT' })
     )
 
-    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({}))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse({}))
     await api.deleteModel(3)
-    expect(global.fetch).toHaveBeenCalledWith('/api/models/3', { method: 'DELETE', headers: {} })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/models/3', { method: 'DELETE', headers: {} })
   })
 
   it('rejects with the response body text when the server returns an error', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(errorResponse('Information not valid'))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(errorResponse('Information not valid'))
     await expect(
       api.createModel({ name: 'bad', description: '', framework: 'tf', imports: '', code: '' })
     ).rejects.toThrow('Information not valid')
   })
 
   it('falls back to status text when the error body is empty', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       errorResponse('', { status: 500, statusText: 'Server Error' })
     )
     await expect(api.getModels()).rejects.toThrow('500 Server Error')
   })
 
   it('the IoT inference endpoint posts to /results/inference-iot/{id}', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({}))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse({}))
     await api.deployIoTInference(9, { code: 'x', device_token: ['t1'], model_result: 9, applyIntQuant: false })
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/results/inference-iot/9',
       expect.objectContaining({ method: 'POST' })
     )
@@ -98,7 +98,7 @@ describe('api.ts REST client', () => {
 
   it('getTrainedModel resolves the blob and headers, and rejects on failure', async () => {
     const blob = new Blob(['binary'])
-    vi.mocked(global.fetch).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
       headers: { get: (name: string) => (name === 'ML-Framework' ? 'tf' : null) },
       blob: async () => blob
@@ -107,7 +107,7 @@ describe('api.ts REST client', () => {
     expect(result.blob).toBe(blob)
     expect(result.headers.get('ML-Framework')).toBe('tf')
 
-    vi.mocked(global.fetch).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: false,
       status: 404,
       statusText: 'Not Found'

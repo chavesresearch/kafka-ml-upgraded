@@ -1,5 +1,6 @@
-// Vitest environment shims. jsdom doesn't implement these, and PrimeVue /
-// Chart.js touch them during mount even in tests that never render a chart.
+// Vitest environment shims. jsdom doesn't implement these, and Recharts
+// touches them during mount even in tests that never render a chart.
+import '@testing-library/jest-dom/vitest'
 import { vi } from 'vitest'
 
 if (!window.matchMedia) {
@@ -11,7 +12,7 @@ if (!window.matchMedia) {
     removeListener: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn()
+    dispatchEvent: vi.fn(),
   })) as unknown as typeof window.matchMedia
 }
 

@@ -1,12 +1,11 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
     <title>Kafka-ML: connecting the data stream with ML/AI</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <script src="/env.js"></script>
-    <link id="theme-css" rel="stylesheet" href="/themes/lara-light-indigo/theme.css" />
     <script>
       // Apply the stored (or OS-preferred) theme before first paint to avoid
       // a light->dark flash. Kept in sync with src/theme.ts.
@@ -16,16 +15,13 @@
           var dark = stored
             ? stored === 'dark'
             : window.matchMedia('(prefers-color-scheme: dark)').matches
-          if (dark) {
-            document.documentElement.classList.add('dark')
-            document.getElementById('theme-css').href = '/themes/lara-dark-indigo/theme.css'
-          }
+          if (dark) document.documentElement.classList.add('dark')
         } catch (e) {}
       })()
     </script>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

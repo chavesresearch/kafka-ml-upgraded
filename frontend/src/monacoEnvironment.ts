@@ -8,7 +8,7 @@
 // basic language (40+: dart, csharp, sql, php, ruby, solidity, ...) plus
 // the full TypeScript/CSS/HTML/JSON rich language services — several MB
 // we'd never use. Import this once, before any CodeEditor is mounted
-// (done from main.ts).
+// (done lazily from CodeEditor.tsx, not from main.tsx).
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import 'monaco-editor/esm/vs/basic-languages/python/python.contribution'
 import 'monaco-editor/esm/vs/basic-languages/lua/lua.contribution'
@@ -16,5 +16,5 @@ import 'monaco-editor/esm/vs/basic-languages/lua/lua.contribution'
 self.MonacoEnvironment = {
   getWorker() {
     return new EditorWorker()
-  }
+  },
 }

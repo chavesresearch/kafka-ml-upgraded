@@ -75,12 +75,10 @@ updates:
       interval: weekly
 
   # --- JavaScript/TypeScript --------------------------------------------
+  # /frontend uses pnpm, not npm - still the "npm" ecosystem value,
+  # Dependabot auto-detects the lockfile type per directory.
   - package-ecosystem: npm
     directory: /frontend
-    schedule:
-      interval: weekly
-  - package-ecosystem: npm
-    directory: /frontend-react
     schedule:
       interval: weekly
 
@@ -91,10 +89,6 @@ updates:
       interval: weekly
   - package-ecosystem: docker
     directory: /frontend
-    schedule:
-      interval: weekly
-  - package-ecosystem: docker
-    directory: /frontend-react
     schedule:
       interval: weekly
   - package-ecosystem: docker

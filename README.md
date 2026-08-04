@@ -641,7 +641,7 @@ python examples/FEDERATED_MNIST_RAW_format/mnist_dataset_federated_training_exam
 ### Requirements to build locally
 
 - [uv](https://docs.astral.sh/uv/) - Python dependency management for every backend/ML service (`backend`, `mlcode_executor`, `model_training`, `model_inference`, `federated-module`, `kafka_control_logger`, `datasources`); each is its own `uv` project (`pyproject.toml` + `uv.lock`, no `requirements.txt`) - `uv sync` inside any of them installs its dependencies for local development
-- [Node.js](https://nodejs.org/) 20+ - for `frontend` (Vue 3 + Vite)
+- [Node.js](https://nodejs.org/) 22+ and [pnpm](https://pnpm.io/) 11 - for `frontend` (React 19 + TypeScript + Vite)
 - [Docker](https://www.docker.com/)
 - [kubernetes>=v1.15.5](https://kubernetes.io/)
 
@@ -736,8 +736,8 @@ steps:
 7. Install the libraries and execute the frontend:
    ```bash
    cd frontend
-   npm ci
-   npm run build
+   pnpm install --frozen-lockfile
+   pnpm run build
    docker build --tag localhost:5000/frontend .
    docker push localhost:5000/frontend
    ```

@@ -1,37 +1,34 @@
-// Light/dark theme switching.
-// The active PrimeVue theme is a static stylesheet linked from index.html
-// (<link id="theme-css">, served from public/themes/, populated by the
-// `sync-themes` npm script). Switching themes swaps that link's href and
-// toggles the `dark` class on <html>, which the custom CSS and Monaco react to.
-// An inline boot script in index.html applies the stored choice before first
-// paint, so there is no flash of the wrong theme.
-import { ref } from 'vue'
+// Light/dark theme switching. Tailwind v4 + shadcn theme entirely via a
+// `dark` class on <html> and CSS variables (no separate stylesheet swap
+// needed, unlike the old PrimeVue-based frontend). An inline boot script in
+// index.html applies the stored choice before first paint, so there is no
+// flash of the wrong theme.
+import { useSyncExternalStore } from 'react'
 
 const STORAGE_KEY = 'kafkaml-theme'
-const THEMES = {
-  light: '/themes/lara-light-indigo/theme.css',
-  dark: '/themes/lara-dark-indigo/theme.css'
+
+const listeners = new Set<() => void>()
+
+function getSnapshot(): boolean {
+  return typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
 }
 
-const isDark = ref(
-  typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
-)
+function subscribe(callback: () => void): () => void {
+  listeners.add(callback)
+  return () => listeners.delete(callback)
+}
 
 export function setTheme(dark: boolean): void {
-  isDark.value = dark
   document.documentElement.classList.toggle('dark', dark)
-  const link = document.getElementById('theme-css') as HTMLLinkElement | null
-  if (link) link.href = dark ? THEMES.dark : THEMES.light
   try {
     localStorage.setItem(STORAGE_KEY, dark ? 'dark' : 'light')
   } catch {
     // Private browsing / storage disabled: theme just won't persist.
   }
+  listeners.forEach((l) => l())
 }
 
 export function useTheme() {
-  return {
-    isDark,
-    toggle: () => setTheme(!isDark.value)
-  }
+  const isDark = useSyncExternalStore(subscribe, getSnapshot, () => false)
+  return { isDark, toggle: () => setTheme(!isDark) }
 }
