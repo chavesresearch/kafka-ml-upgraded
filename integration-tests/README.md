@@ -93,22 +93,32 @@ time - expect the full suite to take a few minutes, not seconds.
 | `test_case2_single_incremental.py` | TF CASE=2: single, incremental (`OnlineRawSink`, streaming Kafka consumer) |
 | `test_case3_distributed_classic.py` | TF CASE=3: distributed (father/child model pair via the real `father` field + configuration auto-expansion) |
 | `test_case4_distributed_incremental.py` | TF CASE=4: distributed + incremental together |
+| `test_case5_federated_single.py` | TF CASE=5: federated, single model - real multi-service round through `federated-module` (main trainer, both control-logger relays, `federated_backend`, a real edge worker Job) |
+| `test_case6_federated_incremental.py` | TF CASE=6: federated + incremental (`OnlineFederatedRawSink`, continuous send - see the test's own comment on why a flat pre-sleep doesn't work here) |
+| `test_case7_federated_distributed.py` | TF CASE=7: federated + distributed (father/child pair, `federated_backend` matches on the *edge* submodel's input shape, not the cloud model's - see the test's comment) |
+| `test_case8_federated_distributed_incremental.py` | TF CASE=8: federated + distributed + incremental, all three combined |
+| `test_case9_blockchain.py` | TF CASE=9: federated + blockchain - real `FederatedLearning` contract deployment and on-chain round coordination against a local Anvil devnet (`kustomize/local/resources/blockchain-devnet.yaml`), plus a real ERC20 reward transfer |
 | `test_pytorch_classic.py` | PyTorch's one training mode (no `CASE` dispatch) |
 | `test_inference.py` | Real-time TF inference: trains a model, deploys it via `POST /results/inference/{id}` (real `ReplicationController`), sends one message, checks a real prediction |
+
+CASE 5-9 additionally need `federated-module` (`federated_backend`, both
+control-loggers) and, for CASE=9 only, `ENABLE_FEDML_BLOCKCHAIN=1` plus
+the local Anvil devnet running - see `federated-module/kustomize/`
+and `kustomize/local/resources/blockchain-devnet.yaml`.
+
+**Known flakiness risk when running CASE 5-9 back-to-back**: neither
+`Datasource` nor `ModelSource` rows are ever marked consumed in
+`federated_backend` after a successful match (a real, pre-existing
+upstream gap - see `model_training/tensorflow/CLAUDE.md`'s CASE 6-9
+section). Running all five in one session without restarting
+`federated-backend` between them can cause stale earlier-test
+registrations to re-match and spawn duplicate edge worker Jobs. Restart
+it between runs until that's fixed: `kubectl rollout restart
+deployment/federated-backend -n kafkaml`.
 
 **Not covered here** (see each module's own `CLAUDE.md` for why, and what
 verification *was* done instead):
 
-- **Federated modes (CASE 5-9)** - CASE=5 was verified with a real,
-  complete, multi-service end-to-end round (main trainer,
-  `federated_backend`, both control-logger relays, and a real edge worker
-  Job) - see `federated-module/CLAUDE.md` and
-  `model_training/tensorflow/CLAUDE.md`'s CASE=5 section for the
-  full record. It isn't automated into *this* suite because it needs
-  `federated_backend` and both logger services also running, which this
-  suite's prerequisites don't currently stand up. Worth adding here later.
-- **Blockchain (CASE=9)** - needs a real or local-testnet Ethereum node,
-  import/compile-level verification only.
 - **Semi-supervised/unsupervised training** - not attempted in any part
   of this project's verification so far.
 - **PyTorch inference** - `model_inference/pytorch` was verified
