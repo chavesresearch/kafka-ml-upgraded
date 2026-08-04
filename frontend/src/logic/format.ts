@@ -5,6 +5,18 @@ export function truncate(text: string | null | undefined, n: number): string {
   return text.slice(0, n) + (text.length > n ? ' ...' : '')
 }
 
+// Pretty-prints a JSON-encoded string field (e.g. Datasource.input_config)
+// for a detail view that has room to show it in full - falls back to the
+// raw string unchanged if it isn't valid JSON, rather than throwing.
+export function prettyJson(text: string | null | undefined): string {
+  if (!text) return ''
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  } catch {
+    return text
+  }
+}
+
 // Backend timestamps (TrainingResult.status_changed, Deployment.time, etc.)
 // are UTC but serialized without a timezone suffix - SQLite doesn't
 // preserve tzinfo across storage/retrieval even though the column is

@@ -16,7 +16,7 @@ import {
   Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import DataTable from '@/components/DataTable'
@@ -130,6 +130,22 @@ export default function ResultList() {
       ),
     },
     {
+      id: 'inference',
+      header: 'Inference',
+      enableSorting: false,
+      cell: ({ row }) =>
+        row.original.status === 'finished' ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Deploy inference"
+            onClick={() => navigate(`/results/inference/${row.original.id}`)}
+          >
+            <Play className="size-4" />
+          </Button>
+        ) : null,
+    },
+    {
       accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => {
@@ -156,14 +172,8 @@ export default function ResultList() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => navigate(`/results/chart/${result.id}`)}>
-                <LineChart /> Chart
-              </DropdownMenuItem>
               {result.status === 'finished' && (
                 <>
-                  <DropdownMenuItem onClick={() => navigate(`/results/inference/${result.id}`)}>
-                    <Play /> Inference
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate(`/results/inference-iot/${result.id}`)}>
                     <Wifi /> Deploy on IoT
                   </DropdownMenuItem>
@@ -256,6 +266,16 @@ export default function ResultList() {
                 </div>
               )
             })()}
+          {metricsDialogData && (
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/results/chart/${metricsDialogData.id}`)}
+              >
+                <LineChart /> View full chart
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
       {dialog}

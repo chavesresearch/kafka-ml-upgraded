@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { truncate, buildMetricsTable, formatDate } from './format'
+import { truncate, buildMetricsTable, formatDate, prettyJson } from './format'
 
 describe('truncate', () => {
   it('returns an empty string for falsy input', () => {
@@ -14,6 +14,24 @@ describe('truncate', () => {
 
   it('cuts long strings and appends " ..."', () => {
     expect(truncate('this is a long string', 4)).toBe('this ...')
+  })
+})
+
+describe('prettyJson', () => {
+  it('returns an empty string for falsy input', () => {
+    expect(prettyJson('')).toBe('')
+    expect(prettyJson(null)).toBe('')
+    expect(prettyJson(undefined)).toBe('')
+  })
+
+  it('pretty-prints valid JSON with 2-space indentation', () => {
+    expect(prettyJson('{"data_type":"float32","data_reshape":null}')).toBe(
+      '{\n  "data_type": "float32",\n  "data_reshape": null\n}'
+    )
+  })
+
+  it('falls back to the raw string for invalid JSON', () => {
+    expect(prettyJson('not json')).toBe('not json')
   })
 })
 

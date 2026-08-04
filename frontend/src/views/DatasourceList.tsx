@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { LogIn } from 'lucide-react'
+import { Info, LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import DataTable from '@/components/DataTable'
 import { getDatasources, deployDatasource } from '@/api'
 import { useNotify } from '@/notify'
-import { truncate, formatDate } from '@/logic/format'
+import { formatDate, prettyJson } from '@/logic/format'
 import type { Datasource } from '@/types'
 
 export default function DatasourceList() {
@@ -17,6 +18,7 @@ export default function DatasourceList() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedDatasource, setSelectedDatasource] = useState<Datasource | null>(null)
   const [targetDeployment, setTargetDeployment] = useState<number | null>(null)
+  const [propertiesDialogData, setPropertiesDialogData] = useState<Datasource | null>(null)
 
   useEffect(() => {
     getDatasources()
@@ -46,21 +48,26 @@ export default function DatasourceList() {
   const columns: ColumnDef<Datasource, unknown>[] = [
     { accessorKey: 'description', header: 'Description', enableSorting: false },
     { accessorKey: 'deployment', header: 'Deployment' },
-    { accessorKey: 'input_format', header: 'Input format', enableSorting: false },
-    {
-      id: 'input_config',
-      header: 'Input configuration',
-      enableSorting: false,
-      cell: ({ row }) => <span title={row.original.input_config}>{truncate(row.original.input_config, 10)}</span>,
-    },
     { accessorKey: 'topic', header: 'Kafka topic', enableSorting: false },
-    { accessorKey: 'validation_rate', header: 'Validation rate', enableSorting: false },
-    { accessorKey: 'test_rate', header: 'Test rate', enableSorting: false },
-    { accessorKey: 'total_msg', header: 'Total msg', enableSorting: false },
     {
       accessorKey: 'time',
       header: 'Time',
       cell: ({ row }) => formatDate(row.original.time),
+    },
+    {
+      id: 'properties',
+      header: 'Properties',
+      enableSorting: false,
+      cell: ({ row }) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          title="Datasource properties"
+          onClick={() => setPropertiesDialogData(row.original)}
+        >
+          <Info className="size-4" />
+        </Button>
+      ),
     },
     {
       id: 'send',
@@ -103,6 +110,44 @@ export default function DatasourceList() {
               Send
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={propertiesDialogData != null} onOpenChange={(open) => !open && setPropertiesDialogData(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Datasource properties</DialogTitle>
+          </DialogHeader>
+          {propertiesDialogData && (
+            <Table>
+              <TableBody>
+                <TableRow>
+                  <TableCell className="font-medium">Input format</TableCell>
+                  <TableCell>{propertiesDialogData.input_format}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="align-top font-medium">Input configuration</TableCell>
+                  <TableCell>
+                    <pre className="whitespace-pre-wrap break-all font-mono text-xs">
+                      {prettyJson(propertiesDialogData.input_config)}
+                    </pre>
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">Validation rate</TableCell>
+                  <TableCell>{propertiesDialogData.validation_rate}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">Test rate</TableCell>
+                  <TableCell>{propertiesDialogData.test_rate}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">Total msg</TableCell>
+                  <TableCell>{propertiesDialogData.total_msg}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          )}
         </DialogContent>
       </Dialog>
 
