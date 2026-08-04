@@ -89,6 +89,12 @@ spec:
                   name: kafkaml-configmap
                   key: debug
                   optional: true
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: kafkaml-configmap
+                  key: environment
+                  optional: true
             - name: MODEL_LOGGER_TOPIC
               valueFrom:
                 configMapKeyRef:
@@ -150,9 +156,26 @@ spec:
                   key: fedml.blockchain.token-symbol
                   optional: true
 
-          # - name: KUBE_TOKEN
-          #  value: ...
-          # - name: KUBE_HOST
-          #  value: https://...
-          # - name: SECRET_KEY
-          #  value: ...
+          # Optional default credentials for deploying models/inferences to
+          # an *external* Kubernetes cluster - used only as a fallback when
+          # a request doesn't supply its own `token`/`external_host` (see
+          # app/controllers/deployments.py and inferences.py). `optional:
+          # true` means these are inert until the Secret actually exists,
+          # so it's safe to leave this block uncommented. Create the Secret
+          # out-of-band, e.g.:
+          #   kubectl create secret generic kafkaml-kube-credentials \
+          #     -n kafkaml --from-literal=token=... --from-literal=host=https://...
+          # Never put the token/host value directly in this file (not even
+          # commented out) - anything committed here ends up in git history.
+            - name: KUBE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: kafkaml-kube-credentials
+                  key: token
+                  optional: true
+            - name: KUBE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: kafkaml-kube-credentials
+                  key: host
+                  optional: true

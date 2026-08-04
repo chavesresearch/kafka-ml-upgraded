@@ -19,6 +19,11 @@ class Settings:
     deployment configs keep working unchanged.
     """
 
+    # Fail open (DEBUG=True, ALLOWED_HOSTS=["*"]) when unset, matching the
+    # original Django settings' behavior - convenient for a bare local
+    # `uv run` with no env vars at all. `_validate_production_safety`
+    # below closes the actual gap: refuses to start if ENVIRONMENT=
+    # production and either was left at its insecure default.
     DEBUG: bool = _bool_env("DEBUG", True)
 
     ALLOWED_HOSTS: list[str] = (
@@ -26,6 +31,8 @@ class Settings:
         if os.environ.get("ALLOWED_HOSTS") is None
         else os.environ["ALLOWED_HOSTS"].split(",")
     )
+
+    ENVIRONMENT: str = os.environ.get("ENVIRONMENT", "development")
 
     FRONTEND_URL: str = os.environ.get("FRONTEND_URL", "http://localhost")
     CORS_ALLOWED_ORIGINS: list[str] = ["http://localhost:4200", FRONTEND_URL]
@@ -97,4 +104,27 @@ class Settings:
     FEDML_BLOCKCHAIN_WALLET_KEY: str | None = os.environ.get("FEDML_BLOCKCHAIN_WALLET_KEY")
 
 
+def _validate_production_safety(s: Settings) -> None:
+    """Refuse to boot with insecure defaults when ENVIRONMENT=production.
+
+    DEBUG and ALLOWED_HOSTS both fail open when their env vars are
+    omitted (see the comment above `DEBUG`), which is convenient for local
+    development but means a production deployment that simply forgot to
+    set them would silently boot insecure instead of failing loudly.
+    """
+    if s.ENVIRONMENT != "production":
+        return
+    problems = []
+    if s.DEBUG:
+        problems.append("DEBUG is enabled (set DEBUG=0)")
+    if s.ALLOWED_HOSTS == ["*"]:
+        problems.append("ALLOWED_HOSTS is unset or '*' (set it to the real host list)")
+    if problems:
+        raise RuntimeError(
+            "Refusing to start with ENVIRONMENT=production and insecure config: "
+            + "; ".join(problems)
+        )
+
+
 settings = Settings()
+_validate_production_safety(settings)

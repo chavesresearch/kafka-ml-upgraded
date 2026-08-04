@@ -168,7 +168,11 @@ def inference_dict(inference: Inference) -> dict[str, Any]:
         "status_changed": inference.status_changed,
         "limit": inference.limit,
         "output_upper": inference.output_upper,
-        "token": inference.token,
+        # inference.token is a bearer credential for an external Kubernetes
+        # cluster (write-only: set at creation, never updated, there is no
+        # PUT/PATCH for inferences) - it must never be echoed back over the
+        # API. `frontend`'s Inference type doesn't declare this field and
+        # nothing reads it; confirmed by grep before removing it.
         "external_host": inference.external_host,
         "input_kafka_broker": inference.input_kafka_broker,
         "output_kafka_broker": inference.output_kafka_broker,

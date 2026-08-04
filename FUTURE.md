@@ -73,14 +73,32 @@ nice-to-have polish.
    points at the Vue image (same image name the Angular build used, so no
    manifest edit was needed - see `frontend/CLAUDE.md`).
 
-2. **Cluster credentials are handled as plaintext freeform input.** The
-   Inference deployment form (`results/inference/{id}`) accepts a raw K8s
-   `token` and Kafka broker URLs as plain text fields with no secret
-   storage, and `kustomize/base/resources/backend-deployment.yaml` documents
-   pasting a `cluster-admin`-scoped `KUBE_TOKEN` directly into a Deployment
-   env var. Prefer K8s Secret references over inline env values, and scope
-   the service account role down from `cluster-admin` to only the verbs/
-   resources the backend actually needs (Jobs, Deployments, Services).
+2. ~~Cluster credentials are handled as plaintext freeform input.~~ —
+   **partially done** (2026-08-04). The RBAC scope-down turned out to
+   already be a non-issue: `kustomize/base/resources/role.yaml` (and
+   `federated-module/kustomize/base/resources/role.yaml`) were already a
+   namespaced `Role` with a specific resource/verb list (`deployments`,
+   `jobs`, `pods`, `replicasets`, `services`, `replicationcontrollers`;
+   `create`/`get`/`list`/`delete`/`watch`) — not `cluster-admin`, and no
+   `ClusterRole`/`ClusterRoleBinding` anywhere in the repo grants more
+   (verified by grep). This item's "cluster-admin" framing was stale.
+   What *was* real and is now fixed: `backend/app/schemas/
+   __init__.py`'s `inference_dict` echoed the plaintext external-cluster
+   `token` back on every `GET /results/inference/{id}` — removed (it's
+   write-only: no PUT/PATCH endpoint exists for inferences, and
+   `frontend`'s `Inference` type never declared or read the field).
+   `kustomize/base/resources/backend-deployment.yaml` also documented the
+   optional default `KUBE_TOKEN`/`KUBE_HOST` fallback as a raw commented
+   `value: ...` — replaced with an `optional: true` `secretKeyRef` against
+   a `kafkaml-kube-credentials` Secret an operator creates out-of-band, so
+   there's no plaintext-in-git pattern being modeled anymore. **Not done:**
+   the per-inference `token`/`external_host` submitted through the web
+   form is still stored as a plain SQLite column
+   (`app/models.py:209`) — there's no at-rest encryption for
+   it, unlike the RBAC/API-response issues above this is inherent to the
+   feature (arbitrary external-cluster credentials the platform doesn't
+   otherwise manage) and would need real app-level encryption to close,
+   not just a Secret reference.
 
 3. ~~Python 3.8 base images across the board (`backend/Dockerfile`,
    `kafka_control_logger/Dockerfile`,
@@ -102,10 +120,13 @@ nice-to-have polish.
    components/overlays instead of full directory copies, or mark
    unsupported versions clearly in `kustomize/README.md`.
 
-5. **No dependency update automation.** No Dependabot or Renovate config
-   anywhere under `.github/`. Given how far behind Django/DRF/channels/
-   Python already are (see Critical #1, High #3), this is likely how the
-   drift happened — an automated PR bot would catch it going forward.
+5. ~~No dependency update automation.~~ — **done** (2026-08-04):
+   `.github/dependabot.yml` now covers every ecosystem in the repo — 16
+   `uv` entries (one per `pyproject.toml`/`uv.lock` pair), 2 `npm` entries
+   (`frontend`, `frontend-react`), 14 `docker` entries (one per
+   Dockerfile), and `github-actions`, all weekly. `frontend-react` uses
+   pnpm but that's still the `npm` ecosystem value — Dependabot
+   auto-detects the lockfile type per directory.
 
 ## Medium
 

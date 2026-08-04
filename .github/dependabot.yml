@@ -1,0 +1,143 @@
+version: 2
+
+updates:
+  # --- GitHub Actions -------------------------------------------------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  # --- Python (uv) — one entry per pyproject.toml/uv.lock pair ---------
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /datasources
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /kafka_control_logger
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /kafkaml-client
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /tf-kafka-dataset
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /integration-tests
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /mlcode_executor/tfexecutor
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /mlcode_executor/pthexecutor
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /model_training/tensorflow
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /model_training/pytorch
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /model_inference/tensorflow
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /model_inference/pytorch
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /federated-module/federated_backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /federated-module/federated_data_control_logger
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /federated-module/federated_model_control_logger
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /federated-module/federated_model_training/tensorflow
+    schedule:
+      interval: weekly
+
+  # --- JavaScript/TypeScript --------------------------------------------
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /frontend-react
+    schedule:
+      interval: weekly
+
+  # --- Docker base images ----------------------------------------------
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /frontend-react
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /kafka_control_logger
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mlcode_executor/tfexecutor
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mlcode_executor/pthexecutor
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /model_training/tensorflow
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /model_training/pytorch
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /model_inference/tensorflow
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /model_inference/pytorch
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /federated-module/federated_backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /federated-module/federated_data_control_logger
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /federated-module/federated_model_control_logger
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /federated-module/federated_model_training/tensorflow
+    schedule:
+      interval: weekly

@@ -20,7 +20,8 @@ data:
   # pytorch.training.image: ertis/kafka-ml-pytorch_model_training:master
   # pytorch.inference.image: ertis/kafka-ml-pytorch_model_inference:master
 
-  # debug: "0"
+  debug: "0"
+  environment: production
 
   # BlockChain-based Federated Learning Configuration
   fedml.blockchain.enable: "0"
