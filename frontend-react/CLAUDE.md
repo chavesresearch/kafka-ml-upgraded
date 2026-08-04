@@ -16,6 +16,14 @@ project has gone through before its own cutover.
 ## Stack (do not swap pieces without being asked)
 
 - React 19, TypeScript, Vite (same build tool the Vue app used)
+- **pnpm, not npm** — the only module in this repo that does. `pnpm-lock.yaml`
+  is the real lockfile; there's deliberately no `package-lock.json`. The
+  Dockerfile installs pnpm itself (`npm install -g pnpm@11`) before using
+  it, since the `node:20-alpine` base image only ships npm. `pnpm-workspace.yaml`
+  is not a real workspace config here - it only holds pnpm 11's
+  auto-generated `minimumReleaseAgeExclude` list (packages pnpm's
+  supply-chain-safety "minimum release age" gate would otherwise block);
+  keep it committed, don't delete it as unused.
 - [shadcn/ui](https://ui.shadcn.com/) (`radix-nova` preset, Radix
   primitives) + Tailwind CSS v4 — CSS variables in `src/index.css`,
   indigo accent chosen to match the old PrimeVue `lara-indigo` theme's
@@ -93,9 +101,9 @@ project has gone through before its own cutover.
    this identical lazy-loading pattern, so pinning to it (via `npm
    install monaco-editor@0.50.0 --save-exact`) was the pragmatic fix
    over reverse-engineering 0.56.0's new structure. Bonus: this also
-   happens to drop an `npm audit` `dompurify` advisory that comes in
+   happens to drop a `pnpm audit` `dompurify` advisory that comes in
    transitively via 0.56.0's dependency chain - not why it was pinned,
-   but worth knowing if someone re-checks `npm audit` later and wonders
+   but worth knowing if someone re-checks `pnpm audit` later and wonders
    why it's clean here specifically.
 3. **`@tanstack/react-table` is pinned to `8.21.3`, not the current
    latest (`9.x`).** v9 is a from-scratch rewrite with a completely
@@ -107,7 +115,7 @@ project has gone through before its own cutover.
    satisfy the constraint 'TableFeatures'`) before pinning back to the
    v8 line, not assumed from a version number alone. Re-evaluate v9 only
    as a deliberate, scoped migration - not as a side effect of a routine
-   `npm update`.
+   `pnpm update`.
 4. **TypeScript's very-new `"exports"`-strict module resolution (this
    project runs TS ~6.0, newer than `../frontend`'s ~5.9) can't find
    `monaco-editor`'s deep-import subpaths at all**, even the ones that
@@ -138,9 +146,22 @@ project has gone through before its own cutover.
    is more code than `<Editor/>` would have been, but keeps the exact
    bundle-size guarantee `../frontend/CLAUDE.md`'s "Code editor" section
    documents and tests for (confirmed: this app's `editor.api` chunk is
-   579 kB gzipped after `npm run build` - same order of magnitude as the
+   579 kB gzipped after `pnpm build` - same order of magnitude as the
    Vue app's own documented ~594 kB figure, not the multi-MB full bundle
    `@monaco-editor/react`'s default CDN path would pull down).
+6. **The Dockerfile must copy all three tsconfig files, not just
+   `tsconfig.json`.** This project uses TS project references
+   (`tsconfig.json` has `"files": []` + `"references"` to
+   `tsconfig.app.json`/`tsconfig.node.json`, no `compilerOptions` of its
+   own for the actual source). `pnpm build` runs `tsc -b`, which follows
+   those references - copying only `tsconfig.json` into the build stage
+   (the pattern the Vue app's Dockerfile uses, since it doesn't use
+   project references) would fail the Docker build the moment `tsc -b`
+   tries to resolve a reference to a file that was never copied in. Caught
+   by actually building the image, not by inspection - `npm run build`
+   run locally against the full source tree never exercises this, since
+   every file is already present there regardless of what a Dockerfile's
+   `COPY` list says.
 
 ## Backend contract gotchas (identical to the Vue app - not re-derived, ported as-is)
 
@@ -178,9 +199,9 @@ port in this project.
 ## Testing approach
 
 ```bash
-npm run test:run   # Vitest + React Testing Library, 72 tests
-npm run typecheck  # tsc -b --noEmit
-npm run build      # tsc -b && vite build (also typechecks)
+pnpm test:run     # Vitest + React Testing Library, 72 tests
+pnpm typecheck    # tsc -b --noEmit
+pnpm build        # tsc -b && vite build (also typechecks)
 ```
 
 72 tests total: 60 are the ported `src/logic/*.test.ts` +
@@ -193,7 +214,7 @@ component-level tests (`ModelList.test.tsx`, `ConfigurationView.test.tsx`
 translated to React Testing Library idioms).
 
 **Real end-to-end verification performed, not just unit tests**: started
-`npm run dev` against the live local backend (`localhost:8000`, via this
+`pnpm dev` against the live local backend (`localhost:8000`, via this
 same `/api` proxy pattern the Vue app's `vite.config.ts` uses -
 `KAFKAML_BACKEND` env var overrides the target), then drove it with a
 headless Playwright script (`npx playwright`, not committed as a

@@ -1,11 +1,12 @@
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /build
-COPY package.json package-lock.json* ./
-RUN npm ci || npm install
-COPY vite.config.ts tsconfig.json index.html ./
+RUN npm install -g pnpm@11
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json index.html ./
 COPY public ./public
 COPY src ./src
-RUN npm run build
+RUN pnpm run build
 
 FROM nginx:1.27-alpine
 COPY --from=builder /build/dist /usr/share/nginx/html
