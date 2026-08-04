@@ -1,6 +1,27 @@
 import tensorflow as tf
 import numpy as np
 
+_NUMPY_TYPES = {
+    "half": np.half,
+    # Bare "float" used to be resolved via the now-removed `np.float` alias,
+    # which was itself just an alias for the builtin `float` (i.e. a C
+    # double / float64) - NOT float32. Kept distinct from "float32" below to
+    # preserve that original precision.
+    "float": np.float64,
+    "float32": np.float32,
+    "double": np.double,
+    "int64": np.int64,
+    "int32": np.int32,
+    "int16": np.int16,
+    "int8": np.int8,
+    "uint16": np.uint16,
+    "uint8": np.uint8,
+    # np.string / np.bool were removed aliases for np.bytes_ / np.bool_.
+    "string": np.bytes_,
+    "bool": np.bool_,
+}
+
+
 def string_to_numpy_type(out_type):
     """Converts a string with the same name to a Numpy type.
     Acceptable types are half, float, double, int32, uint16, uint8,
@@ -10,31 +31,9 @@ def string_to_numpy_type(out_type):
     Returns:
         Numpy DType: Numpy DType of the intput
     """
-    if out_type == "half":
-        return np.half
-    elif out_type == "float":
-        return np.float
-    elif out_type == "float32":
-        return np.float32
-    elif out_type == "double":
-        return np.double
-    elif out_type == "int64":
-        return np.int64
-    elif out_type == "int32":
-        return np.int32
-    elif out_type == "int16":
-        return np.int16
-    elif out_type == "int8":
-        return np.int8
-    elif out_type == "uint16":
-        return np.uint16
-    elif out_type == "uint8":
-        return np.uint8
-    elif out_type == "string":
-        return np.string
-    elif out_type == "bool":
-        return np.bool
-    else:
+    try:
+        return _NUMPY_TYPES[out_type]
+    except KeyError:
         raise Exception("string_to_numpy_type: Unsupported type")
 
 
@@ -47,9 +46,6 @@ def decode_raw(x, output_type, output_reshape):
     Returns:
         DType: raw data to tensorflow model loaded
     """
-    # res = np.frombuffer(x, dtype=output_type)
-    # output_reshape = np.insert(output_reshape, 0, 1, axis=0)
-    # res = res.reshape(*output_reshape)
     res = tf.io.decode_raw(x, out_type=output_type)
     res = tf.reshape(res, output_reshape)
     return res

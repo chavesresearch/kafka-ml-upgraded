@@ -3,7 +3,7 @@
 import sys
 sys.path.append(sys.path[0] + "/../..")
 
-from datasources.avro_sink import  AvroSink
+from kafkaml_datasources import AvroSink
 
 import pandas as pd
 

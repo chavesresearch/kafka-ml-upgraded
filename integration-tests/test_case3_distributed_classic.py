@@ -2,7 +2,7 @@
 
 Creates a real father/child distributed model pair through the API
 (`father` field on the child model), a configuration built from just the
-*root* model id (backend-litestar's `_expand_with_children` walks the
+*root* model id (backend's `_expand_with_children` walks the
 father/child chain automatically), and a deployment with the distributed
 optimizer/learning_rate/loss/metrics fields.
 """

@@ -7,11 +7,39 @@ on:
       - "main"
       - "latest"
       - "dev*"
+  pull_request:
+    paths:
+      - frontend/**/*
   release:
     types:
       - created
+
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm run test:run
+      - name: Build
+        run: npm run build
+
   build-frontend:
+    needs: test
+    # Only publish an image from pushes/releases, never from a PR.
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/build.yml
     with:
       context: frontend

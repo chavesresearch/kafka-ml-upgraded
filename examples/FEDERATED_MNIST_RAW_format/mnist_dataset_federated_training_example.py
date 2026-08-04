@@ -2,7 +2,7 @@ import sys
 sys.path.append(sys.path[0] + "/../..") 
 """To allow importing datasources"""
 
-from datasources.federated_raw_sink import FederatedRawSink
+from kafkaml_datasources import FederatedRawSink
 import tensorflow as tf
 import logging
 import json

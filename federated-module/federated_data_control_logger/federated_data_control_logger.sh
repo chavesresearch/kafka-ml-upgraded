@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-python federated_data_control_logger.py
+set -e
+exec uv run federated_data_control_logger.py

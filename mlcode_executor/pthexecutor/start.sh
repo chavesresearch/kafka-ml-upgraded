@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-gunicorn app:app --bind 0.0.0.0:8002 --timeout 0
+set -e
+exec uv run uvicorn app:app --host 0.0.0.0 --port 8002

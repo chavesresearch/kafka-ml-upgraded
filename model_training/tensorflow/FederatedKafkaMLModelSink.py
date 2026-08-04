@@ -5,7 +5,6 @@ import struct
 import logging
 import json
 import pickle
-import tensorflow as tf
 
 class FederatedKafkaMLModelSink(object):
     """Class representing a sink of federated learning data to Apache Kafka. This class will allow to receive 
@@ -134,37 +133,31 @@ class FederatedKafkaMLModelSink(object):
 
         return res
     
-    def __get_metric_name(self, metric):
-        """Get the name of the metric"""
-        if isinstance(metric, list):
-            return self.__get_metric_name(metric[0])
-        elif hasattr(metric, '_name'):
-            return metric._name
-        elif hasattr(metric, '__name__'):
-            return metric.__name__
-        else:
-            return metric
-
     def __parse_model_compile_args(self, model):
-        """Parse the model compile arguments to send to Kafka"""
-        res = {}
-        model_compile_args = model._get_compile_args()
-        for k in model_compile_args.keys():
-            try:
-                if k == 'optimizer':
-                    res[k] = tf.keras.optimizers.serialize(model_compile_args[k])
-                elif k == 'loss':
-                    res[k] = tf.keras.losses.serialize(model_compile_args[k])
-                elif k in ['metrics', 'weighted_metrics']:
-                    # res[k] = [tf.keras.metrics.serialize(m) for m in model_compile_args[k]] # Comentado hasta resolver tema Shapes Error
-                    res[k] = [self.__get_metric_name(m) for m in model_compile_args[k]]
-                    # res[k] = [item for sublist in res[k] for item in sublist]                    
-                else:
-                    res[k] = model_compile_args[k]
-            except:
-                res[k] = model_compile_args[k] # If none in one of above, return None.
+        """Parse the model compile arguments to send to Kafka.
 
-        return res
+        `Model._get_compile_args()` (which returned the raw, unserialized
+        optimizer/loss/metrics objects, manually serialized below one key
+        at a time) was removed in Keras 3. `Model.get_compile_config()` is
+        its replacement - it returns the compile kwargs already fully
+        serialized (optimizer as a plain dict, loss as a string or dict,
+        metrics as a plain list), which is exactly what this method used to
+        produce by hand, so the manual per-key serialize loop (and the
+        `__get_metric_name` helper it used to extract bare metric names)
+        is gone rather than adapted - there's nothing left for it to do.
+
+        Verified this doesn't break `federated-module`'s consumer of this
+        same message (`KafkaModelEngine.__deserialize_compile_args__`,
+        untouched, still on its original TF pin): its per-key
+        `tf.keras.optimizers.deserialize(...)`/`tf.keras.losses.deserialize(...)`
+        calls, plus a generic passthrough `else` branch for any other key,
+        round-trip this dict's extra keys (`loss_weights`, `run_eagerly`,
+        `steps_per_execution`, `jit_compile` - present in
+        `get_compile_config()`'s output but not the old `_get_compile_args()`
+        one) into `model.compile(**compileParams)` without error - checked
+        with a real round trip through that exact deserializer, not assumed.
+        """
+        return model.get_compile_config()
 
     def __send_control_msg(self, model, version):
         """Sends control message to Apache Kafka with the information"""

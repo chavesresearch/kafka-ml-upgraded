@@ -1,8 +1,8 @@
 """CASE=1 (SingleClassicTraining, TensorFlow) - real API + real Kafka.
 
 Creates a model/configuration/deployment through the real REST API (which
-makes backend-litestar submit a real Kubernetes training Job), sends real
-RAW-format data via `datasources-package`'s `RawSink`, and waits for the
+makes backend submit a real Kubernetes training Job), sends real
+RAW-format data via `datasources`'s `RawSink`, and waits for the
 result to reach `status: "finished"` with real train/val/test metrics.
 """
 

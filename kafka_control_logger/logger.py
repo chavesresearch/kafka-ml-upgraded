@@ -98,7 +98,7 @@ def build_datasource_payload(msg):
     data['input_config'] = json.dumps(data['input_config'])
     # datetime.isoformat() - the backend parses this with
     # datetime.fromisoformat(), which is the actual wire contract now
-    # (see backend-litestar/CLAUDE.md's bug list). Don't switch to a
+    # (see backend/CLAUDE.md's bug list). Don't switch to a
     # hand-rolled strftime format without updating both sides: the previous
     # version's "%Y-%m-%dT%H:%M:%S%Z" silently produced no timezone suffix
     # at all, since %Z renders empty for a naive datetime (which

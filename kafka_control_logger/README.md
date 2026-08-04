@@ -22,7 +22,7 @@ Once installed, you have to set each one of the environment vars below to execut
   timestamp with no timezone marker at all. Now built with
   `datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()`, which the
   backend parses with `datetime.fromisoformat()` - see
-  `backend-litestar/CLAUDE.md` for the matching fix on that side (passing
+  `backend/CLAUDE.md` for the matching fix on that side (passing
   the raw string straight into the DB model was its own separate bug).
 - **Retry-exhaustion silently dropped messages**: on success, the old code
   called a bare `consumer.commit()`, which commits the consumer's *current*

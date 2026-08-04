@@ -9,7 +9,7 @@ import pandas as pd
 
 import logging
 
-from datasources.raw_sink import RawSink
+from kafkaml_datasources import RawSink
 
 from sklearn.model_selection import train_test_split
 

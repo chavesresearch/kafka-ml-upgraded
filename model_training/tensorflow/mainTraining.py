@@ -1,7 +1,6 @@
 from utils import *
 import json
-import tensorflow_io as tfio
-import tensorflow_io.kafka as kafka_io
+from tf_kafka_dataset import get_bounded_kafka_dataset, get_streaming_kafka_batches
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -198,7 +197,7 @@ class MainTraining(object):
             train_kafka: training data and labels from Kafka
         """
         logging.info("Starts receiving training data from Kafka servers [%s] with topics [%s]", self.bootstrap_servers, kafka_topic)
-        train_data = kafka_io.KafkaDataset(kafka_topic.split(','), servers=self.bootstrap_servers, group=group, eof=True, message_key=True).map(lambda x, y: decoder.decode(x, y))
+        train_data = get_bounded_kafka_dataset(kafka_topic, self.bootstrap_servers, group).map(lambda x, y: decoder.decode(x, y))
 
         return train_data
 
@@ -212,15 +211,8 @@ class MainTraining(object):
             online_train_kafka: online training data and labels from Kafka
         """
         logging.info("Starts receiving online training data from Kafka servers [%s] with topics [%s], group [%s] and stream_timeout [%d]", self.bootstrap_servers, kafka_topic, self.result_id, self.stream_timeout)
-        
-        online_train_data = tfio.experimental.streaming.KafkaBatchIODataset(
-            topics=[kafka_topic],
-            group_id=self.result_id,
-            servers=self.bootstrap_servers,
-            stream_timeout=self.stream_timeout,
-            configuration=None,
-            internal=True
-        )
+
+        online_train_data = get_streaming_kafka_batches(kafka_topic, self.bootstrap_servers, self.result_id, self.stream_timeout)
 
         return online_train_data
 
@@ -316,12 +308,22 @@ class MainTraining(object):
             weights[m.name] = self.loss
         """Sets the loss"""
 
+        metrics_per_output = {}
+        for m in self.tensorflow_models:
+            metrics_per_output[m.name] = list(metrics)
+        """Sets the metrics per output. Keras 3 requires `metrics` for a
+        multi-output model to match the output structure (a dict or a list
+        of lists) - the flat list Keras 2 silently applied to every output
+        now raises `ValueError: tuple arity mismatch`. Same per-output-dict
+        shape `weights` above already uses, applying the same configured
+        metrics to every submodel like before."""
+
         learning_rates = []
         for index in range (0, self.N):
             learning_rates.append(self.learning_rate)
         """Sets the learning rate for each distributed model"""
 
-        model.compile(optimizer=self.optimizer, loss=weights, metrics=metrics, loss_weights=learning_rates)
+        model.compile(optimizer=self.optimizer, loss=weights, metrics=metrics_per_output, loss_weights=learning_rates)
         """Compiles the global model"""
 
         self.model = model
@@ -329,7 +331,26 @@ class MainTraining(object):
     def train_classic_model(self, splits, callback):
         """Trains classic model"""
 
-        model_trained = self.model.fit(splits['train_dataset'], validation_data=splits['validation_dataset'], **self.kwargs_fit, callbacks=[callback])
+        train_dataset = splits['train_dataset']
+        validation_dataset = splits['validation_dataset']
+
+        if hasattr(self, 'N'):
+            train_dataset = train_dataset.map(lambda x, y: (x, tuple(y for _ in range(self.N))))
+            if validation_dataset is not None:
+                validation_dataset = validation_dataset.map(lambda x, y: (x, tuple(y for _ in range(self.N))))
+        """Keras 3 gotcha, not present before this port: `y_true`'s
+        structure must now match `y_pred`'s exactly (a distributed model
+        has N outputs, one per submodel in the chain, all supervised by the
+        *same* label). Keras 2 silently broadcast a single `y` tensor
+        across every output; Keras 3 raises `ValueError: y_true and y_pred
+        have different structures` instead. `train_classic_semi_supervised_model`
+        already replicates `y` into an N-length list for exactly this
+        reason (see its own `hasattr(self, 'N')` branch below) - this path
+        just never got the same treatment, and nothing surfaced it until
+        an actual distributed `.fit()` call was run against a real
+        `tf.data.Dataset` pipeline."""
+
+        model_trained = self.model.fit(train_dataset, validation_data=validation_dataset, **self.kwargs_fit, callbacks=[callback])
 
         training_results = {
             'model_trained': model_trained
@@ -424,7 +445,17 @@ class MainTraining(object):
                 splits['train_dataset'] = splits['train_dataset'].batch(self.batch)
                 if splits['validation_dataset'] is not None:
                     splits['validation_dataset'] = splits['validation_dataset'].batch(self.batch)
-                model_trained = self.model.fit(splits['train_dataset'], validation_data=splits['validation_dataset'], **self.kwargs_fit, callbacks=[callback])
+
+                train_dataset = splits['train_dataset']
+                validation_dataset = splits['validation_dataset']
+                if hasattr(self, 'N'):
+                    """Same Keras 3 y_true/y_pred structure fix as
+                    `train_classic_model` - see the comment there."""
+                    train_dataset = train_dataset.map(lambda x, y: (x, tuple(y for _ in range(self.N))))
+                    if validation_dataset is not None:
+                        validation_dataset = validation_dataset.map(lambda x, y: (x, tuple(y for _ in range(self.N))))
+
+                model_trained = self.model.fit(train_dataset, validation_data=validation_dataset, **self.kwargs_fit, callbacks=[callback])
                 if self.stream_timeout == -1:
                     if 'reference' not in locals() and 'reference' not in globals():
                         reference = model_trained.history['val_'+self.monitoring_metric][-1]
@@ -576,7 +607,12 @@ class MainTraining(object):
 
         if splits['test_size'] > 0:
             logging.info("Model ready to test with configuration %s", str(self.kwargs_val))
-            test = self.model.evaluate(splits['test_dataset'], **self.kwargs_val)
+            test_dataset = splits['test_dataset']
+            if hasattr(self, 'N'):
+                """Same Keras 3 y_true/y_pred structure fix as
+                `train_classic_model` - see the comment there."""
+                test_dataset = test_dataset.map(lambda x, y: (x, tuple(y for _ in range(self.N))))
+            test = self.model.evaluate(test_dataset, **self.kwargs_val)
             """Validates the model"""
             logging.info("Model tested!")
             logging.info("Model test metrics: %s", str(test))

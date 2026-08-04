@@ -1,49 +1,72 @@
-# Back-end
+# Back-end (Litestar)
 
-This project provides the Back-end for Kafka-ML. It has been implemented using the Python web framework [Django](https://www.djangoproject.com/) version 3.0.7. This project requires Python 3.5-3.8.
+This is a from-scratch port of `backend/` (the Django/DRF backend) to [Litestar](https://litestar.dev/), Litestar's async-native successor stack. It exposes the exact same URL contract the Angular frontend already speaks (`/models/`, `/configurations/`, `/deployments/`, `/results/`, `/inferences/`, `/datasources/`, `/iot-devices/`, `/ws/`), so it's a drop-in replacement - no frontend changes required.
 
-The Back-end deploys Kubernetes components when deploying training and inference tasks. Therefore, it requires a running Kubernetes instance.
+Stack:
+- **[Litestar](https://litestar.dev/)** instead of Django+DRF - async request handlers throughout.
+- **SQLAlchemy 2.0 (async) + `aiosqlite`** instead of the Django ORM, same single-file local SQLite database (`db.sqlite3`).
+- **Alembic** instead of `manage.py makemigrations`/`migrate`.
+- **`aiokafka`** instead of `confluent-kafka` for the datasource producer and the `/ws/` Kafka-to-websocket relay.
+- **`kubernetes-asyncio`** instead of the sync `kubernetes` client for Job/ReplicationController management.
+- **`httpx.AsyncClient`** instead of `requests` for calling the tf/pth `mlcode_executor` services.
+- Native Litestar `WebSocket` support instead of Django Channels (no channel layer needed - the relay is a plain `asyncio.Task` per subscription).
 
-A brief introduction of most important files:
-- File `automl/models.py` where the database tables (models) and their attributes are defined.
-- File `automl/views.py` where it is implemented the RESTful API implementation through Views. A View can implement some HTTP methods (e.g., GET, POST)
-- File `automl/serializers.py` serializers used to encode models to JSON and vice versa.
-- File `automl/urls.py` mapping each RESTful View to a URL-path accessible in the Back-end.
-- File `autoweb/settings.py` main configuration file.
+A brief introduction of the important files:
+- `app/models.py` - SQLAlchemy models (equivalent of `automl/models.py`).
+- `app/controllers/*.py` - route handlers, one module per resource (equivalent of `automl/views/*.py`).
+- `app/schemas/__init__.py` - response dict builders, field-for-field equivalents of `automl/serializers.py`.
+- `app/websocket.py` - the `/ws/` Kafka visualization relay (equivalent of `automl/websockets.py`).
+- `app/job_manifest_generator.py` - Kubernetes Job manifest builders, ported unchanged (it never depended on Django).
+- `app/config.py` - environment-driven settings (equivalent of `autoweb/settings.py`).
+- `app/main.py` - app wiring: routes, CORS, DI, startup/shutdown lifecycle.
 
 ## Installation for local development
-Run `python -m pip install -r requirements.txt` to install the dependencies used by this module. 
 
-Once installed, run the commands `python manage.py makemigrations --noinput` and `python manage.py migrate --run-syncdb` to synchronize and create the database. We now use the single-file SQLite database, but you can change it to another one in the `settings.py` configuration file. 
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) - `pyproject.toml` + `uv.lock`, no `requirements.txt`.
 
-After that, a new file called `db.sqlite3` will be created with the SQLite database. After a change in the `models.py` file, you should synchronize again the database with previous commands.
+```
+uv sync
+```
 
-## Create a superuser
-You can create a superuser to manage the models in the Web UI (/admin) provided by Django. Run `python manage.py createsuperuser` and fill up all the fields to create the superuser.
+Then create the local SQLite database:
+
+```
+uv run alembic upgrade head
+```
+
+This creates `db.sqlite3` in this directory, same as before. After changing `app/models.py`, generate a new migration instead of hand-editing the schema:
+
+```
+uv run alembic revision --autogenerate -m "describe the change"
+uv run alembic upgrade head
+```
 
 ## Running development server
 
-Run `python manage.py runserver 0.0.0.0:8000` for running the development server. Navigate to `http://localhost:8000/admin` to access the administration UI with your superuser credentials. You can change the IP and port when running the back-end. 
-
-Note that if you change the IP or port in development mode, you should also change the reference in the frontend to the new configuration (frontend/src/environments/environment.ts). Default: `localhost:8000`.
-
-In development mode, you should also change the configuration for deploying Kubernetes components `automl/views.py` to be able to deploy Kubernetes components outside a Docker container, by default, this is only enabled inside a container. Comment the Kubernetes configuration as follows:
-
 ```
-#config.load_incluster_config() # To run inside the container
-config.load_kube_config() # To run externally
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --ws wsproto
 ```
 
-## Environments vars when deploying the back-end in Kubernetes
-- **BOOTSTRAP_SERVERS**: list of brokers for the connection to Apache Kafka
-- **CONTROL_TOPIC**: name of the Kafka control topic used in Kafka-ML
-- **TRAINING_MODEL_IMAGE**: name of the Docker training image to be deployed in Kubernetes
-- **INFERENCE_MODEL_IMAGE**: name of the Docker inference image to be deployed in Kubernetes
-- **FRONTEND_URL**: URL and port of the frontend to be added in the whitelist (e.g, http://localhost in the port 80)
-- **TFEXECUTOR_URL**: URL and port of the TensorFlow Executor Service
-- **SECRET_KEY**: used in Django for security
-- **DEBUG**: to enable (1) or disable (0) debug
+`--ws wsproto` is required: `web3` (the optional blockchain feature) pins `websockets<10`, so `wsproto` is used as uvicorn's websocket implementation instead of the `websockets` package. See the comment in `requirements.txt`.
 
-## Running unit tests
+If you change the IP or port, also update `frontend/src/environments/environment.ts`.
 
-Run `python manage.py test` to execute unit tests.
+For local (non-in-cluster) Kubernetes access, swap the config call the same way the old backend's README described - `app/controllers/deployments.py` and `app/controllers/inferences.py` call `k8s_config.load_incluster_config()`; swap to `k8s_config.load_kube_config()` to run outside a container.
+
+There is no Django-admin equivalent shipped here - the original admin site was registered but unused by the frontend (nothing links to `/admin`), so it wasn't ported. Say if you'd like a minimal read-only admin view added back.
+
+## Environment variables
+
+Same names as before, read directly from the environment (see `app/config.py`):
+`BOOTSTRAP_SERVERS`, `CONTROL_TOPIC`, `KUBE_NAMESPACE`, `KUBE_TOKEN`, `KUBE_HOST`, `TENSORFLOW_TRAINING_MODEL_IMAGE`, `TENSORFLOW_INFERENCE_MODEL_IMAGE`, `PYTORCH_TRAINING_MODEL_IMAGE`, `PYTORCH_INFERENCE_MODEL_IMAGE`, `FRONTEND_URL`, `BACKEND_URL`, `TFEXECUTOR_URL`, `PTHEXECUTOR_URL`, `ALLOWED_HOSTS`, `DEBUG`, `MODEL_LOGGER_TOPIC`, `ENABLE_FEDML_BLOCKCHAIN` and the `FEDML_BLOCKCHAIN_*` variables.
+
+Two new variables, both with sane defaults, cover settings the original backend referenced but never actually defined (see the fixes note below): `DEVICES_ROOT` (defaults to `<this dir>/models/devices`) and nothing else needs configuring for `TFLITE_PARSED_MODELS_DIR` (defaults to `tflite/`, relative to `MEDIA_ROOT`).
+
+## Behavioral notes vs. the Django backend
+
+A few things were fixed rather than ported as-is - see the accompanying chat summary for the full list, but in short:
+- `settings.DEVICES_ROOT` / `TFLITE_PARSED_MODELS_DIR` were referenced by IoT device code but never defined, so creating a device or deploying to one crashed. Now defined.
+- `GET /models/result/{id}` was dead code (a duplicate method definition silently shadowed the real implementation), returning the wrong JSON shape. Fixed.
+- `Datasource` rows were validated but never persisted. Now persisted.
+- The Kafka control-topic message key was capped at 255 (`bytes([deployment_id])`); widened to 4 bytes.
+- The Kafka producer and Kubernetes client now connect lazily, so the pod doesn't fail to boot if Kafka/K8s aren't reachable yet at startup.

@@ -1,3 +1,13 @@
+import inspect
+
+if not hasattr(inspect, "getargspec"):
+    # web3==5.28.0 -> eth_abi==2.2.0 -> parsimonious==0.8.1 does
+    # `from inspect import getargspec`, removed in Python 3.11. Safe shim:
+    # parsimonious only ever reads `.args` off the result, which
+    # `getfullargspec` still provides identically. Same fix already
+    # applied in model_training/tensorflow/blockchainSingleFederatedTraining.py.
+    inspect.getargspec = inspect.getfullargspec
+
 from web3 import Web3
 import json
 

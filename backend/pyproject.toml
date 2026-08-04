@@ -1,0 +1,55 @@
+[project]
+name = "kafka-ml-backend"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aiokafka==0.12.0",
+    "aiosqlite==0.20.0",
+    "alembic==1.14.0",
+    "greenlet==3.1.1",
+    "httptools==0.6.4",
+    "httpx==0.28.1",
+    "kubernetes-asyncio==32.0.0",
+    "litestar==2.14.0",
+    "loguru==0.7.3",
+    "msgspec==0.18.6",
+    "paho-mqtt==2.1.0",
+    "py-solc-x==2.0.2",
+    "python-multipart==0.0.20",
+    "sqlalchemy==2.0.36",
+    # web3==5.28.0 does a bare `import pkg_resources` at import time (both
+    # its own top-level `__init__.py` and, found while adding this test
+    # suite, its `web3.tools.pytest_ethereum` plugin - which pytest
+    # auto-loads via the `pytest11` entry point it registers, regardless
+    # of whether any test actually touches web3/blockchain features, so
+    # `pytest` itself couldn't even start without this pin) - setuptools
+    # removed pkg_resources as of 81.0.0. Same pin/reason as
+    # model_training/tensorflow/pyproject.toml.
+    "setuptools<81",
+    "uvicorn==0.34.0",
+    "web3==5.28.0",
+    "wsproto==1.2.0",
+]
+
+[tool.uv]
+# web3 (blockchain feature) depends on a pre-release build of
+# ipfshttpclient - matches the --prerelease=allow flag the pip-based
+# install used before.
+prerelease = "allow"
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+# web3==5.28.0 registers a `pytest11` entry point
+# (web3.tools.pytest_ethereum.plugins) that pytest auto-loads for every
+# test run in this venv, regardless of whether any test touches web3 -
+# and that plugin's own import chain (eth_abi -> parsimonious) does
+# `from inspect import getargspec`, removed in Python 3.11, so pytest
+# couldn't even start without this. Disabling only this one plugin (not
+# all autoloading - anyio's and faker's pytest11 plugins are harmless and
+# still load normally).
+addopts = "-p no:pytest_ethereum"
+pythonpath = ["."]

@@ -1,0 +1,51 @@
+[project]
+name = "kafka-ml-model-training-tensorflow"
+version = "0.1.0"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "confluent-kafka==2.15.0",
+    "fastavro==1.12.2",
+    "kafka-python==3.0.9",
+    "matplotlib==3.11.1",
+    "numpy==2.4.6",
+    "py-solc-x==2.0.2",
+    "requests==2.32.5",
+    "scikit-learn==1.9.0",
+    "seaborn==0.13.2",
+    # web3==5.28.0 (2022-era) does a bare `import pkg_resources` at import
+    # time; setuptools removed pkg_resources as of 81.0.0. Without this pin,
+    # whatever setuptools the base image/resolver picks breaks the blockchain
+    # feature's import with `ModuleNotFoundError: No module named
+    # 'pkg_resources'` - confirmed against real setuptools releases (80.9.0
+    # still has it, 83.0.0 doesn't), not assumed from changelogs.
+    "setuptools<81",
+    "tensorflow==2.21.0",
+    "tf-kafka-dataset",
+    "web3==5.28.0",
+]
+
+[tool.uv.sources]
+# Local sibling package - the tensorflow-io-replacement Kafka dataset
+# helpers (get_bounded_kafka_dataset/get_streaming_kafka_batches) were
+# extracted out to ../../tf-kafka-dataset since they're generically useful
+# (not Kafka-ML-specific) and are now shared with
+# federated-module/federated_model_training/tensorflow instead of
+# being duplicated in both places.
+tf-kafka-dataset = { path = "../../tf-kafka-dataset" }
+
+[tool.uv]
+# web3 (blockchain federated learning feature) depends on a pre-release
+# build of ipfshttpclient, matching backend's same pin/reason.
+prerelease = "allow"
+
+# web3==5.28.0 directly pins protobuf<4,>=3.10.0; tensorflow==2.21.0 needs
+# protobuf>=6.31.1,<8.0.0 - disjoint ranges, unresolvable by normal
+# resolution. Overridden here to force a modern, *stable* protobuf release
+# (pinned exactly - "prerelease = allow" above, needed for ipfshttpclient,
+# would otherwise happily land this on a protobuf release candidate) - web3
+# 5.x doesn't actually touch protobuf at runtime in anything this trainer
+# exercises (the pin looks like leftover packaging conservatism, not a real
+# runtime need) - verified empirically (see CLAUDE.md), not assumed.
+override-dependencies = [
+    "protobuf==7.35.1",
+]

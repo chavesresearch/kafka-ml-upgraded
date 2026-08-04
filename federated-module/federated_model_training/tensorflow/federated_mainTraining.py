@@ -2,8 +2,7 @@ from utils import *
 import json
 import time
 
-import tensorflow_io as tfio
-import tensorflow_io.kafka as kafka_io
+from tf_kafka_dataset import get_bounded_kafka_dataset, get_streaming_kafka_batches
 from confluent_kafka.admin import AdminClient, NewTopic
 
 from KafkaModelEngine import KafkaModelEngine
@@ -76,34 +75,34 @@ class MainTraining(object):
                 topic_created = True
 
     def get_kafka_dataset(self, training_settings):
-        logging.info("Fetching labeled dataset from Kafka Topic [%s], with bootstrap server [%s]", self.input_data_topic, self.data_bootstrap_server)  
+        logging.info("Fetching labeled dataset from Kafka Topic [%s], with bootstrap server [%s]", self.input_data_topic, self.data_bootstrap_server)
 
         decoder = DecoderFactory.get_decoder(self.input_format, self.input_config)
-        self.kafka_dataset = kafka_io.KafkaDataset(self.input_data_topic, servers=self.data_bootstrap_server, group=self.group_id, eof=True, message_key=True).map(lambda x, y: decoder.decode(x, y))
+        self.kafka_dataset = get_bounded_kafka_dataset(self.input_data_topic, self.data_bootstrap_server, self.group_id).map(lambda x, y: decoder.decode(x, y))
         self.train_dataset = self.kafka_dataset.take(self.training_size).batch(training_settings['batch'])
         self.validation_dataset = self.kafka_dataset.skip(self.training_size).batch(training_settings['batch'])
 
         logging.info("Dataset fetched successfully")
-    
+
     def get_unsupervised_kafka_dataset(self, training_settings):
-        logging.info("Fetching unlabeled dataset from Kafka Topic [%s], with bootstrap server [%s]", self.unsupervised_data_topic, self.data_bootstrap_server)  
+        logging.info("Fetching unlabeled dataset from Kafka Topic [%s], with bootstrap server [%s]", self.unsupervised_data_topic, self.data_bootstrap_server)
 
         decoder = DecoderFactory.get_decoder(self.input_format, self.input_config)
-        self.unsupervised_kafka_dataset = kafka_io.KafkaDataset(self.unsupervised_data_topic, servers=self.data_bootstrap_server, group=self.group_id, eof=True, message_key=True).map(lambda x, y: decoder.decode(x, y)).batch(training_settings['batch'])
+        self.unsupervised_kafka_dataset = get_bounded_kafka_dataset(self.unsupervised_data_topic, self.data_bootstrap_server, self.group_id).map(lambda x, y: decoder.decode(x, y)).batch(training_settings['batch'])
 
         logging.info("Unlabeled dataset fetched successfully")
 
     def get_online_kafka_dataset(self, training_settings):
-        logging.info("Fetching online dataset from Kafka Topic [%s], with bootstrap server [%s]", self.input_data_topic, self.data_bootstrap_server)  
+        logging.info("Fetching online dataset from Kafka Topic [%s], with bootstrap server [%s]", self.input_data_topic, self.data_bootstrap_server)
 
-        self.kafka_dataset = tfio.experimental.streaming.KafkaBatchIODataset(topics=[self.input_data_topic], servers=self.data_bootstrap_server, group_id=self.group_id+'-2', stream_timeout=training_settings['stream_timeout'], configuration=None, internal=True)
+        self.kafka_dataset = get_streaming_kafka_batches(self.input_data_topic, self.data_bootstrap_server, self.group_id + '-2', training_settings['stream_timeout'])
 
         logging.info("Dataset fetched successfully")
 
     def get_online_unsupervised_kafka_dataset(self, training_settings):
-        logging.info("Fetching unlabeled online dataset from Kafka Topic [%s], with bootstrap server [%s]", self.unsupervised_data_topic, self.data_bootstrap_server)  
+        logging.info("Fetching unlabeled online dataset from Kafka Topic [%s], with bootstrap server [%s]", self.unsupervised_data_topic, self.data_bootstrap_server)
 
-        self.unsupervised_kafka_dataset = tfio.experimental.streaming.KafkaBatchIODataset(topics=[self.unsupervised_data_topic], servers=self.data_bootstrap_server, group_id=self.group_id+'-2', stream_timeout=training_settings['stream_timeout'], configuration=None, internal=True)
+        self.unsupervised_kafka_dataset = get_streaming_kafka_batches(self.unsupervised_data_topic, self.data_bootstrap_server, self.group_id + '-2', training_settings['stream_timeout'])
 
         logging.info("Unlabeled dataset fetched successfully")
     
@@ -139,8 +138,26 @@ class MainTraining(object):
     def train_classic_model(self, model, training_settings):
         """Trains classic model"""
 
+        train_dataset = self.train_dataset
+        validation_dataset = self.validation_dataset
+
+        if 'N' in training_settings:
+            train_dataset = train_dataset.map(lambda x, y: (x, tuple(y for _ in range(training_settings['N']))))
+            if validation_dataset is not None:
+                validation_dataset = validation_dataset.map(lambda x, y: (x, tuple(y for _ in range(training_settings['N']))))
+        """Keras 3 gotcha, not present before this port: a distributed
+        (multi-output) model's `y_true` structure must match `y_pred`'s -
+        Keras 2 silently broadcast a single `y` tensor across every output,
+        Keras 3 raises `ValueError: y_true and y_pred have different
+        structures` instead. `train_classic_semi_supervised_model` below
+        already replicates `y` into an N-length list for exactly this
+        reason (see its own `'N' in training_settings` branch) - this path
+        just never got the same treatment. Same fix already applied to
+        `model_training/tensorflow/mainTraining.py`'s
+        `train_classic_model`/`test_model` for the identical reason."""
+
         start = time.time()
-        model_trained = model.fit(self.train_dataset, validation_data=self.validation_dataset, **training_settings['kwargs_fit'], **training_settings['kwargs_val'])
+        model_trained = model.fit(train_dataset, validation_data=validation_dataset, **training_settings['kwargs_fit'], **training_settings['kwargs_val'])
         end = time.time()
 
         logging.info("Model trained successfully. Elapsed time: [%f]", end - start)
@@ -242,7 +259,17 @@ class MainTraining(object):
                     splits['train_dataset'] = splits['train_dataset'].batch(training_settings['batch'])
                     if splits['validation_dataset'] is not None:
                         splits['validation_dataset'] = splits['validation_dataset'].batch(training_settings['batch'])
-                    model_trained = model.fit(splits['train_dataset'], validation_data=splits['validation_dataset'], **training_settings['kwargs_fit'], **training_settings['kwargs_val'])
+
+                    train_dataset = splits['train_dataset']
+                    validation_dataset = splits['validation_dataset']
+                    if 'N' in training_settings:
+                        """Same Keras 3 y_true/y_pred structure fix as
+                        `train_classic_model` - see the comment there."""
+                        train_dataset = train_dataset.map(lambda x, y: (x, tuple(y for _ in range(training_settings['N']))))
+                        if validation_dataset is not None:
+                            validation_dataset = validation_dataset.map(lambda x, y: (x, tuple(y for _ in range(training_settings['N']))))
+
+                    model_trained = model.fit(train_dataset, validation_data=validation_dataset, **training_settings['kwargs_fit'], **training_settings['kwargs_val'])
         
         end = time.time()
 

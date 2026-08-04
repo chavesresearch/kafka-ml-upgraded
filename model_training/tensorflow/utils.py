@@ -59,6 +59,27 @@ def download_model(model_url, filename, retries, sleep_time):
             time.sleep(sleep_time)
 
 
+_NUMPY_TYPES = {
+    "half": np.half,
+    # Bare "float" used to be resolved via the now-removed `np.float` alias,
+    # which was itself just an alias for the builtin `float` (i.e. a C
+    # double / float64) - NOT float32. Kept distinct from "float32" below to
+    # preserve that original precision.
+    "float": np.float64,
+    "float32": np.float32,
+    "double": np.double,
+    "int64": np.int64,
+    "int32": np.int32,
+    "int16": np.int16,
+    "int8": np.int8,
+    "uint16": np.uint16,
+    "uint8": np.uint8,
+    # np.string / np.bool were removed aliases for np.bytes_ / np.bool_.
+    "string": np.bytes_,
+    "bool": np.bool_,
+}
+
+
 def string_to_numpy_type(out_type):
     """Converts a string with the same name to a Numpy type.
     Acceptable types are half, float, double, int32, uint16, uint8,
@@ -68,31 +89,9 @@ def string_to_numpy_type(out_type):
     Returns:
         Numpy DType: Numpy DType of the intput
     """
-    if out_type == "half":
-        return np.half
-    elif out_type == "float":
-        return np.float
-    elif out_type == "float32":
-        return np.float32
-    elif out_type == "double":
-        return np.double
-    elif out_type == "int64":
-        return np.int64
-    elif out_type == "int32":
-        return np.int32
-    elif out_type == "int16":
-        return np.int16
-    elif out_type == "int8":
-        return np.int8
-    elif out_type == "uint16":
-        return np.uint16
-    elif out_type == "uint8":
-        return np.uint8
-    elif out_type == "string":
-        return np.string
-    elif out_type == "bool":
-        return np.bool
-    else:
+    try:
+        return _NUMPY_TYPES[out_type]
+    except KeyError:
         raise Exception("string_to_numpy_type: Unsupported type")
 
 
@@ -104,6 +103,22 @@ def load_model(model_path):
         Tensorflow model: tensorflow model loaded
     """
     model = keras.models.load_model(model_path)
+
+    if model.compiled:
+        model.compile_from_config(model.get_compile_config())
+    """Keras 3 gotcha, not present before this port: a model reloaded from
+    disk keeps its *deserialized* optimizer object, which can retain a
+    stale binding to the variable objects it was associated with before
+    saving. The first `.fit()` call on it then raises `ValueError: Unknown
+    variable ... This optimizer can only be called for the variables it
+    was originally built with` - it doesn't matter that they're the "same"
+    weights, they're different Python objects post-deserialization.
+    Round-tripping through get_compile_config()/compile_from_config()
+    forces a freshly-built, correctly-bound optimizer. Reproduced this in
+    isolation (save a compiled-but-never-fit model, reload, call .fit())
+    and confirmed this fixes it before applying it here - not assumed from
+    the error message alone."""
+
     if DEBUG:
         model.summary()
         """Prints model architecture"""

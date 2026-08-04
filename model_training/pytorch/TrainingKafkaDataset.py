@@ -37,13 +37,26 @@ class TrainingKafkaDataset(Dataset):
 
     def __createconsumer__(self, controlMessage, bootstrap_servers, group_id):
         topic = controlMessage['topic'].split(":")
-        consumer = KafkaConsumer(topic[0],
+        consumer = KafkaConsumer(
                         bootstrap_servers = bootstrap_servers,
                         enable_auto_commit = False,
                         group_id = group_id,
                         )
-        consumer.poll()
         tp, start_offset, end_offset = TopicPartition(topic[0], int(topic[1]) ), int(topic[2]), int(topic[3])
+        # Was `KafkaConsumer(topic[0], ...)` (subscribe) + `consumer.poll()`
+        # + `consumer.seek(...)` - relies on the single `poll()` call
+        # happening to complete the consumer-group join/rebalance before
+        # `seek()` runs, which isn't guaranteed (`ValueError: Unassigned
+        # partition` if it hasn't). This exact bounded offset-range read
+        # doesn't need group-managed assignment at all - it always knows
+        # its own start/end offsets up front - so `assign()` (synchronous,
+        # no rebalance/coordinator round trip) is the right tool, matching
+        # the already-established, working pattern in this same project's
+        # `KafkaModelEngine.__createconsumer__` (both the federated-module
+        # and original model_training/tensorflow copies use `assign()`,
+        # with an old `# consumer.poll()` commented out right above it -
+        # this file just never got the same fix applied).
+        consumer.assign([tp])
         consumer.seek(tp, start_offset)
 
         return consumer, end_offset

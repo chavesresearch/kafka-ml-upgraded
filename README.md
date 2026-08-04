@@ -639,8 +639,8 @@ python examples/FEDERATED_MNIST_RAW_format/mnist_dataset_federated_training_exam
 
 ### Requirements to build locally
 
-- [Python supported by Tensorflow 3.5–3.7 and PyTorch 1.10](https://www.python.org/)
-- [Node.js](https://nodejs.org/)
+- [uv](https://docs.astral.sh/uv/) - Python dependency management for every backend/ML service (`backend`, `mlcode_executor`, `model_training`, `model_inference`, `federated-module`, `kafka_control_logger`, `datasources`); each is its own `uv` project (`pyproject.toml` + `uv.lock`, no `requirements.txt`) - `uv sync` inside any of them installs its dependencies for local development
+- [Node.js](https://nodejs.org/) 20+ - for `frontend` (Vue 3 + Vite)
 - [Docker](https://www.docker.com/)
 - [kubernetes>=v1.15.5](https://kubernetes.io/)
 
@@ -654,9 +654,10 @@ In case you want to build Kafka-ML in a fast way, you should set the variable
 the local images. Once that is done, you can run the build scripts.
 
 By default, Kafka-ML will be built using CPU-only images. If you desire to build
-Kafka-ML with images enabled for GPU acceleration, the `Dockerfile` and
-`requirements.txt` files of `mlcode_executor`, `model_inference` and
-`model_training` modules must be modified as indicated in those files.
+Kafka-ML with images enabled for GPU acceleration, pass the corresponding
+`--build-arg` documented at the top of each `Dockerfile` in `mlcode_executor`,
+`model_inference`, and `model_training` (e.g. `TFTAG=2.21.0-gpu`,
+`BASEIMG=pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime`).
 
 In case you want to build Kafka-ML step-by-step, then follow the following
 steps:
@@ -734,9 +735,8 @@ steps:
 7. Install the libraries and execute the frontend:
    ```bash
    cd frontend
-   npm install # nvm install 10 & nvm use 10.24.1
-   npm i -g @angular/cli@9.1.15
-   ng build -c production
+   npm ci
+   npm run build
    docker build --tag localhost:5000/frontend .
    docker push localhost:5000/frontend
    ```

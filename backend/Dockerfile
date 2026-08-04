@@ -1,22 +1,29 @@
 # pull official base image
-FROM python:3.8.6
-# FROM python:3.7.7-slim-stretch # for Raspberry
+FROM python:3.12-slim
 
 # set work directory
 WORKDIR /usr/src/app
 
 # set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV UV_PROJECT_ENVIRONMENT=/usr/src/app/.venv
+ENV UV_COMPILE_BYTECODE=1
 
-# install dependencies
+# install uv
 RUN pip install --upgrade pip
 RUN pip install uv
-COPY ./requirements.txt /usr/src/app/requirements.txt
-RUN uv pip install -r requirements.txt --prerelease=allow --system
+
+# install dependencies (separate layer from the source copy below, so
+# dependency installs are cached across code-only changes)
+COPY pyproject.toml uv.lock ./
+# --prerelease allow is set in pyproject.toml's [tool.uv] table: web3
+# (blockchain feature) depends on a pre-release build of ipfshttpclient.
+RUN uv sync --locked --no-install-project
 
 # copy project
 COPY . /usr/src/app/
+RUN uv sync --locked
 
 EXPOSE 8000
 

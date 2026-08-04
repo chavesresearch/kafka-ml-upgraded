@@ -121,7 +121,7 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "kafka-python", specifier = "==3.0.9" },
     { name = "kafkaml-client", editable = "../kafkaml-client" },
-    { name = "kafkaml-datasources", editable = "../datasources-package" },
+    { name = "kafkaml-datasources", editable = "../datasources" },
     { name = "numpy", specifier = "==2.5.1" },
     { name = "pytest", specifier = "==8.4.2" },
 ]
@@ -149,7 +149,7 @@ requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
 [[package]]
 name = "kafkaml-datasources"
 version = "0.1.0"
-source = { editable = "../datasources-package" }
+source = { editable = "../datasources" }
 dependencies = [
     { name = "fastavro" },
     { name = "kafka-python" },

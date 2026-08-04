@@ -1,6 +1,6 @@
 """Shared helpers for the Kafka-ML integration test suite.
 
-Every test in this suite drives the *real* backend-litestar REST API
+Every test in this suite drives the *real* backend REST API
 (create a model, a configuration, a deployment - the same calls the
 frontend makes) via `kafkaml-client`, and sends *real* data over a *real*
 Kafka broker, then polls for a real training/inference result. Nothing
@@ -47,7 +47,7 @@ def create_configuration(client: KafkaMLClient, name: str, model_ids: list[int])
 
 
 def create_deployment(client: KafkaMLClient, **fields) -> int:
-    """Creates a deployment - this is the call that makes backend-litestar
+    """Creates a deployment - this is the call that makes backend
     submit a real Kubernetes training Job. `fields` must include at least
     `configuration` (id) and `batch`; anything else (tf_kwargs_fit,
     incremental, federated, optimizer, ...) is passed straight through -
@@ -85,13 +85,13 @@ produce. Deliberately tiny, not a "real" model - this suite is testing the
 platform's plumbing (API -> Job -> Kafka -> result), not model quality."""
 
 # Distributed: same architecture split into two nodes as the
-# model_training-upgraded/tensorflow test used, matching the README's
-# edge/cloud pattern (see model_training-upgraded/tensorflow/CLAUDE.md's
+# model_training/tensorflow test used, matching the README's
+# edge/cloud pattern (see model_training/tensorflow/CLAUDE.md's
 # CASE=3 section) - the *cloud/root* node has no father, the *edge/child*
 # node points at it. Note: distributed model code must end in a *bare*
 # expression, no `model = ` prefix and no trailing newline - see
 # mlcode_executor's `format_ml_code`, documented in
-# model_training-upgraded/tensorflow/CLAUDE.md.
+# model_training/tensorflow/CLAUDE.md.
 TF_CLOUD_MODEL_CODE = (
     'cloud_input = tf.keras.Input(shape=(4,), name="cloud_input")\n'
     'x = tf.keras.layers.Dense(8, activation="relu")(cloud_input)\n'

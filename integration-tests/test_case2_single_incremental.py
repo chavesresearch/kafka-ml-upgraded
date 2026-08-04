@@ -56,7 +56,7 @@ def test_case2_single_incremental_training():
         # group, and begin polling before any data is produced - a
         # streaming consumer group with no committed offset starts from
         # "latest", so data produced before it joins would be silently
-        # skipped (see model_training-upgraded/tensorflow/CLAUDE.md's
+        # skipped (see model_training/tensorflow/CLAUDE.md's
         # CASE=2 section for the same gotcha in manual testing).
         time.sleep(15)
 

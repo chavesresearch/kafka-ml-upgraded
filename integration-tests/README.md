@@ -2,7 +2,7 @@
 
 Real, API-driven integration tests for Kafka-ML. Each test creates a
 model, a configuration, and a deployment through **the real
-`backend-litestar` REST API** - the same calls a frontend would make, not
+`backend` REST API** - the same calls a frontend would make, not
 direct database seeding - which makes the backend submit **real
 Kubernetes Jobs/ReplicationControllers**. Each test then sends real data
 over a real Kafka broker and polls until a real training/inference result
@@ -12,26 +12,26 @@ working training container, these tests fail.
 ## What this caught
 
 Building this suite found a genuinely critical bug that had never been
-exercised before: every one of `backend-litestar`'s three real Kubernetes
+exercised before: every one of `backend`'s three real Kubernetes
 deploy code paths (`create_deployment`, `stop_inference`,
 `deploy_inference`) did `await k8s_config.load_incluster_config()`, but
 `kubernetes_asyncio.config.load_incluster_config` is a **sync** function
 in `kubernetes-asyncio==32.0.0` - it returns `None`, not a coroutine, so
 every single real deployment attempt failed with `TypeError: object
 NoneType can't be used in 'await' expression`. This had never been caught
-before because `backend-litestar`'s own port session explicitly noted this
+before because `backend`'s own port session explicitly noted this
 code path was untested against a real cluster (see its `CLAUDE.md`) -
 every prior round of `model_training`/`model_inference`/`federated-module`
 testing this project did manually constructed and applied its own pod/Job
 YAML instead of exercising the backend's actual `/deployments/`,
 `/results/inference/{id}` endpoints. This suite is the first thing to
 actually drive a real deployment through the real API, and it immediately
-found this. See `backend-litestar/app/controllers/deployments.py` and
+found this. See `backend/app/controllers/deployments.py` and
 `inferences.py` for the fix (drop the `await`).
 
 A near-identical Kubernetes-client bug (a blank `Configuration()`
 discarding the in-cluster default) was separately found in
-`federated-module-upgraded/federated_backend` and fixed in both places -
+`federated-module/federated_backend` and fixed in both places -
 see that module's `CLAUDE.md`.
 
 ## Prerequisites
@@ -102,8 +102,8 @@ verification *was* done instead):
 - **Federated modes (CASE 5-9)** - CASE=5 was verified with a real,
   complete, multi-service end-to-end round (main trainer,
   `federated_backend`, both control-logger relays, and a real edge worker
-  Job) - see `federated-module-upgraded/CLAUDE.md` and
-  `model_training-upgraded/tensorflow/CLAUDE.md`'s CASE=5 section for the
+  Job) - see `federated-module/CLAUDE.md` and
+  `model_training/tensorflow/CLAUDE.md`'s CASE=5 section for the
   full record. It isn't automated into *this* suite because it needs
   `federated_backend` and both logger services also running, which this
   suite's prerequisites don't currently stand up. Worth adding here later.
@@ -111,7 +111,7 @@ verification *was* done instead):
   import/compile-level verification only.
 - **Semi-supervised/unsupervised training** - not attempted in any part
   of this project's verification so far.
-- **PyTorch inference** - `model_inference-upgraded/pytorch` was verified
+- **PyTorch inference** - `model_inference/pytorch` was verified
   manually (see its `CLAUDE.md`); not yet added to this API-driven suite.
 - **Confusion matrix generation**, **AVRO input format** - see the
   relevant `CLAUDE.md` files; both are either untested or (AVRO) known
@@ -124,7 +124,7 @@ verification *was* done instead):
   not a `model = ...` assignment, and the code string must not end with a
   trailing newline - see `common.py`'s `TF_CLOUD_MODEL_CODE`/
   `TF_EDGE_MODEL_CODE` for a template, and
-  `model_training-upgraded/tensorflow/CLAUDE.md` for why.
+  `model_training/tensorflow/CLAUDE.md` for why.
 - **Creating a distributed configuration**: only pass the *root* (father-less)
   model's id to `POST /configurations/` - `_expand_with_children` walks the
   father/child chain automatically. Passing the child's id too doesn't
@@ -144,7 +144,7 @@ verification *was* done instead):
   `tf_kwargs_fit`/`tf_kwargs_val` and `pth_kwargs_fit`/`pth_kwargs_val` are
   both `"key=value, key2=value2"` strings (parsed by
   `parse_kwargs_fit`'s `eval()` per value - matches the platform's
-  existing trust model, not hardened, see `backend-litestar/CLAUDE.md`),
+  existing trust model, not hardened, see `backend/CLAUDE.md`),
   but the *keys* differ: TensorFlow's `.fit()` kwargs (`epochs=1`) vs.
   PyTorch/ignite's trainer-run kwargs (`max_epochs=1`).
 - **Real inference deployments are long-running** (a

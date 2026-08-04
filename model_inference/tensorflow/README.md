@@ -9,9 +9,21 @@ A brief introduction of its files:
 - File `utils.py` common functions used by other files.
 
 ## Installation for local development
-Run `python -m pip install -r requirements.txt` to install the dependencies used by this module. 
 
-Once installed, you have to set each one of the environment vars below to execute the inference task. For instance, you can run `export INPUT_TOPIC=ertis-input` to export the `INPUT_TOPIC` var with the value `ertis-input`. Once configured all the vars, execute `python inference.py` to execute the inference task.
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) - `pyproject.toml` + `uv.lock`, no `requirements.txt`.
+
+```
+uv sync
+```
+
+Once installed, you have to set each one of the environment vars below to execute the inference task. For instance, you can run `export INPUT_TOPIC=ertis-input` to export the `INPUT_TOPIC` var with the value `ertis-input`. Once configured all the vars, execute `uv run inference.py` to execute the inference task.
+
+## Behavioral notes vs. the original
+
+- `decoders.py`'s `AvroDecoder` switched from `tensorflow-io`'s Avro op to `fastavro` (`tensorflow-io` hasn't shipped a release since mid-2023 and caps out at TF 2.16) - same replacement already applied in `model_training/tensorflow` and `mlcode_executor/tfexecutor`.
+- `utils.py`'s numpy type table drops the removed `np.float`/`np.string`/`np.bool` aliases in favor of their real names (`np.float64`, `np.bytes_`, `np.bool_`).
+
+See `CLAUDE.md` one level up for the full verification record.
 
 ## Environments vars received
 

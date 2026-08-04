@@ -2,7 +2,7 @@
 
 Trains a real (tiny) model through the same flow as CASE=1, then deploys
 it for real-time inference via `POST /results/inference/{result_id}` -
-which makes backend-litestar create a real Kubernetes
+which makes backend create a real Kubernetes
 ReplicationController - sends one raw message to the inference input
 topic, and checks a real prediction lands on the output topic.
 """

@@ -1,4 +1,18 @@
+import inspect
 import logging
+
+# web3==5.28.0 (kept: see pyproject.toml's setuptools<81 comment for why
+# this whole dependency chain is old) pulls in eth_abi==2.2.0 -> a
+# parsimonious version whose grammar module does `from inspect import
+# getargspec`, removed in Python 3.11. Shimmed here, before the first
+# `import web3` anywhere in the process (this module is the only entry
+# point into the web3/blockchain_utils import chain - see training.py's
+# lazy import of this class), rather than pinning a newer parsimonious:
+# eth_abi==2.2.0 constrains it to <0.9.0, and it's not worth the risk of
+# a parsimonious API break for a shim this narrow (`getargspec(x).args`
+# is a strict subset of what `getfullargspec` already returns).
+if not hasattr(inspect, "getargspec"):
+    inspect.getargspec = inspect.getfullargspec
 
 from mainTraining import *
 from callbacks import *

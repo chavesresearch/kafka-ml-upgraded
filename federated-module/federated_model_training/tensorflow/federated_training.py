@@ -15,7 +15,6 @@ from federated_singleClassicTraining import SingleClassicTraining
 from federated_singleIncrementalTraining import SingleIncrementalTraining
 from federated_distributedClassicTraining import DistributedClassicTraining
 from federated_distributedIncrementalTraining import DistributedIncrementalTraining
-from federated_blockchainSingleClassicTraining import BlockchainSingleClassicTraining
 
 if __name__ == '__main__':
   try:
@@ -36,6 +35,13 @@ if __name__ == '__main__':
     elif case == FEDERATED_DISTRIBUTED_INCREMENTAL:
       classicFederatedTraining(DistributedIncrementalTraining())
     elif case == BLOCKCHAIN_FEDERATED_NOT_DISTRIBUTED_NOT_INCREMENTAL:
+      # Imported lazily, here rather than at module level: this class (and
+      # only this one) drags in web3/eth_abi/parsimonious, a dependency
+      # chain with its own Python-3.11 compatibility shim (see that
+      # module's top) - same reasoning as
+      # model_training/tensorflow/training.py's identical lazy
+      # import of BlockchainSingleFederatedTraining.
+      from federated_blockchainSingleClassicTraining import BlockchainSingleClassicTraining
       blockchainFederatedTraining(BlockchainSingleClassicTraining())
     else:
       raise ValueError(case)

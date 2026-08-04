@@ -16,7 +16,7 @@ class ModelSource(models.Model):
 
     framework = models.TextField(default='tf')
     distributed = models.BooleanField(default=False)
-    blockchain = models.JSONField(default={})
+    blockchain = models.JSONField(default=dict)
 
     time = models.DateTimeField(default=now, editable=False)
 
@@ -42,7 +42,7 @@ class Datasource(models.Model):
     test_rate = models.DecimalField(max_digits=7, decimal_places=6, blank=True, null=True)
 
     description = models.TextField(blank=True)
-    dataset_restrictions = models.JSONField(default={}, blank=True, null=True)
+    dataset_restrictions = models.JSONField(default=dict, blank=True, null=True)
 
     time = models.DateTimeField()
 

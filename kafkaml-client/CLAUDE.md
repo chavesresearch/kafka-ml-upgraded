@@ -7,7 +7,7 @@ frontend, being more user-friendly at code."
 
 ## What it wraps
 
-`backend-litestar`'s `/models/`, `/configurations/`, `/deployments/`,
+`backend`'s `/models/`, `/configurations/`, `/deployments/`,
 `/results/`, `/results/inference/{id}`, `/inferences/{id}` endpoints -
 the core CRUD + the "wait until a real training result finishes" polling
 loop. Does **not** wrap the entire backend surface yet: datasources, IoT
@@ -39,7 +39,7 @@ See `integration-tests/README.md` for what that suite actually exercises
 
 - `create_model`/`create_configuration`/`create_deployment`/
   `deploy_inference` all have to **look the created object back up** after
-  a successful `POST`, because none of `backend-litestar`'s create
+  a successful `POST`, because none of `backend`'s create
   endpoints return the created row or an id in the response body (they
   return `201` with an empty body, matching the Django reference's
   contract - not something to "fix" here, just something this client has
@@ -67,10 +67,10 @@ See `integration-tests/README.md` for what that suite actually exercises
 Draft/PoC, not a polished, versioned SDK - no retries/backoff beyond the
 one polling loop, no async client, no typed response models (dicts
 straight from the JSON body, matching the backend's own loose
-`dict[str, Any]` request/response style - see `backend-litestar/CLAUDE.md`
+`dict[str, Any]` request/response style - see `backend/CLAUDE.md`
 for why that's a deliberate choice on the backend side too). If this gets
 adopted for real, worth adding: datasource creation helpers (so a caller
 doesn't need `kafkaml-datasources` *and* this package to fully drive an
 end-to-end flow from one dependency), typed dataclasses/TypedDicts for the
-response shapes, and async support to match `backend-litestar`'s own
+response shapes, and async support to match `backend`'s own
 fully-async design.

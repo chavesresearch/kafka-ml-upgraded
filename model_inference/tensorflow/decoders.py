@@ -1,8 +1,10 @@
-import numpy as np
-import tensorflow as tf
-import tensorflow_io as tfio
-from utils import *
+import io
 import json
+
+import fastavro
+import numpy as np
+
+from utils import *
 
 class DecoderFactory:
     """Factory class for the decoders"""
@@ -39,24 +41,30 @@ class RawDecoder:
         return decode_raw(msg, self.datatype, self.reshape)
 
 class AvroDecoder:
-    """AVRO class decoder implementation
+    """AVRO class decoder implementation.
+
+    Decodes with `fastavro` instead of the (now unmaintained,
+    TF-2.16-ceiling) `tensorflow_io.experimental.serialization.decode_avro`
+    - same replacement already applied in
+    `mlcode_executor/tfexecutor/decoders.py` and
+    `model_training/tensorflow/decoders.py`. Schema is parsed once
+    up front via `fastavro.parse_schema` rather than per-message; decoding
+    happens eagerly in plain Python, fine here since `decode()` is called
+    synchronously per Kafka message, never inside a traced `tf.data`
+    pipeline.
         ARGS:
             configuration (dic): configuration properties
         Attributes:
-            scheme(str): scheme of the AVRO implementation
+            data_schema (dict): parsed Avro schema for the input data
 
     """
     def __init__(self, configuration):
-        self.data_scheme = str(configuration['data_scheme']).replace("'", '"')
-    
+        data_scheme = json.loads(str(configuration['data_scheme']).replace("'", '"'))
+        self.data_schema = fastavro.parse_schema(data_scheme)
+
     def decode(self, msg):
-        decode_x = tfio.experimental.serialization.decode_avro(msg, schema=self.data_scheme)
-      
-        res= []
-        for key in decode_x.keys():
-            res.append(decode_x.get(key))
-        
-        return res
+        record = fastavro.schemaless_reader(io.BytesIO(msg), self.data_schema)
+        return [record[field['name']] for field in self.data_schema['fields']]
 
 class JsonDecoder:
     """JSON class decoder implementation"""

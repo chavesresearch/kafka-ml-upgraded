@@ -1,7 +1,7 @@
 """PyTorch classic training - real API + real Kafka.
 
 PyTorch's trainer has no `CASE` dispatch - a single, non-distributed,
-non-incremental training mode (see model_training-upgraded/pytorch/CLAUDE.md).
+non-incremental training mode (see model_training/pytorch/CLAUDE.md).
 """
 
 import uuid

@@ -1,39 +1,76 @@
-# Front-end
+# Kafka-ML Frontend (Vue 3 + TypeScript)
 
-This project provides the front-end of Kafka-ML and was generated with [Angular CLI](https://github.com/angular/angular-cli) version 9.1.0-next.2.
+Vue 3 + TypeScript + Vite + PrimeVue rewrite of the original Angular 9 frontend
+(`../frontend`). Same screens, same routes, same backend API — a fraction of
+the size (~76 kB gzipped main bundle) and a maintained toolchain, with a
+refreshed UI: a persistent sidebar shell, light/dark theming, and Monaco-editor
+code fields for model definitions and Tasmota Berry scripts.
 
-A brief introduction of most important files and folders:
-- Folder `src/app/shared/*`  objects to represent front-end instances in Angular. 
-- Folder `src/app/services/*` services which communicate with the back-end. 
-- Folder `src/app/*` the rest of Angular components to implement the forms used in Kafka-ML (configuration, deployments, etc.). Each form is usually represented by component whose name ends with `-list` for visualization (e.g., `model-list`), and ending with `-view` for creation and update (e.g, `model-view`).
-- File `src/app/app-routing.module.ts` match the front-end API to the Angular components defined.
-- Folder `src/app/environments` environments used to connect with the back-end. Default `environment.ts` file, and environment.prod.ts will be used when running the front-end in production in Kubernetes.
+## Development
 
-## Development server
-Run `npm install` to install the dependencies of the front-end. Just once, npm is required.
+```bash
+npm install
+npm run dev            # http://localhost:5173
+```
 
-Run `ng serve` to execute the development server. Navigate to `http://localhost:4200/`. The app will automatically reload if you change any of the source files.
+The dev server proxies `/api` (and the `/api/ws/` WebSocket) to the Kafka-ML
+backend, rewriting the Host header to `localhost` so Django's ALLOWED_HOSTS
+accepts it. Point it at another backend with:
 
-## Code scaffolding
+```bash
+KAFKAML_BACKEND=http://192.168.218.2:6135 npm run dev
+```
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+## Build
 
-## Build for deploying in Kubernetes
+```bash
+npm run build          # vue-tsc --noEmit, then vite build; output in dist/
+npm run typecheck      # type-check only, no build
+```
 
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory. Use the `--prod` flag for a production build. This is required when generating the front-end image to be deployed in Kubernetes.
+## Tests
 
-## Running unit tests
+```bash
+npm run test:run       # single run, used by CI
+npm test               # watch mode
+npm run test:coverage  # with coverage report
+```
 
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io). Not provided yet.
+Unit tests for business logic live next to the code in `src/logic/*.test.ts`
+(deployment payload building/validation, the live visualization state
+machine, metric formatting, chart data building); `src/api.test.ts` and
+`src/ws.test.ts` cover the backend client; a couple of `src/views/*.test.ts`
+cover component wiring (data fetching, delete flows, form validation). See
+`CLAUDE.md` for the testing conventions.
 
-## Running end-to-end tests
+## UI
 
-Run `ng e2e` to execute the end-to-end tests via [Protractor](http://www.protractortest.org/).  Not provided yet.
+- **Theme**: light/dark toggle in the sidebar (persisted, and applied before
+  first paint — no flash). Built on PrimeVue's Lara Light/Dark Indigo themes;
+  custom styles read PrimeVue's CSS variables so they follow automatically.
+- **Code fields**: model imports/code and Tasmota Berry scripts use a
+  Monaco-editor component (`src/components/CodeEditor.vue`) instead of plain
+  textareas — syntax highlighting, line numbers, matches the active theme.
+  It's lazy-loaded per screen, not on the app's critical path.
 
-## Further help
+## Docker
 
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI README](https://github.com/angular/angular-cli/blob/master/README.md).
+```bash
+docker build --tag localhost:5000/frontend .
+docker push localhost:5000/frontend
+```
 
-## Environments vars when deploying the back-end in Kubernetes
-- **BACKEND_URL**: URL and port for the back-end connection (e.g, http://localhost:8000)
+The image serves the app with nginx and keeps the same runtime contract as the
+Angular image:
 
+| Env var | Default | Purpose |
+|---|---|---|
+| `BACKEND_PROXY_URL` | `http://localhost:80` | Where nginx proxies `/api` and `/api/ws/` |
+| `BACKEND_URL` | `/api` | Base URL the browser uses (written into `env.js`) |
+| `ENABLE_FEDML_BLOCKCHAIN` | `0` | Set `1` to show the blockchain-traced training toggle |
+
+Because the contract is unchanged, the existing `frontend-deployment.yaml` works
+by only swapping the image name.
+
+See `CLAUDE.md` for architecture notes, the theme system, the Monaco
+lazy-loading setup, and backend contract details.

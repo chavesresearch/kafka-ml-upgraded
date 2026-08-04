@@ -8,9 +8,16 @@ A brief introduction of its files:
 - File `utils.py` common functions used by other files.
 
 ## Installation for local development
-Run `python -m pip install -r requirements.txt` to install the dependencies used by this module. 
 
-Once installed, you have to set each one of the environment vars below to execute the inference task. For instance, you can run `export INPUT_TOPIC=ertis-input` to export the `INPUT_TOPIC` var with the value `ertis-input`. Once configured all the vars, execute `python inference.py` to execute the inference task.
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) - `pyproject.toml` + `uv.lock`, no `requirements.txt`.
+
+```
+uv sync
+```
+
+Once installed, you have to set each one of the environment vars below to execute the inference task. For instance, you can run `export INPUT_TOPIC=ertis-input` to export the `INPUT_TOPIC` var with the value `ertis-input`. Once configured all the vars, execute `uv run inference.py` to execute the inference task.
+
+See `CLAUDE.md` one level up for the full verification record and behavioral notes.
 
 ## Environments vars received
 

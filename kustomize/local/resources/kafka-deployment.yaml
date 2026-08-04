@@ -48,8 +48,8 @@ spec:
             # service here uses one - kafka_control_logger, model_training,
             # mlcode_executor's tfexecutor) hangs forever with no error at all.
             # Verified hitting exactly this while building the images this
-            # deployment runs (see mlcode_executor-litestar/CLAUDE.md and
-            # datasources-package/CLAUDE.md) before adding these three.
+            # deployment runs (see mlcode_executor/CLAUDE.md and
+            # datasources/CLAUDE.md) before adding these three.
             - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
               value: "1"
             - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR

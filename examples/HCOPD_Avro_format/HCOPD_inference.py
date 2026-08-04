@@ -3,7 +3,7 @@
 import sys
 sys.path.append(sys.path[0] + "/../..")
 
-from datasources.avro_inference import  AvroInference
+from kafkaml_datasources import AvroInference
 
 import pandas as pd
 

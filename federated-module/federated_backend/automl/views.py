@@ -35,25 +35,40 @@ def is_blank(attribute):
 
 def kubernetes_config( token=None, external_host=None ):
     """ Get Kubernetes configuration.
-        You can provide a token and the external host IP 
+        You can provide a token and the external host IP
         to access a external Kubernetes cluster. If one
         of them is not provided the configuration returned
         will be for your local machine.
         Parameters:
-            str: token 
+            str: token
             str: external_host (e.g. "https://192.168.65.3:6443")
         Return:
             Kubernetes API client
     """
-    aConfiguration = client.Configuration()
     if token != None and \
         external_host != None:
 
-        aConfiguration.host = external_host 
+        aConfiguration = client.Configuration()
+        aConfiguration.host = external_host
         aConfiguration.verify_ssl = False
         aConfiguration.api_key = { "authorization": "Bearer " + token }
-    api_client = client.ApiClient( aConfiguration) 
-    return api_client
+        return client.ApiClient(aConfiguration)
+
+    # Real bug, found via an actual in-cluster Job-creation attempt (not
+    # by inspection): `client.Configuration()`'s bare constructor does
+    # *not* inherit whatever `config.load_incluster_config()` registered
+    # as the process-wide default - it hardcodes `self._base_path =
+    # "http://localhost"` unconditionally when no `host` kwarg is given
+    # (confirmed by reading `Configuration.__init__`'s actual source, not
+    # assumed). Building a fresh blank `Configuration()` here and handing
+    # it to `ApiClient` - as the previous version of this function always
+    # did - discarded the in-cluster host/cert entirely, so every
+    # in-cluster (no token/external_host) call failed with
+    # `LocationValueError: No host specified`, 100% of the time, on any
+    # library version. `ApiClient()` with *no* Configuration argument does
+    # the right thing instead - it resolves `Configuration.get_default_copy()`
+    # internally, which *does* pick up `load_incluster_config()`'s result.
+    return client.ApiClient()
 
 def parse_kwargs_fit(kwargs_fit):
     """Converts kwargs_fit to a dictionary string

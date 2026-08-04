@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-python inference.py
+exec uv run inference.py

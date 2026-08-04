@@ -73,20 +73,21 @@ To follow this tutorial, please deploy Kafka-ML Federated Module as indicated in
 
 ### Requirements to build locally
 
-- [Python supported by Tensorflow 3.5–3.7 and PyTorch 1.10](https://www.python.org/)
-- [Node.js](https://nodejs.org/)
+- [uv](https://docs.astral.sh/uv/) - Python dependency management for every service here (`federated_backend`, both control-loggers, `federated_model_training/tensorflow`)
 - [Docker](https://www.docker.com/)
 - [kubernetes>=v1.15.5](https://kubernetes.io/)
 
 ### Steps to build Kafka-ML Federated Module
 
 In this repository you can find files to build Kafka-ML Federated Module in case you want to
-contribute.
+contribute. Each service is a `uv` project (`pyproject.toml` + `uv.lock`,
+no `requirements.txt`) - `uv sync` inside any of them installs its
+dependencies for local development.
 
 By default, Kafka-ML Federated Module will be built using CPU-only images. If you
-desire to build Kafka-ML Federated Module with images enabled for GPU acceleration, the
-`Dockerfile` and `requirements.txt` files of `federated_model_training` module
-must be modified as indicated in those files.
+desire to build Kafka-ML Federated Module with images enabled for GPU acceleration, pass
+the corresponding `--build-arg` documented at the top of each `Dockerfile`
+(`TFTAG=2.21.0-gpu` for `federated_model_training/tensorflow`).
 
 In case you want to build Kafka-ML Federated Module step-by-step, then follow the following
 steps:

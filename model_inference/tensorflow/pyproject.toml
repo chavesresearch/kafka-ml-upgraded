@@ -1,0 +1,13 @@
+[project]
+name = "kafka-ml-model-inference-tensorflow"
+version = "0.1.0"
+# Matches the Python version tensorflow/tensorflow:2.21.0 actually ships
+# (confirmed by running it, not assumed) - see
+# model_training/tensorflow/CLAUDE.md for the same finding.
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "confluent-kafka==2.15.0",
+    "fastavro==1.12.2",
+    "numpy==2.4.6",
+    "tensorflow==2.21.0",
+]

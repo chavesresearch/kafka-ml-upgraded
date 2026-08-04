@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-python training.py
+set -e
+exec uv run training.py

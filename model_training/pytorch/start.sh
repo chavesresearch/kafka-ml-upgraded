@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-python training.py
+exec uv run training.py

@@ -1,0 +1,40 @@
+[project]
+name = "kafka-ml-federated-model-training-tensorflow"
+version = "0.1.0"
+# Matches the Python version tensorflow/tensorflow:2.21.0 actually ships
+# (confirmed by running it) - same pairing as
+# model_training/tensorflow.
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "confluent-kafka==2.15.0",
+    "fastavro==1.12.2",
+    "kafka-python==3.0.9",
+    "numpy==2.4.6",
+    "py-solc-x==2.0.2",
+    # web3==5.28.0 (2022-era) does a bare `import pkg_resources` at import
+    # time; setuptools removed pkg_resources as of 81.0.0. Same pin/reason
+    # as model_training/tensorflow/pyproject.toml.
+    "setuptools<81",
+    "tensorflow==2.21.0",
+    "tf-kafka-dataset",
+    "web3==5.28.0",
+]
+
+[tool.uv.sources]
+# Same shared package as model_training/tensorflow - see that
+# pyproject.toml's comment.
+tf-kafka-dataset = { path = "../../../tf-kafka-dataset" }
+
+[tool.uv]
+# web3 (blockchain federated learning feature) depends on a pre-release
+# build of ipfshttpclient, matching model_training/tensorflow and
+# backend's same pin/reason.
+prerelease = "allow"
+
+# web3==5.28.0 directly pins protobuf<4,>=3.10.0; tensorflow==2.21.0 needs
+# protobuf>=6.31.1,<8.0.0 - disjoint ranges. Same override/reasoning as
+# model_training/tensorflow/pyproject.toml (verified empirically
+# there that web3 5.x doesn't actually touch protobuf at runtime).
+override-dependencies = [
+    "protobuf==7.35.1",
+]

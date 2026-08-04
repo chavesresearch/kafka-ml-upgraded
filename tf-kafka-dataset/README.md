@@ -63,8 +63,8 @@ client.
 Extracted from, and used by,
 [Kafka-ML](https://github.com/ertis-research/kafka-ml)'s modernized
 TensorFlow training containers
-(`model_training-upgraded/tensorflow/kafka_dataset.py` and
-`federated-module-upgraded/federated_model_training/tensorflow/kafka_dataset.py`
+(`model_training/tensorflow/kafka_dataset.py` and
+`federated-module/federated_model_training/tensorflow/kafka_dataset.py`
 both depend on this package rather than duplicating the code) - but has
 no Kafka-ML-specific behavior in it. Useful for any TensorFlow + Kafka
 project.
