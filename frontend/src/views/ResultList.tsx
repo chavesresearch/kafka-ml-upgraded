@@ -22,7 +22,7 @@ import DataTable from '@/components/DataTable'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getResults, getResultsOfDeployment, deleteResult, stopTraining, getTrainedModel, downloadBlob } from '@/api'
 import { useNotify } from '@/notify'
-import { getLastMetric } from '@/logic/format'
+import { getLastMetric, formatDate } from '@/logic/format'
 import type { TrainingResult, TrainingStatus } from '@/types'
 
 const statusIcons: Record<TrainingStatus, typeof PencilLine> = {
@@ -136,7 +136,11 @@ export default function ResultList() {
         return <Icon className={`size-4 ${statusColor[row.original.status]}`} aria-label={row.original.status} />
       },
     },
-    { accessorKey: 'status_changed', header: 'Last status change' },
+    {
+      accessorKey: 'status_changed',
+      header: 'Last status change',
+      cell: ({ row }) => formatDate(row.original.status_changed),
+    },
     {
       id: 'actions',
       header: 'Actions',

@@ -56,8 +56,15 @@ export default function DataTable<T>({ columns, data, getRowId }: DataTableProps
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                {headerGroup.headers.map((header, i) => (
+                  <TableHead
+                    key={header.id}
+                    className={
+                      i === headerGroup.headers.length - 1
+                        ? 'sticky right-0 bg-card shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.1)]'
+                        : undefined
+                    }
+                  >
                     {header.isPlaceholder ? null : header.column.getCanSort() ? (
                       <button
                         type="button"
@@ -83,13 +90,25 @@ export default function DataTable<T>({ columns, data, getRowId }: DataTableProps
                 </TableCell>
               </TableRow>
             ) : (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                const cells = row.getVisibleCells()
+                return (
+                  <TableRow key={row.id}>
+                    {cells.map((cell, i) => (
+                      <TableCell
+                        key={cell.id}
+                        className={
+                          i === cells.length - 1
+                            ? 'sticky right-0 bg-card shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.1)]'
+                            : undefined
+                        }
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>

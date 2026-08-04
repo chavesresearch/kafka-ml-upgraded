@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useConfirm } from '@/hooks/useConfirm'
 import { getConfigurations, deleteConfiguration } from '@/api'
 import { useNotify } from '@/notify'
+import { formatDate } from '@/logic/format'
 import type { Configuration } from '@/types'
 
 export default function ConfigurationList() {
@@ -110,10 +111,10 @@ export default function ConfigurationList() {
                       key={deployment.id}
                       variant="secondary"
                       size="sm"
-                      title={`View Deployment ${deployment.time}`}
+                      title={`View Deployment ${formatDate(deployment.time)}`}
                       asChild
                     >
-                      <Link to={`/results/${deployment.id}`}>{deployment.time}</Link>
+                      <Link to={`/results/${deployment.id}`}>{formatDate(deployment.time)}</Link>
                     </Button>
                   ))}
                 </div>

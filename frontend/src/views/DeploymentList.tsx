@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Eye, MoreVertical, Trash2 } from 'lucide-react'
+import { Eye, MoreVertical, Trash2, PencilLine, LogIn, Square, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useConfirm } from '@/hooks/useConfirm'
 import { getDeployments, getDeploymentsOfConfiguration, getConfiguration, deleteDeployment } from '@/api'
 import { useNotify } from '@/notify'
+import { formatDate } from '@/logic/format'
 import type { Configuration, DeploymentInfo, TrainingStatus } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +17,16 @@ const statusClass: Record<TrainingStatus, string> = {
   deployed: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
   stopped: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
   finished: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+}
+
+// Same icon-per-status mapping ResultList.tsx uses - status here was
+// previously conveyed by chip color alone, not colorblind-friendly and
+// inconsistent with how the Training/Results table shows the same status.
+const statusIcons: Record<TrainingStatus, typeof PencilLine> = {
+  created: PencilLine,
+  deployed: LogIn,
+  stopped: Square,
+  finished: Check,
 }
 
 export default function DeploymentList() {
@@ -85,7 +96,7 @@ export default function DeploymentList() {
             <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
               <div>
                 <h3 className="font-semibold">Deployment {deployment.id}</h3>
-                <p className="text-sm text-muted-foreground">{deployment.time}</p>
+                <p className="text-sm text-muted-foreground">{formatDate(deployment.time)}</p>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -107,20 +118,24 @@ export default function DeploymentList() {
               <div>
                 <h4 className="mb-1.5 font-semibold">Training results</h4>
                 <div className="flex flex-col items-start gap-1.5">
-                  {deployment.results.map((result) => (
-                    <Button
-                      key={result.id}
-                      size="sm"
-                      className={cn('h-auto max-w-full py-1 whitespace-normal', statusClass[result.status])}
-                      variant="secondary"
-                      title={`Result ${result.id} status ${result.status}`}
-                      asChild
-                    >
-                      <Link to={`/results/${deployment.id}`}>
-                        Model {result.model.name}, last change {result.status_changed}
-                      </Link>
-                    </Button>
-                  ))}
+                  {deployment.results.map((result) => {
+                    const StatusIcon = statusIcons[result.status]
+                    return (
+                      <Button
+                        key={result.id}
+                        size="sm"
+                        className={cn('h-auto max-w-full gap-1.5 py-1 whitespace-normal', statusClass[result.status])}
+                        variant="secondary"
+                        title={`Result ${result.id} - status: ${result.status}, last change: ${formatDate(result.status_changed)}`}
+                        asChild
+                      >
+                        <Link to={`/results/${deployment.id}`}>
+                          <StatusIcon className="size-3.5 shrink-0" />
+                          Model {result.model.name}
+                        </Link>
+                      </Button>
+                    )
+                  })}
                 </div>
               </div>
               <div>

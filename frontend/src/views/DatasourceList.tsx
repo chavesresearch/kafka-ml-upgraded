@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import DataTable from '@/components/DataTable'
 import { getDatasources, deployDatasource } from '@/api'
 import { useNotify } from '@/notify'
-import { truncate } from '@/logic/format'
+import { truncate, formatDate } from '@/logic/format'
 import type { Datasource } from '@/types'
 
 export default function DatasourceList() {
@@ -57,7 +57,11 @@ export default function DatasourceList() {
     { accessorKey: 'validation_rate', header: 'Validation rate', enableSorting: false },
     { accessorKey: 'test_rate', header: 'Test rate', enableSorting: false },
     { accessorKey: 'total_msg', header: 'Total msg', enableSorting: false },
-    { accessorKey: 'time', header: 'Time' },
+    {
+      accessorKey: 'time',
+      header: 'Time',
+      cell: ({ row }) => formatDate(row.original.time),
+    },
     {
       id: 'send',
       header: 'Send again',

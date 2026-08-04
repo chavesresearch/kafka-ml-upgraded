@@ -35,6 +35,37 @@ const navItems: NavItem[] = [
   { label: 'IoT Devices', to: '/devices', icon: Wifi },
 ]
 
+// Create/edit/detail routes use singular, kebab-cased paths
+// (/model-create, /model/:id, /deploy/:id, ...) that never match their
+// section's plural nav path (/models) via a plain startsWith - so the
+// topbar fell back to a generic "Kafka-ML" label on every form/detail
+// screen, exactly where knowing which section you're in matters most.
+// Checked most-specific-first.
+const sectionPatterns: { prefix: string; label: string }[] = [
+  { prefix: '/results/inference-iot/', label: 'Inference' },
+  { prefix: '/results/inference/', label: 'Inference' },
+  { prefix: '/results/chart/', label: 'Training' },
+  { prefix: '/results', label: 'Training' },
+  { prefix: '/model-create', label: 'Models' },
+  { prefix: '/model/', label: 'Models' },
+  { prefix: '/models', label: 'Models' },
+  { prefix: '/configuration-create', label: 'Configurations' },
+  { prefix: '/configuration/', label: 'Configurations' },
+  { prefix: '/configurations', label: 'Configurations' },
+  { prefix: '/deploy/', label: 'Configurations' },
+  { prefix: '/deployments', label: 'Deployments' },
+  { prefix: '/inferences', label: 'Inference' },
+  { prefix: '/datasources', label: 'Datasources' },
+  { prefix: '/visualization', label: 'Visualization' },
+  { prefix: '/devices-create', label: 'IoT Devices' },
+  { prefix: '/device/', label: 'IoT Devices' },
+  { prefix: '/devices', label: 'IoT Devices' },
+]
+
+function sectionLabelFor(pathname: string): string {
+  return sectionPatterns.find((p) => pathname.startsWith(p.prefix))?.label ?? 'Kafka-ML'
+}
+
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="flex flex-1 flex-col gap-0.5 p-3">
@@ -80,7 +111,7 @@ export default function Layout() {
   const location = useLocation()
   const { isDark, toggle } = useTheme()
 
-  const currentLabel = navItems.find((item) => location.pathname.startsWith(item.to))?.label ?? 'Kafka-ML'
+  const currentLabel = sectionLabelFor(location.pathname)
 
   return (
     <div className="grid min-h-svh md:grid-cols-[240px_1fr]">

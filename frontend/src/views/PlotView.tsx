@@ -42,7 +42,13 @@ export default function PlotView() {
       const metrics = data.metrics || []
       setMetricsRetrieved(metrics)
       // Offer only base metric names; picking one also plots its "<name>_val" series.
-      setAvailableMetrics(availableMetricNames(metrics))
+      const names = availableMetricNames(metrics)
+      setAvailableMetrics(names)
+      // Auto-select everything on first load so the chart isn't blank with
+      // no indication a metric needs picking - but don't clobber a
+      // deliberate selection the user already narrowed down to on a
+      // manual Refresh click.
+      setSelectedMetrics((current) => (current.length === 0 ? names : current))
       setConfMatrixRetrieved(data.conf_mat)
 
       if (data.conf_mat != null) {
@@ -76,7 +82,7 @@ export default function PlotView() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <h1 className="text-xl font-semibold">Training result {resultID} Metrics charts</h1>
+        <h1 className="text-xl font-semibold">Training result {resultID} — Metrics charts</h1>
         <span className="flex-1" />
         <Button variant="ghost" size="icon" title="Refresh" onClick={refreshData}>
           <RefreshCw className="size-4" />

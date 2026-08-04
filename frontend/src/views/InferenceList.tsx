@@ -6,7 +6,7 @@ import DataTable from '@/components/DataTable'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getInferences, stopInference, deleteInference } from '@/api'
 import { useNotify } from '@/notify'
-import { truncate } from '@/logic/format'
+import { truncate, formatDate } from '@/logic/format'
 import type { Inference } from '@/types'
 
 export default function InferenceList() {
@@ -75,7 +75,11 @@ export default function InferenceList() {
     { accessorKey: 'output_topic', header: 'Kafka output topic', enableSorting: false },
     { accessorKey: 'output_upper', header: 'Kafka output to upper model', enableSorting: false },
     { accessorKey: 'limit', header: 'Prediction limit', enableSorting: false },
-    { accessorKey: 'time', header: 'Time' },
+    {
+      accessorKey: 'time',
+      header: 'Time',
+      cell: ({ row }) => formatDate(row.original.time),
+    },
     {
       accessorKey: 'status',
       header: 'Status',
