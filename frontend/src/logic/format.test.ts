@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { truncate, getLastMetric, formatDate } from './format'
+import { truncate, buildMetricsTable, formatDate } from './format'
 
 describe('truncate', () => {
   it('returns an empty string for falsy input', () => {
@@ -17,20 +17,46 @@ describe('truncate', () => {
   })
 })
 
-describe('getLastMetric', () => {
-  it('returns an empty string when metrics is null/undefined', () => {
-    expect(getLastMetric(null)).toBe('')
-    expect(getLastMetric(undefined)).toBe('')
+describe('buildMetricsTable', () => {
+  it('returns an empty array when all three dicts are null/undefined', () => {
+    expect(buildMetricsTable(null, null, null)).toEqual([])
+    expect(buildMetricsTable(undefined, undefined, undefined)).toEqual([])
   })
 
-  it('formats the last value of each metric series', () => {
-    const result = getLastMetric({ loss: [0.9, 0.5, 0.31234567], accuracy: [0.1, 0.6, 0.982] })
-    expect(result).toBe('loss: 0.31235\naccuracy: 0.982')
+  it('merges same-named metrics from all three splits into one row each, sorted by name', () => {
+    const rows = buildMetricsTable(
+      { accuracy: [0.5357142686843872], loss: [0.7193791270256042] },
+      { accuracy: [0.375], loss: [0.7342627048492432] },
+      { accuracy: [0.728183925151825], loss: [0.5] }
+    )
+    expect(rows).toEqual([
+      { name: 'accuracy', train: 0.53571, val: 0.375, test: 0.72818 },
+      { name: 'loss', train: 0.71938, val: 0.73426, test: 0.5 },
+    ])
+  })
+
+  it('uses the last value of a multi-epoch series', () => {
+    const rows = buildMetricsTable({ loss: [0.9, 0.5, 0.31234567] }, null, null)
+    expect(rows).toEqual([{ name: 'loss', train: 0.31235, val: undefined, test: undefined }])
   })
 
   it('rounds to 5 decimal places', () => {
-    const result = getLastMetric({ loss: [0.123456789] })
-    expect(result).toBe('loss: 0.12346')
+    const rows = buildMetricsTable({ loss: [0.123456789] }, null, null)
+    expect(rows[0].train).toBe(0.12346)
+  })
+
+  it('leaves a metric missing from a split as undefined, not 0 or NaN', () => {
+    // e.g. no test set was configured for this deployment.
+    const rows = buildMetricsTable({ loss: [0.1] }, { loss: [0.2] }, {})
+    expect(rows).toEqual([{ name: 'loss', train: 0.1, val: 0.2, test: undefined }])
+  })
+
+  it('includes a metric name that only appears in one split', () => {
+    const rows = buildMetricsTable({ loss: [0.1], custom_metric: [42] }, { loss: [0.2] }, null)
+    expect(rows).toEqual([
+      { name: 'custom_metric', train: 42, val: undefined, test: undefined },
+      { name: 'loss', train: 0.1, val: 0.2, test: undefined },
+    ])
   })
 })
 

@@ -18,11 +18,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import DataTable from '@/components/DataTable'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getResults, getResultsOfDeployment, deleteResult, stopTraining, getTrainedModel, downloadBlob } from '@/api'
 import { useNotify } from '@/notify'
-import { getLastMetric, formatDate } from '@/logic/format'
+import { buildMetricsTable, formatDate } from '@/logic/format'
 import type { TrainingResult, TrainingStatus } from '@/types'
 
 const statusIcons: Record<TrainingStatus, typeof PencilLine> = {
@@ -205,30 +206,56 @@ export default function ResultList() {
       <DataTable columns={columns} data={results} getRowId={(r) => String(r.id)} />
 
       <Dialog open={metricsDialogOpen} onOpenChange={setMetricsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Metrics</DialogTitle>
+            <DialogTitle>Metrics{metricsDialogData && ` — Result ${metricsDialogData.id}`}</DialogTitle>
           </DialogHeader>
-          {metricsDialogData && (
-            <div className="space-y-3 text-sm">
-              <div>
-                <h4 className="font-semibold">Training metrics</h4>
-                <pre className="whitespace-pre-wrap">{getLastMetric(metricsDialogData.train_metrics)}</pre>
-              </div>
-              <div>
-                <h4 className="font-semibold">Validation metrics</h4>
-                <pre className="whitespace-pre-wrap">{getLastMetric(metricsDialogData.val_metrics)}</pre>
-              </div>
-              <div>
-                <h4 className="font-semibold">Test metrics</h4>
-                <pre className="whitespace-pre-wrap">{getLastMetric(metricsDialogData.test_metrics)}</pre>
-              </div>
-              <div>
-                <h4 className="font-semibold">Training time</h4>
-                <div>{metricsDialogData.training_time}</div>
-              </div>
-            </div>
-          )}
+          {metricsDialogData &&
+            (() => {
+              const rows = buildMetricsTable(
+                metricsDialogData.train_metrics,
+                metricsDialogData.val_metrics,
+                metricsDialogData.test_metrics
+              )
+              return rows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No metrics reported yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Metric</TableHead>
+                        <TableHead className="text-right">Training</TableHead>
+                        <TableHead className="text-right">Validation</TableHead>
+                        <TableHead className="text-right">Test</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((row) => (
+                        <TableRow key={row.name}>
+                          <TableCell className="font-medium">{row.name}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.train ?? <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.val ?? <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.test ?? <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {metricsDialogData.training_time != null && (
+                    <p className="text-sm text-muted-foreground">
+                      Training time: {metricsDialogData.training_time}
+                      {typeof metricsDialogData.training_time === 'number' ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
         </DialogContent>
       </Dialog>
       {dialog}

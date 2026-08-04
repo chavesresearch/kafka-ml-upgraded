@@ -23,15 +23,44 @@ export function formatDate(iso: string | null | undefined): string {
   )
 }
 
-// Renders the last value of each metric series, e.g. "loss: 0.123\naccuracy: 0.98".
-// metrics is a dict of {metricName: [values...]}, as stored on a TrainingResult.
-export function getLastMetric(metrics: Record<string, number[]> | null | undefined): string {
-  if (!metrics) return ''
-  return Object.keys(metrics)
-    .map((name) => {
-      const series = metrics[name]
-      const value = Math.round((series[series.length - 1] + Number.EPSILON) * 100000) / 100000
-      return `${name}: ${value}`
-    })
-    .join('\n')
+function lastValue(series: number[] | undefined): number | undefined {
+  if (!series || series.length === 0) return undefined
+  return Math.round((series[series.length - 1] + Number.EPSILON) * 100000) / 100000
+}
+
+export interface MetricsTableRow {
+  name: string
+  train: number | undefined
+  val: number | undefined
+  test: number | undefined
+}
+
+// Merges a TrainingResult's three independent metric dicts (train/val/test,
+// each {metricName: [values...]} with the *same* plain metric names -
+// confirmed against a real result: train_metrics/val_metrics/test_metrics
+// all key off "accuracy"/"loss", no "val_"/"test_" prefix within each dict,
+// unlike the chart endpoint's combined series) into one row per metric
+// name, last value of each series, for a side-by-side table instead of
+// three separate text dumps. A metric missing from a given split (e.g. no
+// test set configured) comes back as `undefined` for that column - the
+// caller renders that as an em dash, not "undefined" or a blank cell that
+// could be mistaken for a real 0.
+export function buildMetricsTable(
+  train: Record<string, number[]> | null | undefined,
+  val: Record<string, number[]> | null | undefined,
+  test: Record<string, number[]> | null | undefined
+): MetricsTableRow[] {
+  const names = new Set([
+    ...Object.keys(train ?? {}),
+    ...Object.keys(val ?? {}),
+    ...Object.keys(test ?? {}),
+  ])
+  return Array.from(names)
+    .sort()
+    .map((name) => ({
+      name,
+      train: lastValue(train?.[name]),
+      val: lastValue(val?.[name]),
+      test: lastValue(test?.[name]),
+    }))
 }
