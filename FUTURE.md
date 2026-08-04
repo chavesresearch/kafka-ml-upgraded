@@ -154,11 +154,34 @@ nice-to-have polish.
 
 ## Medium
 
-1. **`federated-module/` duplicates the main backend** rather than reusing
-   it — its own `federated_backend/{automl,autoweb}`, `manage.py`,
-   `Dockerfile`. Any core fix (auth, serializers, model validation) has to
-   be applied twice. Worth evaluating whether federated deployment could
-   become a mode of the main backend instead of a parallel Django project.
+1. ~~`federated-module/` duplicates the main backend~~ — **evaluated
+   (2026-08-04), recommendation: don't merge.** Read both codebases side
+   by side before concluding, rather than going on the directory
+   structure alone: `federated_backend` has exactly 2 models
+   (`ModelSource`, `Datasource` - both denormalized snapshots shaped for
+   `check_colission()`'s comparison, not full domain objects) and 2
+   endpoints (`/federated-datasources/`, `/model-control-logger/`).
+   `backend` has 7 models and 7 controller modules covering the entire
+   platform CRUD surface (models, configurations, deployments, results,
+   inferences, datasources, IoT devices). The actual overlap is much
+   narrower than "duplicates the main backend" suggests - `federated_
+   backend` doesn't reimplement any of that CRUD surface at all; it's a
+   small (587-line), purpose-built collision-matching orchestrator with
+   its own lifecycle (separate `federated-kafkaml` ServiceAccount/
+   namespace subtree already). The one real duplicated *bug* found across
+   both (a bare `client.Configuration()` discarding the in-cluster
+   default - see `backend/CLAUDE.md` bug #9 and `federated-module/
+   CLAUDE.md`'s `federated_backend/` bug #3) is now independently fixed
+   in both, and can't be shared as a common utility without either backend
+   importing from the other (`kubernetes_asyncio` vs. sync `kubernetes`,
+   Litestar vs. Django, Python 3.12 project boundaries that are
+   deliberately separate deployable units) - not worth the coupling for
+   two ~3-line functions. Merging would mean the actively-deployed main
+   backend absorbing federated-specific collision-matching and Job-
+   creation concerns it doesn't otherwise have, for a marginal DRY win on
+   a service that's small, working, and cleanly isolated today - a step
+   backward on separation of concerns, not forward. No code changes as a
+   result of this evaluation.
 
 2. **`examples/*/requirements.txt` pin old, unaudited versions per example**
    with nothing in CI verifying they still install or run — likely to
