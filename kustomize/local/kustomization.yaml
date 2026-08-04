@@ -2,6 +2,7 @@ resources:
   - resources/namespace.yaml
   - resources/kafka-deployment.yaml
   - resources/kafka-service.yaml
+  - resources/blockchain-devnet.yaml
   - "../v1.0"
 
 namespace: kafkaml
@@ -11,6 +12,19 @@ configMapGenerator:
     behavior: merge
     literals:
       - brokers=kafka:9092
+      # CASE=9 (blockchain-traced federated learning) against the local
+      # Anvil devnet (resources/blockchain-devnet.yaml) instead of a real
+      # Ethereum testnet - see that file's comment for why. Chain ID 31337
+      # and the account below are Anvil's own well-known defaults (account
+      # #0 of its deterministic dev mnemonic), not secrets - anyone running
+      # this locally gets the exact same funded account, by design.
+      - fedml.blockchain.enable=1
+      - fedml.blockchain.rpc-url=http://blockchain:8545
+      - fedml.blockchain.chain-id=31337
+      - fedml.blockchain.network-id=31337
+      - fedml.blockchain.wallet-address=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+      - fedml.blockchain.wallet-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+      - fedml.blockchain.blockscout-url=
       # Locally-built training/inference images (see the `images:` block
       # below for the executor/backend/frontend equivalents) - dynamically
       # created Jobs (job_manifest_generator.py) read these via

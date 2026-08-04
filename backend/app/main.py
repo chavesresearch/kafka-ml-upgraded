@@ -38,7 +38,6 @@ def _maybe_create_blockchain_token() -> None:
             token_symbol=settings.FEDML_BLOCKCHAIN_TOKEN_SYMBOL,
             rpc_url=settings.FEDML_BLOCKCHAIN_RPC_URL,
             chain_id=settings.FEDML_BLOCKCHAIN_CHAIN_ID,
-            solc_version="0.8.6",
             wallet_address=settings.FEDML_BLOCKCHAIN_WALLET_ADDRESS,
             wallet_key=settings.FEDML_BLOCKCHAIN_WALLET_KEY,
         )

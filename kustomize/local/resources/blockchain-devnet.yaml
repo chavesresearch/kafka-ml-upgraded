@@ -1,0 +1,49 @@
+# Local Ethereum devnet for CASE=9 (blockchain-traced federated learning),
+# standing in for the "real or local-testnet Ethereum node" the original
+# feature always assumed. Anvil (Foundry's dev chain, single static
+# binary) - deterministic pre-funded accounts, instant blocks, zero cost,
+# zero external network dependency once the image is pulled. Same
+# local-stand-in role `kafka-deployment.yaml` in this directory already
+# plays for Kafka: real protocol, real transactions, just not multi-node
+# production infra. See federated-module/CLAUDE.md's CASE=9 section for
+# why this replaces "import/compile-level verification only".
+#
+# --host 0.0.0.0 so the Service can proxy to it; no --chain-id override
+# (Anvil's default, 31337, matches the well-known "Anvil devnet" chain ID
+# every Ethereum tool already recognizes - MetaMask, Foundry itself, etc.)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    name: blockchain
+  name: blockchain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: blockchain
+  template:
+    metadata:
+      labels:
+        name: blockchain
+      name: blockchain
+    spec:
+      containers:
+        - image: ghcr.io/foundry-rs/foundry:latest
+          name: blockchain
+          imagePullPolicy: IfNotPresent
+          command: ["anvil"]
+          args: ["--host", "0.0.0.0"]
+          ports:
+            - containerPort: 8545
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blockchain
+spec:
+  selector:
+    name: blockchain
+  ports:
+    - port: 8545
+      targetPort: 8545

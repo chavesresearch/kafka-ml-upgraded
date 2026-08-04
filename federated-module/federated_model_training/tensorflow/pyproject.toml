@@ -10,7 +10,6 @@ dependencies = [
     "fastavro==1.12.2",
     "kafka-python==3.0.9",
     "numpy==2.4.6",
-    "py-solc-x==2.0.2",
     # web3==5.28.0 (2022-era) does a bare `import pkg_resources` at import
     # time; setuptools removed pkg_resources as of 81.0.0. Same pin/reason
     # as model_training/tensorflow/pyproject.toml.

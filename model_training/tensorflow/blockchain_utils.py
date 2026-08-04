@@ -1,11 +1,28 @@
 import requests
 import json
 import logging
+import os
 import urllib.parse
 from web3 import Web3
-from solcx import compile_standard, install_solc, set_solc_version
 
 SOLC_VERSION = "0.8.6"
+
+# contracts/FederatedLearning.json is a precompiled artifact (abi +
+# bytecode), not compiled from source at trainer-pod startup - see
+# backend/app/blockchain.py's identical change for the full reasoning
+# (solcx only ships amd64 solc binaries, which don't run under Rosetta on
+# an Apple Silicon host even inside an amd64-emulated container - a real
+# blocker found by actually trying to run CASE=9 against a local Ethereum
+# devnet, not by inspection). FederatedLearning.sol's constructor takes no
+# arguments, so unlike the ERC20 token there's no per-deployment
+# parameterization to preserve - compiling it once ahead of time loses
+# nothing.
+_ARTIFACT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "contracts", "FederatedLearning.json")
+
+
+def _load_artifact() -> dict:
+    with open(_ARTIFACT_PATH) as f:
+        return json.load(f)
 
 
 def create_federated_learning_smart_contract(
@@ -26,45 +43,9 @@ def create_federated_learning_smart_contract(
         str: Smart contract ABI
     """
 
-    # Install the solidity compiler
-    install_solc(SOLC_VERSION)
-
-    # Set the solidity compiler version
-    set_solc_version(SOLC_VERSION)
-
-    # compile the contract from contracts/FederatedLearning.sol
-
-    federated_learning_file = open("contracts/FederatedLearning.sol", "r").read()
-
-    compiled_sol = compile_standard(
-        {
-            "language": "Solidity",
-            "sources": {"FederatedLearning.sol": {"content": federated_learning_file}},
-            "settings": {
-                "outputSelection": {
-                    "*": {
-                        "*": [
-                            "abi",
-                            "metadata",
-                            "evm.bytecode",
-                            "evm.bytecode.sourceMap",
-                        ]  # output needed to interact with and deploy contract
-                    }
-                }
-            },
-        },
-        solc_version=SOLC_VERSION,
-    )
-
-    # get bytecode
-    bytecode = compiled_sol["contracts"]["FederatedLearning.sol"]["FederatedLearning"][
-        "evm"
-    ]["bytecode"]["object"]
-    abi = json.loads(
-        compiled_sol["contracts"]["FederatedLearning.sol"]["FederatedLearning"][
-            "metadata"
-        ]
-    )["output"]["abi"]
+    artifact = _load_artifact()
+    abi = artifact["abi"]
+    bytecode = artifact["bytecode"]
 
     # Connect to the blockchain
     contract = eth_web3_connection.eth.contract(abi=abi, bytecode=bytecode)
@@ -101,13 +82,12 @@ def create_federated_learning_smart_contract(
     if eth_blockscout_url:
         logging.info("Trying to verify contract on blockscout...")
         try:
+            federated_learning_file = open(
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "contracts", "FederatedLearning.sol")
+            ).read()
             contract_verify_json = {
                 "addressHash": transaction_receipt.contractAddress,
-                "compilerVersion": json.loads(
-                    compiled_sol["contracts"]["FederatedLearning.sol"][
-                        "FederatedLearning"
-                    ]["metadata"]
-                )["compiler"]["version"],
+                "compilerVersion": SOLC_VERSION,
                 "name": "FederatedLearning",
                 "optimization": False,
                 "contractSourceCode": federated_learning_file,

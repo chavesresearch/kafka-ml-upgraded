@@ -44,7 +44,7 @@ backend-deployment.yaml`, which points at this port's image.
 | `app/schemas/__init__.py` | Plain-function response dict builders, field-for-field equivalents of `automl/serializers.py`'s `ModelSerializer` classes. Add a new field here (not a new abstraction) when a model gains one. |
 | `app/controllers/*.py` | Route handlers, one module per resource, equivalent of `automl/views/*.py`. Request bodies are typed `dict[str, Any]` (not per-field structs) to mirror the original's own `json.loads(request.body)` + manual validation style — this was a deliberate choice for a faithful port, not an oversight. |
 | `app/job_manifest_generator.py` | Kubernetes Job manifest builders. Ported **unchanged** from `automl/views/utils/job_manifest_generator.py` — it never depended on Django, just takes a `settings`-like object. |
-| `app/blockchain.py` | ERC20 token deployment for the optional `ENABLE_FEDML_BLOCKCHAIN` feature. Contract sources are under `app/contracts/` (copied from the old Django backend's `autoweb/contracts/`, preserved at `../../kafka-ml/backend/autoweb/contracts/`). |
+| `app/blockchain.py` | ERC20 token deployment for the optional `ENABLE_FEDML_BLOCKCHAIN` feature. Contract sources are under `app/contracts/` (copied from the old Django backend's `autoweb/contracts/`, preserved at `../../kafka-ml/backend/autoweb/contracts/`), plus a new `Token.sol` (constructor-parameterized, see below) and a precompiled `app/contracts/Token.json` artifact - the deploy step loads that artifact and passes `token_name`/`token_symbol` as real constructor arguments, rather than compiling a dynamically-generated source string via `solcx` on every backend startup (see "Bugs found" below for why that changed). |
 | `app/websocket.py` | The `/ws/` Kafka→browser visualization relay. |
 | `app/main.py` | App wiring: routes, CORS, DI providers, startup/shutdown lifecycle. |
 | `migrations/` | Alembic; `env.py` is async (`async_engine_from_config` + `run_sync`). |
@@ -208,6 +208,44 @@ history (`../../kafka-ml/backend`) or cross-checking behavior:
      comment in `app/utils.py` for the full explanation; the exact same
      bug (byte-identical helper) was independently found in
      `federated-module`'s `federated_backend`.
+10. **`app/blockchain.py` crashed the *entire app's* Litestar lifespan on
+    startup whenever `ENABLE_FEDML_BLOCKCHAIN=1`** - `from web3 import
+    Web3` pulls in `eth_abi` → `parsimonious`, which does `from inspect
+    import getargspec`, removed in Python 3.11. Same root cause already
+    shimmed in `model_training/tensorflow/blockchainSingleFederatedTraining.py`,
+    just never applied here. Found by actually booting this backend with
+    the feature enabled against a real Ethereum devnet, not by reading
+    the diff between Python versions - fixed with the identical
+    `inspect.getargspec = inspect.getfullargspec` shim, added before the
+    `web3` import.
+11. **`py-solc-x==2.0.2` hardcodes the now-dead `solc-bin.ethereum.org`
+    download host** (DNS doesn't resolve at all - confirmed empirically,
+    not a transient outage; the library moved to
+    `binaries.soliditylang.org` in `2.0.5`). Even after bumping the pin,
+    the downloaded **amd64** solc binary (solcx never ships any other
+    architecture) didn't run under Docker Desktop's Rosetta emulation on
+    an Apple Silicon host at all (`rosetta error: failed to open elf at
+    /lib64/ld-linux-x86-64.so.2`). Rather than keep chasing a runtime
+    solc dependency, `app/blockchain.py` was rewritten to load a
+    **precompiled** artifact (`app/contracts/Token.json`, produced once
+    via Foundry's `forge build` - genuinely multi-arch, ran natively on
+    the arm64 host) instead of calling `solcx.install_solc()`/
+    `compile_standard()` on every backend startup. This also required a
+    small contract change: the original `Token.sol` baked `token_name`/
+    `token_symbol` into the Solidity *source* via an f-string (so it
+    could never be precompiled - the source differed per deployment);
+    the base `ERC20.sol` already has a `constructor(string memory name_,
+    string memory symbol_)`, so the new `app/contracts/token/ERC20/Token.sol`
+    just forwards to it, and `token_name`/`token_symbol` are passed as
+    real constructor *arguments* at deploy time instead - one contract,
+    compiled once, deployed with different args, the same pattern any
+    real deployment tool (Truffle/Hardhat/Foundry) uses. `py-solc-x` is
+    no longer a dependency of this project at all as a result (removed
+    from `pyproject.toml`, along with `model_training/tensorflow`'s and
+    `federated-module/federated_model_training/tensorflow`'s copies of
+    the same pin - see `model_training/tensorflow/CLAUDE.md`'s CASE 6-9
+    section for the equivalent `FederatedLearning.sol` fix and the local
+    Anvil devnet this was verified against).
 
 ## Things that look like bugs but are intentionally preserved for parity
 
