@@ -25,4 +25,13 @@ COPY . /usr/src/app/
 RUN uv sync --locked
 
 RUN chmod +x ./start.sh
+
+# Run as non-root - defense in depth for consistency with the other
+# services (this one doesn't exec() user code itself - it loads a
+# serialized .h5 file - but model_inference/pytorch does, see its own
+# Dockerfile, and there's no reason for this one to run privileged
+# either).
+RUN useradd --create-home --uid 1000 kafkaml && chown -R kafkaml:kafkaml /usr/src/app
+USER kafkaml
+
 CMD ["./start.sh"]

@@ -134,10 +134,23 @@ def deploy_on_kubernetes(datasource_item, model_item, framework, case):
                         'spec': {
                             'ttlSecondsAfterFinished' : 10,
                             'template' : {
+                                'metadata': {'labels': {'app': 'kafka-ml-training'}},
                                 'spec': {
+                                    # Edge worker exec()s user-submitted model code, same as
+                                    # the main backend's job_manifest_generator.py - see
+                                    # FUTURE.md's exec() hardening note.
+                                    'securityContext': {
+                                        'seccompProfile': {'type': 'RuntimeDefault'},
+                                    },
                                     'containers': [{
                                         'image': image,
                                         'name': 'training',
+                                        'securityContext': {
+                                            'runAsNonRoot': True,
+                                            'runAsUser': 1000,
+                                            'allowPrivilegeEscalation': False,
+                                            'capabilities': {'drop': ['ALL']},
+                                        },
                                         'env': [{'name': 'KML_CLOUD_BOOTSTRAP_SERVERS', 'value': settings.KML_CLOUD_BOOTSTRAP_SERVERS},
                                                 {'name': 'DATA_BOOTSTRAP_SERVERS', 'value': settings.FEDERATED_BOOTSTRAP_SERVERS},
                                                 {'name': 'DATA_TOPIC', 'value': datasource_item['topic']},

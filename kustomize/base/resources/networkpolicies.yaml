@@ -1,0 +1,137 @@
+# Opt-in egress/ingress restrictions for the exec()-surface pods (see the
+# "Threat model: exec()'d model code" section in the root README, and
+# FUTURE.md's Critical #3).
+#
+# NOT included in kustomization.yaml's `resources:` list by default - add
+# it yourself (`- resources/networkpolicies.yaml`) once you've confirmed
+# your cluster's CNI actually enforces NetworkPolicy. Docker Desktop's
+# built-in Kubernetes does NOT (verified empirically: a deny-all-egress
+# policy applied to a test pod here had zero effect - traffic passed
+# through unblocked). Calico, Cilium, and most managed-cluster CNIs
+# (EKS w/ the VPC CNI + Calico add-on, GKE, AKS w/ Azure CNI) do enforce
+# it, but test in a non-production environment before relying on this -
+# these policies were derived by reading each service's actual outbound
+# calls, not validated end-to-end against a real enforcing CNI.
+#
+# The Kafka egress rules below assume Kafka is an in-cluster pod labeled
+# `name: kafka` (true for kustomize/local's own kafka-deployment.yaml) -
+# `base` itself doesn't ship Kafka (see kafkaml-configmap.yaml's commented
+# `brokers:` example), so a production deployment pointing at an external
+# broker needs an `ipBlock` CIDR rule here instead of `podSelector`, which
+# only this repo can't know generically.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tfexecutor-netpol
+spec:
+  podSelector:
+    matchLabels:
+      name: pod-tfexecutor
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only the backend calls /exec_tf/, /check_deploy_config/,
+    # /convert_to_tflite/.
+    - from:
+        - podSelector:
+            matchLabels:
+              name: pod-backend
+      ports:
+        - protocol: TCP
+          port: 8001
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # retrieve_representative_dataset (int8 quantization) samples real
+    # Kafka data - the only other outbound call this service makes.
+    - to:
+        - podSelector:
+            matchLabels:
+              name: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pthexecutor-netpol
+spec:
+  podSelector:
+    matchLabels:
+      name: pod-pthexecutor
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              name: pod-backend
+      ports:
+        - protocol: TCP
+          port: 8002
+  egress:
+    # Unlike tfexecutor, pthexecutor never touches Kafka (confirmed by
+    # grep - no kafka-python/confluent-kafka import) - DNS only.
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Dynamically-created training/inference Job pods (app/job_manifest_
+# generator.py in backend, and federated_backend's deploy_on_kubernetes)
+# all carry `app: kafka-ml-training` (added alongside this policy set) -
+# they never accept inbound connections, only call out to Kafka (data +
+# control topics) and post results back to the backend.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-ml-training-netpol
+spec:
+  podSelector:
+    matchLabels:
+      app: kafka-ml-training
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              name: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+    - to:
+        - podSelector:
+            matchLabels:
+              name: pod-backend
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Federated edge workers additionally register with federated_backend
+    # (see federated-module/kustomize) - not this namespace's concern if
+    # federated-module is deployed separately, but harmless to allow here
+    # too since it's the same "kafka-ml-training" pod population.
+    - to:
+        - podSelector:
+            matchLabels:
+              name: pod-federated-backend
+      ports:
+        - protocol: TCP
+          port: 8000

@@ -4,6 +4,22 @@ import random
 import string
 
 
+# Training/inference pods exec() user-submitted model code (see FUTURE.md's
+# exec() hardening note) - every Job built below runs with these, shared
+# read-only across manifests since nothing mutates them after the fact
+# (unlike `deployment.blockchain`, which does get appended to per-manifest
+# below).
+_HARDENED_CONTAINER_SECURITY_CONTEXT = {
+    "runAsNonRoot": True,
+    "runAsUser": 1000,
+    "allowPrivilegeEscalation": False,
+    "capabilities": {"drop": ["ALL"]},
+}
+_HARDENED_POD_SECURITY_CONTEXT = {
+    "seccompProfile": {"type": "RuntimeDefault"},
+}
+
+
 ### SINGLE TRAINING JOB MANIFEST GENERATORS ###
 
 
@@ -24,11 +40,14 @@ def single_classic_training(
         "spec": {
             "ttlSecondsAfterFinished": 10,
             "template": {
+                "metadata": {"labels": {"app": "kafka-ml-training"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": image,
                             "name": "training",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {
                                     "name": "BOOTSTRAP_SERVERS",
@@ -111,11 +130,14 @@ def single_federated_training(
         "spec": {
             "ttlSecondsAfterFinished": 10,
             "template": {
+                "metadata": {"labels": {"app": "kafka-ml-training"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": image,
                             "name": "training",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {
                                     "name": "BOOTSTRAP_SERVERS",
@@ -278,11 +300,14 @@ def single_incremental_training(
         "spec": {
             "ttlSecondsAfterFinished": 10,
             "template": {
+                "metadata": {"labels": {"app": "kafka-ml-training"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": image,
                             "name": "training",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {
                                     "name": "BOOTSTRAP_SERVERS",
@@ -393,11 +418,14 @@ def single_federated_incremental_training(
         "spec": {
             "ttlSecondsAfterFinished": 10,
             "template": {
+                "metadata": {"labels": {"app": "kafka-ml-training"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": image,
                             "name": "training",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {
                                     "name": "BOOTSTRAP_SERVERS",
@@ -531,11 +559,14 @@ def distributed_classic_training(
         "spec": {
             "ttlSecondsAfterFinished": 10,
             "template": {
+                "metadata": {"labels": {"app": "kafka-ml-training"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": image,
                             "name": "training",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {
                                     "name": "BOOTSTRAP_SERVERS",
@@ -641,11 +672,14 @@ def distributed_federated_training(
         "spec": {
             "ttlSecondsAfterFinished": 10,
             "template": {
+                "metadata": {"labels": {"app": "kafka-ml-training"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": image,
                             "name": "training",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {
                                     "name": "BOOTSTRAP_SERVERS",
@@ -772,11 +806,14 @@ def distributed_incremental_training(
         "spec": {
             "ttlSecondsAfterFinished": 10,
             "template": {
+                "metadata": {"labels": {"app": "kafka-ml-training"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": image,
                             "name": "training",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {
                                     "name": "BOOTSTRAP_SERVERS",
@@ -893,11 +930,14 @@ def distributed_federated_incremental_training(
         "spec": {
             "ttlSecondsAfterFinished": 10,
             "template": {
+                "metadata": {"labels": {"app": "kafka-ml-training"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": image,
                             "name": "training",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {
                                     "name": "BOOTSTRAP_SERVERS",

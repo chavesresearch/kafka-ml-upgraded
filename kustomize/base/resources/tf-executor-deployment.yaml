@@ -15,9 +15,18 @@ spec:
         name: pod-tfexecutor
       name: tfexecutor
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: tfexecutor
           image: kafka-ml-tfexecutor
           ports:
             - containerPort: 8001
           imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

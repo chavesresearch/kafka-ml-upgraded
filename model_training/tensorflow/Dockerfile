@@ -36,4 +36,11 @@ COPY model_training/tensorflow/. /usr/src/app/
 RUN uv sync --locked
 
 RUN chmod +x ./start.sh
+
+# Run as non-root - this trainer exec()s user-submitted model code (see
+# FUTURE.md's exec() hardening note), so it should never run as root even
+# though nothing here needs root today.
+RUN useradd --create-home --uid 1000 kafkaml && chown -R kafkaml:kafkaml /usr/src/app
+USER kafkaml
+
 CMD ["./start.sh"]

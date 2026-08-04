@@ -15,9 +15,18 @@ spec:
         name: pod-pthexecutor
       name: pthexecutor
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: pthexecutor
           image: kafka-ml-pthexecutor
           ports:
             - containerPort: 8002
           imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

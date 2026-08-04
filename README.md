@@ -58,6 +58,7 @@ Kafka-ML article has been selected as
   - [Requirements to build locally](#Requirements-to-build-locally)
   - [Steps to build Kafka-ML](#Steps-to-build-Kafka-ML)
   - [GPU configuration](#GPU-configuration)
+- [Threat model: exec()'d model code](#threat-model-execd-model-code)
 - [Publications](#publications)
 - [License](#license)
 
@@ -942,6 +943,82 @@ $ kubectl label node worker-gpu-0 gpushare=true
 
 Thanks to Sven Degroote from ML6team for the GPU and Kubernetes setup
 [documentation](https://blog.ml6.eu/a-guide-to-gpu-sharing-on-top-of-kubernetes-6097935ababf).
+
+## Threat model: exec()'d model code
+
+**Anyone who can reach the backend API can run arbitrary code on the
+executor/training/inference pods.** This is core to how Kafka-ML works -
+models are pasted as Python in the Web UI (`frontend`'s Configuration/
+Deployment views), sent to the backend, and `exec()`'d for real:
+
+- `mlcode_executor/{tfexecutor,pthexecutor}` - every model definition is
+  checked by literally `exec()`ing it (`exec_model()` in both `app.py`
+  files) before a deployment is allowed to proceed.
+- `model_training/{tensorflow,pytorch}` and `model_inference/pytorch` -
+  the same code is `exec()`'d again inside the training/inference pod
+  itself to reconstruct the model (`model_inference/tensorflow` differs:
+  it loads an already-serialized `.h5` file instead, no `exec()`).
+- `federated-module/federated_model_training/tensorflow` - same as
+  `model_training/tensorflow`, it's a from-the-same-code-path port.
+
+This is not a bug to "fix" - dynamic model code is the product - but it
+does mean **this tool must not be exposed to untrusted users without the
+isolation below in place.** Kafka-ML has no user-account system at all;
+anyone who can reach the backend's HTTP API has this level of access.
+
+**Mitigations in place** (as of 2026-08-04):
+
+- **Non-root containers.** Every image on the exec() surface
+  (`mlcode_executor/{tfexecutor,pthexecutor}`, `model_training/
+  {tensorflow,pytorch}`, `model_inference/{tensorflow,pytorch}`) creates
+  and runs as a dedicated `kafkaml` user (uid 1000), not root - verified
+  with a real `docker build` + `docker run` on both base-image families
+  (Ubuntu-based `tensorflow/tensorflow`, Debian-based `python:3.12-slim`),
+  including exercising the file-write code paths (`tfexecutor`'s
+  `load_model`/`convert_to_tflite`) as that non-root user over real HTTP.
+- **Dropped Linux capabilities, no privilege escalation, default seccomp.**
+  Every static Deployment (`kustomize/base/resources/{tf,pth}-executor-
+  deployment.yaml`) and every dynamically-created training/inference Job
+  (`backend/app/job_manifest_generator.py`'s 8 manifest builders,
+  `federated_backend`'s `deploy_on_kubernetes`) sets
+  `runAsNonRoot: true`, `allowPrivilegeEscalation: false`,
+  `capabilities: {drop: [ALL]}` on the container, and
+  `seccompProfile: {type: RuntimeDefault}` on the pod. Covered by
+  `backend/tests/test_job_manifest_generator.py` and
+  `federated_backend/tests/test_deploy_on_kubernetes.py`.
+- **NetworkPolicies (opt-in).** `kustomize/base/resources/
+  networkpolicies.yaml` restricts the executor Deployments and
+  `app: kafka-ml-training`-labeled Job pods to only the egress they
+  actually need (Kafka, backend, DNS) - **not enabled by default**, see
+  that file's own header comment for why (Docker Desktop's Kubernetes
+  doesn't enforce NetworkPolicy at all - confirmed empirically, not
+  assumed - so this couldn't be validated end-to-end here; add it to your
+  `kustomization.yaml` only after confirming your cluster's CNI enforces
+  it).
+
+**Not done / explicitly out of scope for now:**
+
+- **Read-only root filesystem.** Would need real code changes first -
+  `tfexecutor`, `model_training`, and `model_inference` all write scratch
+  files (`model.h5`, `pre_model.h5`, `trained_model.h5`,
+  `confusion_matrix.png`, `./tmp/*`) as plain relative paths under the
+  same directory the application code lives in, so mounting a read-only
+  root with a writable `emptyDir` would either need that whole directory
+  as the mount point (which shadows the code itself) or the application
+  code changed to write under a dedicated path like `/tmp` instead.
+  Flagged, not silently skipped.
+- **AppArmor profiles.** Cluster/node-dependent (needs a profile actually
+  loaded on the node) - not attempted here since it can't be verified
+  against this project's local dev cluster either.
+- **gVisor/Firecracker-level sandboxing.** Only worth the operational
+  complexity if this is ever exposed to genuinely untrusted (not just
+  unauthenticated-but-trusted) users - a real "if that's ever a
+  requirement" per the original hardening note, not attempted.
+- **Per-inference cluster credentials at rest.** Unrelated to the exec()
+  surface but the same trust-boundary theme: the Inference deployment
+  form's external-cluster `token` is stored as a plain SQLite column with
+  no at-rest encryption - see `FUTURE.md`'s High #2 for what was and
+  wasn't done here.
 
 ## Publications
 

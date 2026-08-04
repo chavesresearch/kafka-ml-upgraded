@@ -27,4 +27,11 @@ COPY . /usr/src/app/
 RUN uv sync --locked
 
 RUN chmod +x ./start.sh
+
+# Run as non-root - this service exec()s user-submitted model code
+# (utils.py's download_model) to reconstruct the PyTorch model class
+# before loading weights, so it should never run as root.
+RUN useradd --create-home --uid 1000 kafkaml && chown -R kafkaml:kafkaml /usr/src/app
+USER kafkaml
+
 CMD ["./start.sh"]

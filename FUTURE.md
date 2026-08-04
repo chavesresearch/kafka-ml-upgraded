@@ -39,17 +39,25 @@ nice-to-have polish.
    Should fail closed: refuse to start in production without both
    explicitly set, rather than defaulting to the insecure option.
 
-3. **User-submitted model code is `exec()`'d with no sandboxing.** This is
-   core to how Kafka-ML works (models are pasted as Python in the Web UI,
-   then run by `mlcode_executor/{tfexecutor,pthexecutor}` and
-   `model_training/*/utils.py` / `mainTraining.py`), so it's not a "bug" —
-   but it means anyone who can reach the backend API has arbitrary code
-   execution on the executor/training pods. Worth an explicit hardening
-   pass: non-root containers, read-only root filesystem, seccomp/AppArmor
-   profiles, NetworkPolicies restricting those pods' egress, and a written
-   threat-model note in the README so operators know this tool must not be
-   exposed to untrusted users without additional isolation (gVisor/Firecracker
-   if that's ever a requirement).
+3. ~~User-submitted model code is `exec()`'d with no sandboxing.~~ —
+   **partially done** (2026-08-04). This is core to how Kafka-ML works
+   (see the new "Threat model: exec()'d model code" section in the root
+   README - not a "bug" to eliminate, an inherent trust boundary to
+   document and reduce the blast radius of). Done: non-root containers
+   (verified with real `docker build`+`docker run` on both base-image
+   families), dropped capabilities/no-privilege-escalation/default
+   seccomp on every static Deployment and dynamically-created Job
+   (`backend/app/job_manifest_generator.py`, `federated_backend`'s
+   `deploy_on_kubernetes`), opt-in NetworkPolicies (`kustomize/base/
+   resources/networkpolicies.yaml` - not enabled by default since Docker
+   Desktop's Kubernetes doesn't enforce NetworkPolicy at all, confirmed
+   empirically rather than assumed), and the README threat-model note
+   itself. **Not done, and why**: read-only root filesystem (would need
+   real code changes first - these services write scratch files as plain
+   relative paths under the same directory the code lives in), AppArmor
+   (cluster/node-dependent, can't verify locally), gVisor/Firecracker
+   (only worth it if ever exposed to genuinely untrusted users). Full
+   detail in the README section - read that instead of re-deriving.
 
 4. ~~No CI job runs any of the existing test suites.~~ — **done**
    (2026-08-04). Every Python service now has a real `tests/` suite and a
