@@ -155,9 +155,24 @@ class MainTraining(object):
                     epoch_training_metrics[keys] = []
                 epoch_training_metrics[keys].append(agg_metrics['training'][keys][-1])
 
-                if keys not in epoch_validation_metrics:
-                    epoch_validation_metrics[keys] = []
-                epoch_validation_metrics[keys].append(agg_metrics['validation'][keys][-1])
+                # A federated-incremental round can finish with an empty
+                # 'validation' dict (e.g. a short streaming burst that
+                # never produced a held-out validation batch) - the
+                # original code unconditionally indexed
+                # agg_metrics['validation'][keys], which crashed with
+                # KeyError the first time that dict didn't mirror
+                # 'training' exactly. Confirmed byte-identical to
+                # ../../../kafka-ml (a pre-existing bug, not upgrade-caused -
+                # this is a plain dict lookup, unrelated to any Keras
+                # version), found via a real end-to-end CASE=6 run - not
+                # from reading the code. Fixed since it 100% blocked
+                # federated-incremental training from ever reporting a
+                # result, same bar as the other pre-existing bugs already
+                # fixed in this module.
+                if keys in agg_metrics['validation']:
+                    if keys not in epoch_validation_metrics:
+                        epoch_validation_metrics[keys] = []
+                    epoch_validation_metrics[keys].append(agg_metrics['validation'][keys][-1])
 
         return epoch_training_metrics, epoch_validation_metrics
     
@@ -177,9 +192,13 @@ class MainTraining(object):
                             train_dic[keys[len(m.name)+1:]] = []
                         train_dic[keys[len(m.name)+1:]].append(agg_metrics['training'][keys][-1])
 
-                        if keys[len(m.name)+1:] not in val_dic:
-                            val_dic[keys[len(m.name)+1:]] = []
-                        val_dic[keys[len(m.name)+1:]].append(agg_metrics['validation'][keys][-1])
+                        # Same empty-validation-dict guard as parse_metrics
+                        # above (federated-incremental rounds can finish
+                        # with no held-out validation batch).
+                        if keys in agg_metrics['validation']:
+                            if keys[len(m.name)+1:] not in val_dic:
+                                val_dic[keys[len(m.name)+1:]] = []
+                            val_dic[keys[len(m.name)+1:]].append(agg_metrics['validation'][keys][-1])
             epoch_training_metrics.append(train_dic)
             epoch_validation_metrics.append(val_dic)
 

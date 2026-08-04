@@ -1,12 +1,15 @@
 # federated-module — instructions for AI assistants
 
-**Status: this is the deployed federated module.** CASE=5 (federated
-learning) confirmed working with a real, complete, multi-service
-end-to-end round - main trainer, both control-logger relays,
-`federated_backend` (including a real Kubernetes Job creation), and the
-`federated_model_training` edge worker all exercised together for real,
-not mocked. See the bottom of the `federated_backend/` section below for
-the full run.
+**Status: this is the deployed federated module.** CASE 5-9 (every
+federated variant, including blockchain) confirmed working with real,
+complete, multi-service end-to-end rounds - main trainer, both
+control-logger relays, `federated_backend` (including real Kubernetes Job
+creation), and the `federated_model_training` edge worker all exercised
+together for real, not mocked, against a cluster wiped and redeployed
+from scratch first. Two real bugs were found and fixed getting CASE 6/8
+(the incremental variants) working - see "CASE 6-9 - CONFIRMED PASSED"
+below. See the bottom of the `federated_backend/` section below for the
+original CASE=5 run.
 
 A faithful port of the original `federated-module`, preserved at
 `../../kafka-ml/federated-module` as historical reference. Same
@@ -233,14 +236,78 @@ and posted a real finished result (`status: "finished"`, real
 accuracy/loss) back to `backend`. Every piece in this module
 was exercised for real in this one run.
 
+## CASE 6-9 - CONFIRMED PASSED, full stack re-verified from a clean wipe
+
+Run as part of a deliberate full-matrix pass (namespace deleted and
+redeployed from scratch first, then every CASE 1-9 driven for real - see
+`model_training/tensorflow/CLAUDE.md`'s identically-named section for the
+complete record). Every case reached a real `status: "finished"` result.
+Two real bugs specific to this module were found and fixed in the
+process (a third, in `mainTraining.py`, is documented on the main
+trainer's side):
+
+1. **`federated_model_training/tensorflow/Dockerfile` never got the
+   non-root-user setup `model_training/tensorflow`'s own Dockerfile
+   already has.** Every Job this module (or the main `backend`) creates
+   is forced to `runAsUser: 1000` at the container securityContext level
+   regardless of what the image itself does - without a matching
+   `useradd`/`chown`, that UID has no writable `$HOME`, so `uv run`
+   failed immediately with `Permission denied: /.cache/uv`. This meant
+   **the edge worker could never actually start**, on any CASE. Fixed:
+   added the same `useradd --create-home --uid 1000 kafkaml && chown -R
+   kafkaml:kafkaml /usr/src/app` + `USER kafkaml` pattern to this
+   Dockerfile.
+2. **Real, pre-existing bug in `federated_backend/automl/views.py`'s
+   `ModelFromControlLogger.post()`** (confirmed byte-identical in
+   `../kafka-ml` - not introduced by this port, a genuine gap in the
+   original upstream code). Its case-number computation only ever
+   produced 1, 3, or 5 - it never consulted the `incremental` flag it had
+   already destructured from the request body - and its
+   datasource-matching loop's guard (`if not incremental and
+   ds_serializer.data['total_msg'] is not None`) **actively skipped**
+   attempting a match whenever the model was incremental. Net effect:
+   a federated-incremental model (CASE 6, and by extension CASE 8) could
+   register successfully but could *never* be matched with a compatible
+   datasource - not a timing/race issue, a structural dispatch bug found
+   only by actually running CASE=6 for real (an import/compile check
+   would never catch this - both functions execute without error, they
+   just silently never call `deploy_on_kubernetes()`). Fixed: the case
+   computation now also branches on `incremental` (1=single, 2=single
+   incremental, 3=distributed, 4=distributed incremental, 5=blockchain -
+   matching `federated_model_training/tensorflow/utils.py`'s own local
+   1-5 numbering, which `check_colission`'s case-based total_msg gating
+   already assumed), and the loop guard now reads `if incremental or
+   ds_serializer.data['total_msg'] is not None` - `check_colission`
+   itself already skips the total_msg>=min_data comparison for cases 2/4,
+   so nothing else needed to change.
+
+**A resource-hygiene issue found, not fixed (flagged, out of scope for
+this pass)**: neither `Datasource` nor `ModelSource` rows are ever marked
+consumed or deleted after a successful match - confirmed identical in
+`../kafka-ml`, a pre-existing design gap. Every new registration re-scans
+and re-matches against every past registration forever. Running CASE
+1-9's tests back-to-back in one session without restarting
+`federated-backend` between the federated ones caused 8 duplicate edge
+worker Jobs to spin up from stale earlier-test registrations, briefly
+overloading the local cluster. Each case is solid in isolation (that's
+what's shipped); this is a real risk for sustained federated usage,
+worth fixing properly (mark-consumed or delete-after-match) as a
+follow-up - see `model_training/tensorflow/CLAUDE.md`'s matching note.
+
+**CASE=9 (blockchain) additionally required precompiling
+`FederatedLearning.sol` via Foundry** instead of `blockchain_utils.py`'s
+previous runtime `solcx.install_solc()`/`compile_standard()` - solcx only
+ships amd64 solc binaries, which don't even run under Docker Desktop's
+Rosetta emulation on an Apple Silicon host. See
+`model_training/tensorflow/CLAUDE.md`'s CASE 6-9 section for the full
+explanation and `kustomize/local/resources/blockchain-devnet.yaml` for
+the local Anvil devnet this was verified against - real contract
+deployment, real on-chain round coordination, real ERC20 reward transfer,
+all exercised for real, not mocked.
+
 ## Remaining work
 
 1. Write/update `README.md` files (all four still describe
    `pip install -r requirements.txt`).
 2. `federated_model_training/pytorch` doesn't exist upstream - out of
    scope, nothing to port.
-3. CASE 6/7/8 (federated incremental/distributed/distributed-incremental)
-   and CASE=9 (blockchain) - same scoping as the main trainer: fixed by
-   code-level analogy, not separately end-to-end verified (would need
-   multiple real edge devices and, for CASE=9, a real or local-testnet
-   Ethereum node).

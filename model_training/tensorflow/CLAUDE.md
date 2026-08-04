@@ -1,9 +1,12 @@
 # model_training/tensorflow — status and continuation notes
 
-**Status: CASE 1-5 fully verified end-to-end against the live local
-cluster; CASE 6-8 (federated incremental/distributed) fixed by code-level
-analogy to CASE 5 but not separately end-to-end verified; CASE=9
-(blockchain) verified at import/compile level only, by design.**
+**Status: all 9 CASEs fully verified end-to-end against a real, freshly
+wiped local cluster (namespace deleted and redeployed from scratch first)
+- including CASE=9 (blockchain) against a real local Ethereum devnet, not
+mocked or import-checked only.** CASE 6-9 were the last to be confirmed;
+see "CASE 6-9 - CONFIRMED PASSED" below for the full record, including
+three real bugs found and fixed in the process (two in this repo, one
+pre-existing in `federated_backend`, all documented where fixed).
 Originally written mid-session as a token-budget checkpoint before the
 CASE 1/2/3/4 retests were finished - kept up to date since as each mode
 was confirmed, so this now doubles as the definition-of-done record for
@@ -362,31 +365,107 @@ this run - `FederatedKafkaMLModelSink`, `KafkaModelEngine.setWeights`, and
 code (the JSON-architecture round-trip in particular was a real Keras-3
 risk that turned out fine, not assumed).
 
+## CASE 6-9 - CONFIRMED PASSED, full stack re-verified from a clean wipe
+
+Run in one session as a deliberate full-matrix pass: `kubectl delete
+namespace kafkaml` (wipe everything - DB, Kafka topics, all state), full
+redeploy, then CASE 1-4/PyTorch/inference via the automated
+`integration-tests/` suite, then CASE 5-9 manually driven the same way
+(new committed tests: `integration-tests/test_case{5,6,7,8,9}_*.py`).
+Every case reached a real `status: "finished"` result with real metrics.
+Three real, previously-undiscovered bugs surfaced this way (none of them
+Keras-version-related - all either infra or plain logic bugs that had
+simply never been exercised before, since CASE 6-9 had never been run
+end-to-end until this pass):
+
+1. **`federated-module/federated_model_training/tensorflow/Dockerfile`
+   never got the non-root-user setup `model_training/tensorflow`'s own
+   Dockerfile already has** - every Job `job_manifest_generator.py`/
+   `federated_backend` creates forces `runAsUser: 1000` at the container
+   securityContext level regardless of what the image does, but this
+   edge-worker image had no matching user/`$HOME`/ownership setup, so
+   `uv run` failed immediately with `Permission denied: /.cache/uv`. CASE=5
+   never caught this because... it did, actually, the very first time it
+   was run this session - it just hadn't been re-verified since the
+   hardening commit landed. Fixed: same `useradd --create-home --uid 1000
+   kafkaml && chown -R kafkaml:kafkaml /usr/src/app` + `USER kafkaml`
+   pattern, added to that Dockerfile. See `federated-module/CLAUDE.md`.
+2. **Real, pre-existing bug in `federated_backend`'s
+   `ModelFromControlLogger.post()`** (confirmed byte-identical in
+   `../../../kafka-ml` - not a porting mistake): its case-number
+   computation only ever produced 1/3/5 (ignoring `incremental`
+   entirely), and its datasource-matching loop's guard
+   (`if not incremental and total_msg is not None`) actively **skipped**
+   matching whenever the model was incremental. Net effect: CASE 6 and 8
+   (any federated-incremental model) could never be matched with a
+   datasource at all - not a timing issue, a dispatch bug. Fixed in
+   `federated-module/federated_backend/automl/views.py` - see that file's
+   inline comment and `federated-module/CLAUDE.md` for the full
+   before/after.
+3. **Real, pre-existing bug in `mainTraining.py`'s `parse_metrics`/
+   `parse_distributed_metrics`** (confirmed byte-identical in
+   `../../../kafka-ml`): both unconditionally indexed
+   `agg_metrics['validation'][keys]` assuming every training-side metric
+   key also exists on the validation side - crashes with `KeyError` the
+   first time a federated-incremental round finishes with an empty
+   `validation` dict (a short streaming burst that never produced a
+   held-out validation batch, completely normal for CASE 6/8's continuous
+   short-burst sending pattern). Fixed with a `keys in
+   agg_metrics['validation']` guard in both functions.
+
+Also surfaced along the way, worth knowing if this gets extended further:
+**CASE=9's real blockchain path required precompiling both Solidity
+contracts (`contracts/FederatedLearning.json`, `../../backend/app/contracts/Token.json`)
+via Foundry instead of solcx's runtime `install_solc()`/`compile_standard()`** -
+`solcx` only ever ships **amd64** solc binaries (no arm64 build exists for
+any release its index lists), and the downloaded amd64 binary doesn't
+even run under Docker Desktop's Rosetta emulation on an Apple Silicon
+host (`rosetta error: failed to open elf at /lib64/ld-linux-x86-64.so.2`) -
+this trainer's own image is itself amd64-emulated (`tensorflow/tensorflow`
+has no arm64 build for this TF version), so it's a second, unrelated
+layer of emulation that solc's binary doesn't survive. Precompiling once
+(Foundry's `forge build` is genuinely multi-arch, ran natively on the arm64
+host) and loading the committed ABI+bytecode JSON at deploy time instead
+sidesteps this entirely - see `blockchain_utils.py`'s updated
+`create_federated_learning_smart_contract` and
+`kustomize/local/resources/blockchain-devnet.yaml` (a local Anvil devnet,
+standing in for "a real or local-testnet Ethereum node" - deterministic
+pre-funded dev accounts, zero cost, zero external dependency). The
+`FederatedLearning` contract's on-chain coordination (`saveTrainingSettings`/
+`saveGlobalModel`/queue dequeue/`setTokens`) and the ERC20 reward transfer
+at the end of the round were both exercised for real against this devnet,
+not mocked.
+
 ## Remaining work, in priority order
 
-1. **CASE 6-8 (federated incremental/distributed variants) and CASE=9
-   (blockchain)** - CASE 6-8 got the same code-level fixes as CASE 5 (the
-   y_true/y_pred structure fix in particular - see
-   `federated-module/CLAUDE.md`) but were **not** separately
-   run end-to-end - that would need either a distributed-and-federated
-   scenario (2+ real edge devices each training a different submodel) or
-   a real streaming datasource feeding an incremental federated round,
-   neither attempted given time. CASE=9 additionally needs a real or
-   local-testnet Ethereum node - still import/compile-level only, by
-   design, not oversight. State this plainly if asked. Worth a quick look
-   at `edgeBasedTraining.py`'s own training loop for the same y_true/y_pred
-   structure class of bug found in CASE=3/4 (not yet checked - it doesn't
-   call `train_classic_model`/`train_incremental_model` directly, so it
-   may or may not share the bug).
-2. **Write `../CLAUDE.md`** (one level up, `model_training/`
+1. **Write `../CLAUDE.md`** (one level up, `model_training/`
    root) - hasn't been created yet. Should summarize this file's contents
    at a higher level once TensorFlow is fully done, the way
    `datasources/CLAUDE.md` etc. do, plus set up for the PyTorch
    section once that's ported.
-3. **Write `README.md`** for this directory (hasn't been created/updated
+2. **Write `README.md`** for this directory (hasn't been created/updated
    from the original yet - the copied one still describes the old
    Flask-era... actually the old one never mentioned Flask, but it still
    references `requirements.txt` and doesn't mention any of the above).
+3. **`federated_backend` never marks a `ModelSource`/`Datasource` row as
+   consumed after a successful match** (pre-existing, confirmed identical
+   in `../../../kafka-ml` - not introduced by this port). Every new
+   registration re-scans and re-matches against the *entire* unbounded
+   history of every past registration, forever. Ran into this directly:
+   running CASE 1-9's integration tests back-to-back in one `pytest`
+   session (no `federated-backend` restart between the federated ones)
+   caused **8 duplicate edge worker Jobs** to spin up for stale
+   registrations left over from earlier tests in the same run, which
+   briefly overloaded Docker Desktop's Kubernetes node (`kafka`,
+   `kafka-control-logger`, `tfexecutor`, both control-loggers all
+   restarted). Each case passes cleanly in isolation (confirmed - this is
+   what's shipped and documented above); this is a resource-exhaustion
+   risk for **repeated real-world use of the federated feature**, not
+   just a test artifact. Worth fixing properly at some point (mark
+   matched rows consumed/delete them), but out of scope for this pass -
+   flag if asked, and if extending `integration-tests/`'s CASE 5-9 further,
+   restart `federated-backend` (`kubectl rollout restart
+   deployment/federated-backend -n kafkaml`) between runs until it's fixed.
 4. **PyTorch port** (`../../../kafka-ml/model_training/pytorch`) - explicitly deferred
    to a separate pass (user's own decision: "TensorFlow first, PyTorch
    after"). Nothing done yet. Known issues already spotted during the
@@ -413,7 +492,7 @@ risk that turned out fine, not assumed).
      pattern for the CPU wheel.
    - Needs the same uv conversion + Dockerfile bump (currently
      `BASEIMG=python:3.8.6`, EOL).
-5. **Confirmed but deliberately not fixed (out of scope)**:
+6. **Confirmed but deliberately not fixed (out of scope)**:
    `SingleClassicTraining.test()` and `DistributedClassicTraining.test()`
    both zip `epoch_training_metrics.keys()` against `evaluate()`'s
    returned list *by position*, and both real CASE=1 and CASE=3 test runs
@@ -426,7 +505,7 @@ risk that turned out fine, not assumed).
    upgrade entirely**, not something the TF/Keras 3 port broke. Left
    alone per the user's "faithful 1:1, fix only what's broken by the
    upgrade" scoping decision. Flag if asked, don't silently fix.
-6. Test artifacts already cleaned up (trainer pods deleted, `.e2e-scratch/`
+7. Test artifacts already cleaned up (trainer pods deleted, `.e2e-scratch/`
    removed). Leftover Kafka topics (`e2e-training-data`,
    `e2e-training-data-2`, `e2e-incremental-data`,
    `e2e-distributed-incremental-data`) and DB rows in the backend's sqlite

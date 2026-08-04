@@ -278,13 +278,35 @@ class ModelFromControlLogger(generics.ListCreateAPIView):
                 logging.info("Data received is valid. Saving to database...")
                 ms_serializer.save()
 
+                # Local edge-worker case numbering (see
+                # federated_model_training/tensorflow/utils.py -
+                # deliberately its own 1-5 scheme, not the main trainer's
+                # global 1-9 CASE enum): 1=single, 2=single incremental,
+                # 3=distributed, 4=distributed incremental, 5=blockchain
+                # (blockchain is only defined upstream for single,
+                # non-incremental). This branch used to ignore
+                # `incremental` entirely - real, pre-existing bug
+                # (confirmed identical in ../../../kafka-ml, not
+                # introduced by this port): every incremental federated
+                # model got dispatched as case 1/5 (non-incremental) here,
+                # and the loop guard below additionally skipped matching
+                # outright whenever `incremental` was true - so no
+                # federated-incremental model (CASE 6/8 in the main
+                # trainer's numbering) could ever be matched with a
+                # datasource at all. Found by actually running a real
+                # CASE=6 round end-to-end, not by inspection - fixed here
+                # since it 100% blocked the module's federated-incremental
+                # path, same bar as the two Kubernetes bugs already fixed
+                # in this file.
                 if not ms_serializer.data['distributed']:
-                    if ms_serializer.data['blockchain'] == {}:
+                    if ms_serializer.data['blockchain'] != {}:
+                        case = 5
+                    elif not incremental:
                         case = 1
                     else:
-                        case = 5
-                else:                    
-                    case = 3
+                        case = 2
+                else:
+                    case = 4 if incremental else 3
 
                 """Checks for all datasources if there is a model that can be trained"""
                 datasources = Datasource.objects.all()
@@ -292,8 +314,14 @@ class ModelFromControlLogger(generics.ListCreateAPIView):
                 for datasource in datasources:
                     # Parse to JSON
                     ds_serializer = DatasourceSerializer(datasource)
-                    
-                    if not incremental and ds_serializer.data['total_msg'] is not None:
+
+                    # Non-incremental cases still wait for the datasource
+                    # to have finished sending (total_msg populated) -
+                    # check_colission's own case-based branch already
+                    # skips the total_msg>=min_data comparison for
+                    # incremental cases (2, 4), so it doesn't need
+                    # gating here too.
+                    if incremental or ds_serializer.data['total_msg'] is not None:
                         has_collided = check_colission(ds_serializer.data, ms_serializer.data, case)
                         if has_collided:
                             logging.info("Datasource and model are compatible. Deploying model...")

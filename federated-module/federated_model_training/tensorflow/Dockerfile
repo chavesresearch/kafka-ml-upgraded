@@ -37,4 +37,18 @@ COPY federated-module/federated_model_training/tensorflow/. /usr/src/app/
 RUN uv sync --locked
 
 RUN chmod +x ./start.sh
+
+# Run as non-root - this edge worker exec()s user-submitted model code
+# same as model_training/tensorflow, and every Job backend creates
+# (job_manifest_generator.py's _HARDENED_POD_SECURITY_CONTEXT) forces
+# runAsUser: 1000 at the container securityContext level regardless of
+# what this image itself does. Without a matching user/ownership setup
+# here, that forced UID 1000 has no $HOME and can't write uv's cache dir
+# ("Permission denied: /.cache/uv") - found by actually running a real
+# CASE=5 federated round end-to-end, not by inspection (this Dockerfile
+# was copy-pasted from the pre-hardening original and never got the same
+# fix model_training/tensorflow/Dockerfile already has).
+RUN useradd --create-home --uid 1000 kafkaml && chown -R kafkaml:kafkaml /usr/src/app
+USER kafkaml
+
 CMD ["./start.sh"]

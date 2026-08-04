@@ -15,7 +15,7 @@ applies equally to PyTorch.
 
 | Path | Status |
 |---|---|
-| `tensorflow/` | Functionally complete. CASE 1-4 (single/distributed × classic/incremental) verified end-to-end against a live local cluster; CASE 5 (federated) additionally verified end-to-end against a live `federated-module` (see its own `CLAUDE.md`); CASE 6-9 (remaining federated variants + blockchain) verified at import/compile level only, by explicit user scoping decision (CASE=9 additionally needs a real Ethereum node). See `tensorflow/CLAUDE.md` for the full verification record, every bug found and fixed, and the reasoning behind each. |
+| `tensorflow/` | Functionally complete. **All 9 CASEs verified end-to-end** against a live local cluster, including a full from-scratch redeploy and CASE=9 (blockchain) against a real local Ethereum devnet (Anvil) - not import-checked only. See `tensorflow/CLAUDE.md` for the full verification record, every bug found and fixed, and the reasoning behind each. |
 | `pytorch/` | Functionally complete and fully verified end-to-end. Much smaller scope than TensorFlow - this module has **no `CASE` dispatch at all**, only one training mode, and needed almost no dependency-compatibility fixes (avro/ignite/numpy all still work under current versions with zero code changes). One real bug found and fixed via the end-to-end test (a Kafka consumer race in `TrainingKafkaDataset.py`). See `pytorch/CLAUDE.md` for the full record. |
 
 **Status: this is what's actually built/deployed by `kustomize`.**
