@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "paths": {
+      "@/*": ["./src/*"],
+      // monaco-editor@0.56.0's package.json `exports` map has no `types`
+      // condition for its deep-import wildcard (only `./esm/vs/*.js`), so
+      // TypeScript's own module resolution can't find this file even
+      // though it's real and correct - Vite/esbuild resolve the runtime
+      // .js for the same specifier fine via that same wildcard, this only
+      // affects the type-checker. Point straight at the physical .d.ts,
+      // bypassing package.json exports resolution entirely.
+      "monaco-editor/esm/vs/editor/editor.api": [
+        "./node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"
+      ],
+      "monaco-editor/esm/vs/basic-languages/python/python.contribution": [
+        "./node_modules/monaco-editor/esm/vs/basic-languages/python/python.contribution.d.ts"
+      ],
+      "monaco-editor/esm/vs/basic-languages/lua/lua.contribution": [
+        "./node_modules/monaco-editor/esm/vs/basic-languages/lua/lua.contribution.d.ts"
+      ]
+    }
+  },
+  "include": ["src"]
+}
