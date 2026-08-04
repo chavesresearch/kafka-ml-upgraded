@@ -1,3 +1,7 @@
+<p align="center">
+<img src="images/logo.svg" width="96" alt="Kafka-ML logo">
+</p>
+
 # Kafka-ML: connecting the data stream with ML/AI frameworks
 
 Kafka-ML is a framework to manage the pipeline of Tensorflow/Keras and PyTorch
