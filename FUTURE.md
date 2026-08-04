@@ -176,6 +176,49 @@ nice-to-have polish.
    pnpm but that's still the `npm` ecosystem value — Dependabot
    auto-detects the lockfile type per directory.
 
+6. **CASE=2 (`SingleIncrementalTraining`) can crash and get stuck
+   "deployed" forever if zero streaming data batches arrive before its
+   stream timeout.** Found 2026-08-04 while re-running `integration-tests/`
+   as a final check after this session's security/CI hardening pass -
+   reproduced 3/3 times, confirmed unrelated to any of that work
+   (`mainTraining.py` wasn't touched this session; `git log` on the file
+   shows nothing since the repo-wide cutover). `model_training/tensorflow/
+   mainTraining.py`'s `train_incremental_model` (~line 435) only assigns
+   `model_trained = self.model.fit(...)` inside `if len(mini_ds) > 0:` -
+   if the streaming Kafka consumer's `get_streaming_kafka_batches`
+   generator times out having yielded zero non-empty batches, the
+   function falls through to `training_results = {'model_trained':
+   model_trained}` with `model_trained` never assigned, raising
+   `UnboundLocalError`. The trainer's outer exception handler catches
+   this, logs it, and loops back to polling `KAFKA_ML_CONTROL_TOPIC`
+   indefinitely instead of exiting - the `TrainingResult` stays
+   `"deployed"` forever, and the pod/Job never completes (same symptom as
+   the already-known leftover stuck Jobs from earlier manual testing -
+   see `project_kafkaml_backend_modernization`-adjacent session memory).
+   Root cause of the empty-batches condition itself: a real race between
+   `OnlineRawSink`'s first `.send()` call (which fires the online control
+   message *and* the first data message essentially back to back) and
+   the trainer's Kafka consumer-group join - `integration-tests/
+   test_case2_single_incremental.py`'s fixed `time.sleep(15)` before
+   creating the sink doesn't actually protect against this, since the
+   trainer can't start joining the *data* topic's consumer group until
+   *after* it receives the control message, which only fires once the
+   test starts sending - by which point the tight, delay-free 10-message
+   burst loop in `_send_burst` typically finishes before the consumer's
+   join-group round trip completes. `test_case4_distributed_incremental.py`
+   hit the identical symptom independently and already bumped its own
+   sleep from 15s to 35s (see its own inline comment) but nobody
+   went back and applied the same fix to `test_case2`. Not fixed here -
+   both the `UnboundLocalError` (a real, pre-existing gap in
+   `mainTraining.py`, predates the TF/Keras upgrade entirely - it's a bare
+   Python scoping bug, nothing a library version could have caused) and
+   the test's timing assumption are out of scope for this session's
+   backlog; flagging per this project's "flag pre-existing bugs found
+   incidentally, don't silently fix" precedent. `test_case1`/`test_case3`/
+   `test_inference`/`test_pytorch_classic` (the non-streaming tests) all
+   passed cleanly, confirming the hardening changes themselves introduced
+   no regression.
+
 ## Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated
