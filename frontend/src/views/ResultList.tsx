@@ -130,6 +130,19 @@ export default function ResultList() {
       ),
     },
     {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => {
+        const Icon = statusIcons[row.original.status]
+        return <Icon className={`size-4 ${statusColor[row.original.status]}`} aria-label={row.original.status} />
+      },
+    },
+    {
+      accessorKey: 'status_changed',
+      header: 'Last status change',
+      cell: ({ row }) => formatDate(row.original.status_changed),
+    },
+    {
       id: 'inference',
       header: 'Inference',
       enableSorting: false,
@@ -144,19 +157,6 @@ export default function ResultList() {
             <Play className="size-4" />
           </Button>
         ) : null,
-    },
-    {
-      accessorKey: 'status',
-      header: 'Status',
-      cell: ({ row }) => {
-        const Icon = statusIcons[row.original.status]
-        return <Icon className={`size-4 ${statusColor[row.original.status]}`} aria-label={row.original.status} />
-      },
-    },
-    {
-      accessorKey: 'status_changed',
-      header: 'Last status change',
-      cell: ({ row }) => formatDate(row.original.status_changed),
     },
     {
       id: 'actions',
