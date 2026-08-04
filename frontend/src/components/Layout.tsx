@@ -117,9 +117,7 @@ export default function Layout() {
     <div className="grid min-h-svh md:grid-cols-[240px_1fr]">
       <aside className="sticky top-0 hidden h-svh flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
         <div className="flex items-center gap-2.5 px-5 py-4">
-          <span className="grid size-7 place-items-center rounded-md bg-gradient-to-br from-primary to-primary/70 text-sm font-extrabold text-primary-foreground">
-            K
-          </span>
+          <img src="/favicon.svg" alt="" className="size-7 shrink-0" />
           <span className="text-[1.05rem] font-bold tracking-tight">Kafka-ML</span>
         </div>
         <NavLinks />
@@ -161,7 +159,10 @@ export default function Layout() {
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-64 p-0">
           <SheetHeader>
-            <SheetTitle>Kafka-ML</SheetTitle>
+            <SheetTitle className="flex items-center gap-2.5">
+              <img src="/favicon.svg" alt="" className="size-6 shrink-0" />
+              Kafka-ML
+            </SheetTitle>
           </SheetHeader>
           <NavLinks onNavigate={() => setMobileNavOpen(false)} />
         </SheetContent>
