@@ -1,0 +1,377 @@
+.showcaseLayout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 2rem;
+  padding: 2rem 0;
+}
+
+@media screen and (max-width: 850px) {
+  .showcaseLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Sidebar --- */
+
+.caseSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.caseGroupLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+  margin-bottom: 0.4rem;
+}
+
+.caseItem {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.caseItem:hover {
+  background: var(--ifm-hover-overlay, rgba(0, 0, 0, 0.05));
+}
+
+.caseItemActive,
+.caseItemActive:hover {
+  background: var(--ifm-color-primary);
+  color: white;
+}
+
+.caseItemNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.2);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.caseItemActive .caseItemNumber {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* --- Main --- */
+
+.showcaseMain {
+  min-width: 0;
+}
+
+.caseHeader {
+  margin-bottom: 1.5rem;
+}
+
+.caseHeaderBadge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: var(--ifm-color-primary);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.stepTabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 2px solid var(--ifm-toc-border-color);
+  margin-bottom: 1.5rem;
+}
+
+.stepTab {
+  padding: 0.6rem 1rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  font-size: 1rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+
+.stepTab:hover {
+  opacity: 1;
+}
+
+.stepTabActive {
+  opacity: 1;
+  border-bottom-color: var(--ifm-color-primary);
+  font-weight: 600;
+}
+
+.stepContent {
+  min-height: 360px;
+}
+
+/* --- Code panel --- */
+
+.codeTabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.codeTab,
+.codeTabActive {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.codeTabActive {
+  background: var(--ifm-color-primary);
+  border-color: var(--ifm-color-primary);
+  color: white;
+}
+
+/* --- Results panel --- */
+
+.resultsPanel {
+  padding-top: 0.5rem;
+}
+
+.simulatedNote {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* --- Diagram stage + shared diagram primitives --- */
+
+.diagramStage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  border-radius: 12px;
+  background: var(--ifm-color-emphasis-100);
+  min-height: 340px;
+}
+
+.diagramRoot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+}
+
+.diagramRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.diagramCaption {
+  font-size: 0.9rem;
+  opacity: 0.75;
+  min-height: 1.4em;
+  text-align: center;
+}
+
+.node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 110px;
+  height: 90px;
+  border-radius: 12px;
+  border: 2px solid var(--ifm-color-emphasis-400);
+  background: var(--ifm-background-color);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  padding: 0.5rem;
+  text-align: center;
+}
+
+.nodeActive {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ifm-color-primary) 20%, transparent);
+  transform: translateY(-2px);
+}
+
+.nodeIcon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.nodeLabel {
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.connector {
+  position: relative;
+  width: 48px;
+  height: 4px;
+  background: var(--ifm-color-emphasis-300);
+  flex-shrink: 0;
+}
+
+.connectorVertical {
+  position: relative;
+  width: 4px;
+  height: 40px;
+  background: var(--ifm-color-emphasis-300);
+  flex-shrink: 0;
+}
+
+.connectorActive {
+  background: var(--ifm-color-primary);
+}
+
+.pulseDot {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--ifm-color-primary);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+
+.pulseDotActive {
+  opacity: 1;
+  animation: pulseAcross 1.4s ease-in-out;
+}
+
+.pulseDotActiveReverse {
+  opacity: 1;
+  animation: pulseAcrossReverse 1.4s ease-in-out;
+}
+
+@keyframes pulseAcross {
+  0% {
+    left: 0%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes pulseAcrossReverse {
+  0% {
+    left: 100%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    left: 0%;
+    opacity: 0;
+  }
+}
+
+.progressBar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ifm-color-emphasis-300);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--ifm-color-primary);
+  width: 0%;
+  transition: width 1.1s ease;
+}
+
+.progressFillActive {
+  width: 100%;
+}
+
+.edgeRow {
+  display: flex;
+  gap: 1.25rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.smallNode {
+  width: 92px;
+  height: 78px;
+}
+
+.coinIcon {
+  position: absolute;
+  top: 50%;
+  font-size: 0.9rem;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+
+.coinIconActive {
+  opacity: 1;
+  animation: coinDrop 1.4s ease-in-out;
+}
+
+@keyframes coinDrop {
+  0% {
+    left: 0%;
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+.roundBadge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: var(--ifm-color-emphasis-200);
+}

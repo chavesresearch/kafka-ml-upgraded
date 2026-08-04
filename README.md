@@ -14,6 +14,10 @@ ML models can be easily defined in the Web UI with no need for external
 libraries and executions, providing an accessible tool for both experts and
 non-experts on ML/AI.
 
+📖 **[Docs, SDK reference, and an interactive showcase of all 9 training
+modes](https://chavesresearch.github.io/kafka-ml-upgraded/)** are available
+as a website - no cluster required to see how each mode works.
+
 <p align="center">
 <img src="images/pipeline_.png" height="300">
 </p>

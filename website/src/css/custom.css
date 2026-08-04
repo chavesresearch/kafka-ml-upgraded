@@ -1,0 +1,57 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ *
+ * Brand colors copied by value from frontend/src/index.css (the deployed
+ * React app's shadcn "radix-nova" theme, indigo accent) - not a shared
+ * package, matches this repo's own precedent of copying rather than
+ * extracting a shared lib for a 2nd consumer. Same hue/chroma held
+ * constant across the ladder, only lightness (L) stepped - oklch is
+ * perceptually uniform on L, so this is a more principled shade ladder
+ * than deriving one from a single hex value.
+ */
+
+:root {
+  --ifm-color-primary: oklch(0.511 0.262 276.966);
+  --ifm-color-primary-dark: oklch(0.46 0.262 276.966);
+  --ifm-color-primary-darker: oklch(0.43 0.262 276.966);
+  --ifm-color-primary-darkest: oklch(0.35 0.262 276.966);
+  --ifm-color-primary-light: oklch(0.56 0.262 276.966);
+  --ifm-color-primary-lighter: oklch(0.6 0.262 276.966);
+  --ifm-color-primary-lightest: oklch(0.68 0.262 276.966);
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+
+  /* Kafka-ML chart palette (frontend/src/index.css's --chart-1..5) - see
+     src/theme/chartColors.ts for the same values wired into recharts. */
+  --kml-chart-1: oklch(0.585 0.233 277.117);
+  --kml-chart-2: oklch(0.696 0.17 162.48);
+  --kml-chart-3: oklch(0.769 0.188 70.08);
+  --kml-chart-4: oklch(0.645 0.246 16.44);
+  --kml-chart-5: oklch(0.6 0.118 184.7);
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-primary: oklch(0.673 0.182 276.935);
+  --ifm-color-primary-dark: oklch(0.62 0.182 276.935);
+  --ifm-color-primary-darker: oklch(0.58 0.182 276.935);
+  --ifm-color-primary-darkest: oklch(0.5 0.182 276.935);
+  --ifm-color-primary-light: oklch(0.72 0.182 276.935);
+  --ifm-color-primary-lighter: oklch(0.76 0.182 276.935);
+  --ifm-color-primary-lightest: oklch(0.84 0.182 276.935);
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* Screenshot-style doc images (README-derived) are full-resolution
+   canvas exports - cap their display width so a page of them stays
+   readable instead of each one running edge-to-edge. Markdown image
+   syntax (not raw <img> - see docs/usage/*.md's own comments) so
+   Docusaurus's baseUrl-prefixing and SVG-as-React-component handling
+   both apply correctly; width is controlled here instead of per-image
+   HTML attributes for exactly that reason. */
+.markdown img {
+  max-width: 500px;
+  height: auto;
+}
