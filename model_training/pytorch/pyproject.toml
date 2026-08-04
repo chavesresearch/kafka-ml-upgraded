@@ -17,6 +17,14 @@ dependencies = [
     "torchvision==0.28.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [tool.uv.sources]
 # CPU build, matching the default python:3.12-slim base image in
 # Dockerfile. For GPU: switch Dockerfile's BASEIMG to a CUDA pytorch/pytorch

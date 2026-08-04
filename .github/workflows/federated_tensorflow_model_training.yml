@@ -2,16 +2,38 @@ on:
   push:
     paths:
       - federated-module/federated_model_training/tensorflow/**/*
+      - tf-kafka-dataset/**/*
     branches:
       - "master"
       - "main"
       - "latest"
       - "dev*"
+  pull_request:
+    paths:
+      - federated-module/federated_model_training/tensorflow/**/*
+      - tf-kafka-dataset/**/*
   release:
     types:
       - created
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: federated-module/federated_model_training/tensorflow
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.9.x"
+      - name: Run tests
+        run: uv run pytest -v
+
   build-tf-model-training:
+    needs: test
+    if: github.event_name != 'pull_request'
     strategy:
       matrix:
         include:
@@ -20,7 +42,12 @@ jobs:
             build-args: "TFTAG=2.21.0-gpu"
     uses: ./.github/workflows/build.yml
     with:
-      context: federated-module/federated_model_training/tensorflow
+      # Must be the repo root, not this subdirectory - the Dockerfile
+      # COPYs the sibling tf-kafka-dataset package in (see its own header
+      # comment), which a subdirectory build context can't reach. Same
+      # bug, same fix as tensorflow_model_training.yml - reproduced with a
+      # real `docker build` before fixing.
+      context: .
       dockerfile: federated-module/federated_model_training/tensorflow/Dockerfile
       name: ${{ matrix.name }}
       platforms: linux/amd64

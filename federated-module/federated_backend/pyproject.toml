@@ -11,3 +11,13 @@ dependencies = [
     "gunicorn==26.0.0",
     "kubernetes==36.0.3",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+    "pytest-django==4.11.1",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "autoweb.settings"
+pythonpath = ["."]

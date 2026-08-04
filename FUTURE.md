@@ -51,18 +51,34 @@ nice-to-have polish.
    exposed to untrusted users without additional isolation (gVisor/Firecracker
    if that's ever a requirement).
 
-4. **No CI job runs any of the existing test suites.** `backend/tests/`
-   (16 pytest tests, see `backend/CLAUDE.md`'s "Testing approach") exists
-   and passes locally, but `.github/workflows/backend.yml` only builds and
-   pushes the Docker image — `uv run pytest` never runs in CI. The same is
-   true for every other Python service (model_training, model_inference,
-   mlcode_executor, federated-module) - none of them have a committed test
-   suite at all yet, and no workflow executes any service's code before
-   publishing an image. `frontend/` is the only component with tests wired
-   into CI (`.github/workflows/frontend.yml`, carried over from the
-   frontend-vue rewrite). Adding a `test` step to `backend.yml` (low-effort
-   now that the suite exists) and writing equivalent suites for the other
-   services is worth prioritizing.
+4. ~~No CI job runs any of the existing test suites.~~ — **done**
+   (2026-08-04). Every Python service now has a real `tests/` suite and a
+   `test` job (`uv run pytest`) that its `build-*` job `needs:`, gated off
+   on `pull_request` events - same test-then-build shape `frontend.yml`
+   already used. 134 tests total: `backend` (21, was already 16 - added
+   `test_config.py` for the new fail-closed-in-production check),
+   `mlcode_executor/{tfexecutor,pthexecutor}` (8+7, real Litestar
+   `TestClient` endpoint tests - found and fixed a real Keras 3
+   `compile=False` bug in `tfexecutor`'s `/convert_to_tflite/` along the
+   way), `model_training/{tensorflow,pytorch}` (29+4),
+   `model_inference/{tensorflow,pytorch}` (14+9), and
+   `federated-module/{federated_backend,federated_model_training/
+   tensorflow}` (13+29). All are unit/endpoint-level tests against pure
+   decode/dispatch/matching logic - the 9-CASE training-mode dispatch
+   itself is still only verified via the real end-to-end cluster runs
+   documented in each service's own CLAUDE.md, impractical to reproduce in
+   CI. `federated_data_control_logger`/`federated_model_control_logger`
+   were deliberately skipped - both are ~100-line scripts with everything
+   inline under `if __name__ == '__main__':`, nothing factored out to
+   unit-test without restructuring working code beyond what "add tests"
+   justifies. Also found and fixed, while wiring this up: two CI-breaking
+   `context:` bugs (`tensorflow_model_training.yml`,
+   `federated_tensorflow_model_training.yml` built from their own
+   subdirectory, but both Dockerfiles COPY the sibling `tf-kafka-dataset`
+   package and need the repo root as context - reproduced the failure
+   with a real `docker build` before fixing, then confirmed the fix
+   builds clean) - these workflows had apparently never actually been
+   triggered, or this would have failed every time.
 
 ## High
 

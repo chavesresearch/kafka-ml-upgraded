@@ -49,3 +49,15 @@ prerelease = "allow"
 override-dependencies = [
     "protobuf==7.35.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+# Same web3==5.28.0 pytest11-autoload issue documented in
+# ../../backend/pyproject.toml - its pytest_ethereum plugin's import chain
+# hits Python 3.11's removed inspect.getargspec before pytest even starts.
+addopts = "-p no:pytest_ethereum"
+pythonpath = ["."]

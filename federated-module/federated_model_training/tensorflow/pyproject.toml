@@ -38,3 +38,14 @@ prerelease = "allow"
 override-dependencies = [
     "protobuf==7.35.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+# Same web3==5.28.0 pytest11-autoload issue documented in
+# ../../../model_training/tensorflow/pyproject.toml.
+addopts = "-p no:pytest_ethereum"
+pythonpath = ["."]

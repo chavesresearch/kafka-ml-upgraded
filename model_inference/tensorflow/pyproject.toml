@@ -11,3 +11,11 @@ dependencies = [
     "numpy==2.4.6",
     "tensorflow==2.21.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

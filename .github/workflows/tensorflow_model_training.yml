@@ -2,16 +2,38 @@ on:
   push:
     paths:
       - model_training/tensorflow/**/*
+      - tf-kafka-dataset/**/*
     branches:
       - "master"
       - "main"
       - "latest"
       - "dev*"
+  pull_request:
+    paths:
+      - model_training/tensorflow/**/*
+      - tf-kafka-dataset/**/*
   release:
     types:
       - created
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: model_training/tensorflow
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.9.x"
+      - name: Run tests
+        run: uv run pytest -v
+
   build-tf-model-training:
+    needs: test
+    if: github.event_name != 'pull_request'
     strategy:
       matrix:
         include:
@@ -20,7 +42,13 @@ jobs:
             build-args: "TFTAG=2.21.0-gpu"
     uses: ./.github/workflows/build.yml
     with:
-      context: model_training/tensorflow
+      # Must be the repo root, not model_training/tensorflow - the
+      # Dockerfile COPYs the sibling tf-kafka-dataset package into the
+      # image (see its own header comment) and a subdirectory build
+      # context can't reach outside itself. Reproduced the failure with a
+      # real `docker build` before fixing this - previously-uncaught since
+      # this workflow had never actually been triggered.
+      context: .
       dockerfile: model_training/tensorflow/Dockerfile
       name: ${{ matrix.name }}
       platforms: linux/amd64
