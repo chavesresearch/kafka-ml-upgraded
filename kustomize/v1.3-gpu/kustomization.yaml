@@ -1,6 +1,9 @@
 resources:
   - "../v1.3"
 
+components:
+  - "../components/gpu-executor-images"
+
 configMapGenerator:
   - name: kafkaml-configmap
     behavior: merge
@@ -9,9 +12,3 @@ configMapGenerator:
       - tensorflow.inference.image=ertis/kafka-ml-tensorflow_model_inference-gpu:v1.3
       - pytorch.training.image=ertis/kafka-ml-pytorch_model_training-gpu:v1.3
       - pytorch.inference.image=ertis/kafka-ml-pytorch_model_inference-gpu:v1.3
-
-images:
-  - name: ertis/kafka-ml-pthexecutor
-    newName: ertis/kafka-ml-pthexecutor-gpu
-  - name: ertis/kafka-ml-tfexecutor
-    newName: ertis/kafka-ml-tfexecutor-gpu

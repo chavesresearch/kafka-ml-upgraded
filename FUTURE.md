@@ -135,14 +135,38 @@ nice-to-have polish.
    (see each service's own `CLAUDE.md` for the specific versions/reasoning
    already checked).
 
-4. **Kustomize version sprawl.** `kustomize/{v1.0,v1.0-gpu,v1.1,v1.1-gpu,v1.3,
-   v1.3-gpu,master,master-gpu,local,base}` — ten near-duplicate manifest sets
-   to hand-sync. The GPU scheduling plugin was migrated from Aliyun's
-   `gpushare` extension to the NVIDIA official device plugin per the commit
-   history, but it's unclear whether the older `v1.0`/`v1.1` folders were
-   updated to match or are silently stale. Consolidate with Kustomize
-   components/overlays instead of full directory copies, or mark
-   unsupported versions clearly in `kustomize/README.md`.
+4. ~~Kustomize version sprawl.~~ — **investigated and partially
+   consolidated (2026-08-04).** The premise turned out to be partly
+   wrong: read all 10 `kustomization.yaml` files side by side (not just
+   the directory listing) before concluding. 8 of the 10
+   (`v1.0`/`v1.0-gpu`/`v1.1`/`v1.1-gpu`/`v1.3`/`v1.3-gpu`/`master`/
+   `master-gpu`) were already pure Kustomize composition with **zero**
+   raw resource YAML duplication - each is a ~12-line `kustomization.yaml`
+   (`resources: [../base]` or `[../<version>]` + a `configMapGenerator`
+   merge + an `images:` transformer), not a copy of `base`'s actual
+   manifests. There's also no "GPU scheduling plugin" in any of these
+   files at all (no `gpushare`/`nvidia.com/gpu` reference anywhere in
+   `kustomize/`) - the `-gpu` variants only ever swapped Docker image
+   tags; GPU device-plugin/scheduler setup is entirely operator-side (see
+   root README's "GPU configuration" section, itself flagged stale
+   separately as Medium #3). So there was no actual gpushare→NVIDIA
+   migration for `v1.0`/`v1.1` to have missed.
+   What *was* real: the `images:` transformer block inside each
+   `{version}-gpu/kustomization.yaml` was byte-identical across all 4
+   (confirmed with `diff`) - extracted into a new shared Kustomize
+   Component, `kustomize/components/gpu-executor-images/`, that every
+   `-gpu` overlay now references via `components:` instead of
+   copy-pasting. Verified byte-identical rendered output
+   (`kubectl kustomize <dir>`) before and after the refactor, for all 4
+   overlays. The per-version `configMapGenerator` block still has to stay
+   version-specific (it's an opaque string literal inside a ConfigMap,
+   invisible to Kustomize's `images:` transformer, so the version tag
+   can't be factored out the same way) - that's an inherent Kustomize
+   limitation (no string templating/concatenation), not something left
+   undone. Also fixed real, unrelated documentation drift found along the
+   way: `kustomize/README.md`'s version table listed a `v1.1-gpu-nvidia`
+   directory that doesn't exist, and was missing `v1.3`/`v1.3-gpu`, which
+   do.
 
 5. ~~No dependency update automation.~~ — **done** (2026-08-04):
    `.github/dependabot.yml` now covers every ecosystem in the repo — 16

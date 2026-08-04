@@ -11,11 +11,32 @@ Kubernetes. Notably the following versions are available:
 | `v1.0-gpu`          | `github.com/ertis-research/kafka-ml/kustomize/v1.0-gpu`          |
 | `v1.1`              | `github.com/ertis-research/kafka-ml/kustomize/v1.1`              |
 | `v1.1-gpu`          | `github.com/ertis-research/kafka-ml/kustomize/v1.1-gpu`          |
-| `v1.1-gpu-nvidia`   | `github.com/ertis-research/kafka-ml/kustomize/v1.1-gpu-nvidia`   |
+| `v1.3`              | `github.com/ertis-research/kafka-ml/kustomize/v1.3`              |
+| `v1.3-gpu`          | `github.com/ertis-research/kafka-ml/kustomize/v1.3-gpu`          |
 | `local`             | `github.com/ertis-research/kafka-ml/kustomize/local`             |
 
 These versions should work with any Kubernetes compatible cluster, such as K8s
-and K3s.
+and K3s. (This table used to also list `v1.1-gpu-nvidia`, a directory that no
+longer exists - and was silently missing `v1.3`/`v1.3-gpu`, which do. Fixed
+2026-08-04; if you're pinned to `v1.1-gpu-nvidia` from an old install, use
+`v1.1-gpu` instead - GPU scheduling here has only ever meant "swap to a
+CUDA-enabled image tag", see the note below, so there was nothing
+NVIDIA-specific to lose.)
+
+### A note on GPU support and version staleness
+
+Each `{version}-gpu` overlay (`master-gpu`, `v1.0-gpu`, `v1.1-gpu`,
+`v1.3-gpu`) only swaps in `-gpu`-suffixed image tags (via
+`kustomize/components/gpu-executor-images`, a single shared Kustomize
+Component every `{version}-gpu` overlay references - not duplicated
+per-version) - it does **not** encode any GPU device-plugin/scheduler
+config (no `nodeSelector`, no `nvidia.com/gpu` resource requests). That's
+entirely on the operator to set up cluster-side - see the root README's
+"GPU configuration" section. This means there's no "GPU scheduling
+plugin migration" for these overlays to have drifted out of sync on -
+every version's `-gpu` variant does the same one thing (image tag swap),
+verified identical across all 4 with a real `kubectl kustomize` diff
+before and after extracting the shared component.
 
 ## Installation
 

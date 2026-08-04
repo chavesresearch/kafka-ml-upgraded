@@ -1,0 +1,22 @@
+# Shared by every {version}-gpu overlay (v1.0-gpu, v1.1-gpu, v1.3-gpu,
+# master-gpu) - see FUTURE.md's "kustomize version sprawl" item. This
+# block was previously copy-pasted byte-for-byte into all 4 of those
+# kustomization.yaml files (confirmed identical with `diff` before
+# extracting it) - now a single source of truth for "how a GPU overlay
+# renames the executor images".
+#
+# Deliberately does NOT set `newTag` - it renames on top of whatever tag
+# the version overlay this is layered onto (../v1.0, ../v1.1, ...)
+# already applied, so this one file works unmodified across every
+# version. The training/inference image *tags* still have to be
+# version-specific (they're opaque string literals inside the
+# kafkaml-configmap ConfigMap, invisible to this `images:` transformer -
+# see each {version}-gpu/kustomization.yaml's own configMapGenerator).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+images:
+  - name: ertis/kafka-ml-pthexecutor
+    newName: ertis/kafka-ml-pthexecutor-gpu
+  - name: ertis/kafka-ml-tfexecutor
+    newName: ertis/kafka-ml-tfexecutor-gpu
