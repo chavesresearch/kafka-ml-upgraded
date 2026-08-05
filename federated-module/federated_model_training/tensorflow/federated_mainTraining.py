@@ -252,8 +252,10 @@ class MainTraining(object):
         start = time.time()
 
         while 'model_trained' not in locals() and 'model_trained' not in globals():
+            received_data = False
             for mini_ds in self.kafka_dataset:
                 if len(mini_ds) > 0:
+                    received_data = True
                     mini_ds = mini_ds.map(lambda x, y: decoder.decode(x, y))
                     splits = self.split_online_dataset(mini_ds)
                     splits['train_dataset'] = splits['train_dataset'].batch(training_settings['batch'])
@@ -270,7 +272,31 @@ class MainTraining(object):
                             validation_dataset = validation_dataset.map(lambda x, y: (x, tuple(y for _ in range(training_settings['N']))))
 
                     model_trained = model.fit(train_dataset, validation_data=validation_dataset, **training_settings['kwargs_fit'], **training_settings['kwargs_val'])
-        
+
+            if not received_data and 'model_trained' not in locals():
+                """Real deadlock, found via an actual end-to-end federated-
+                incremental run (CASE=6) with real timing, not synthetic
+                near-instant data: `self.kafka_dataset` is a one-shot
+                Python generator (get_streaming_kafka_batches) that
+                permanently exhausts after `stream_timeout` ms with no new
+                messages. If this streaming consumer group happens to join
+                *after* the datasource already finished sending (a real
+                race under real federated round-trip latency - main
+                trainer -> federated_backend match -> edge Job scheduling
+                -> TF import - not a contrived edge case), the generator
+                exhausts having yielded zero messages, `model_trained` is
+                never set, and the `while` loop above would re-iterate the
+                same already-exhausted generator forever: an empty `for`
+                loop that never blocks and never raises, spinning with no
+                progress, no error, and no timeout. Confirmed
+                byte-identical to ../../../kafka-ml - a pre-existing bug,
+                not introduced by this port, but one that can silently
+                deadlock CASE=6/8 forever under realistic timing. Fix:
+                get a fresh generator/consumer (a new stream_timeout-bounded
+                polling window) instead of re-iterating the dead one.
+                """
+                self.get_data(training_settings)
+
         end = time.time()
 
         logging.info("Model trained successfully. Elapsed time: [%f]", end - start)

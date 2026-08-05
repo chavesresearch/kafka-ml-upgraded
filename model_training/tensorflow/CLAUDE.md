@@ -436,6 +436,60 @@ pre-funded dev accounts, zero cost, zero external dependency). The
 at the end of the round were both exercised for real against this devnet,
 not mocked.
 
+## Real-MNIST multi-epoch pass (all 9 CASEs, `epochs=5`/`agg_rounds=5`) - CONFIRMED PASSED
+
+A second full-matrix pass, after the CASE 1-9 pass above (which used tiny
+synthetic scalar data and `epochs=1`): another clean `kubectl delete
+namespace kafkaml` + redeploy, all locally-built images rebuilt first
+(several had drifted behind their own latest source fixes - always diff
+image build time against `git log -1 -- <dir>` before trusting a "already
+built" image, don't assume). Every CASE 1-9 driven with **real MNIST
+digit images** (not synthetic scalars) and **`tf_kwargs_fit="epochs=5"`**
+(federated cases additionally `agg_rounds=5`), specifically to verify
+genuine multi-epoch training - not just that one `.fit()` call succeeds.
+Verification was two-layered, not just "did a result reach `finished`":
+`result["train_metrics"]`'s per-metric list length (one entry per epoch/
+round, see `parse_metrics`), **and** grepping each real training pod's
+logs for actual `Epoch N/5` lines (Keras's own verbose fit() output) -
+the second check is the one that actually proves 5 real epochs ran, since
+a federated round's `train_metrics` entry is just that round's *final*
+epoch value. Scripts: `integration-tests/mnist_common.py` (shared real-
+MNIST loading + model code), `integration-tests/mnist_case{1..9}_*.py`,
+`integration-tests/mnist_inference_common.py` (real inference deploy +
+kubectl-verified pod + real held-out test image + real prediction). All
+9 cases reached real multi-epoch training with sensible accuracy curves
+(e.g. CASE=1 climbed 0.61→0.94 over 5 epochs on 1500 real images; CASE=9
+reached 1.00 over 5 real on-chain rounds) and every deployed inference
+correctly classified a real held-out MNIST test digit.
+
+**One real, previously-undiscovered deadlock bug found and fixed** -
+CASE=6/8 (federated-incremental) specific, in
+`federated-module/federated_model_training/tensorflow/federated_mainTraining.py`'s
+`train_incremental_model`. See that fix's own inline comment for the full
+diagnosis; short version: `self.kafka_dataset` is a one-shot Python
+generator (`get_streaming_kafka_batches`) that permanently exhausts after
+`stream_timeout` ms of silence, but the retry-on-empty `while` loop around
+it just re-iterated the same dead generator forever - a real deadlock
+(no error, no timeout, no progress) whenever a round's streaming consumer
+happened to join after all of that round's data was already sent. Fixed
+by re-fetching a fresh generator (`self.get_data(training_settings)`) on
+an empty pass instead of re-iterating the exhausted one. Confirmed
+byte-identical to `../../../kafka-ml` - pre-existing, not introduced by
+this port, only surfaced now because this was the first time CASE=6/8 was
+driven with real (slower, network-round-trip-bound) timing instead of
+near-instantaneous synthetic data.
+
+Also worth keeping for next time: getting CASE=6/8's *test* data-sending
+timing right took two wrong attempts before landing on the fix (see
+`integration-tests/mnist_case6_federated_incremental.py`'s docstring for
+the full account) - a fixed-window trickle starves round 2+, and a
+*continuous* zero-gap trickle starves round *advancement* entirely (round
+0 never sees the required silence to hand control back for the next
+round's broadcast). The fix was discrete round-sized bursts with a
+silence gap longer than `stream_timeout` between them - this is a general
+lesson about testing/operating `agg_rounds > 1` federated-incremental
+deployments, not just a one-off test-script bug.
+
 ## Remaining work, in priority order
 
 1. **Write `../CLAUDE.md`** (one level up, `model_training/`

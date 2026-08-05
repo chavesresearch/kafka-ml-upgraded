@@ -1,0 +1,69 @@
+# Local-dev overlay for Docker Desktop's Kubernetes, mirroring the main
+# repo's own `kustomize/local` (locally-built `:test` images, no
+# registry). Deploys into the same `kafkaml` namespace the main overlay
+# targets - the federated module isn't a separate cluster/namespace, it's
+# additional resources layered into the same one.
+#
+# Deploy alongside the main overlay:
+#   kubectl apply -k kustomize/local
+#   kubectl apply -k federated-module/kustomize/local
+resources:
+  - "../base"
+
+namespace: kafkaml
+
+configMapGenerator:
+  - name: federated-kafkaml-configmap
+    behavior: merge
+    literals:
+      - kml.cloud.brokers=kafka:9092
+      - federated.data.brokers=kafka:9092
+      # federated.pytorch.training.image intentionally points at the
+      # TensorFlow federated trainer image too - PyTorch has no federated
+      # training implementation (see model_training/CLAUDE.md), this key
+      # just needs to resolve to *something* pullable so the ConfigMap's
+      # non-optional env lookups don't fail if it's ever read.
+      - federated.tensorflow.training.image=kafka-ml-federated-model-training-tensorflow:test
+      - federated.pytorch.training.image=kafka-ml-federated-model-training-tensorflow:test
+      # CASE=9 (blockchain) against the same local Anvil devnet the main
+      # overlay's kustomize/local/resources/blockchain-devnet.yaml starts -
+      # same well-known Anvil account #0 as that file, not a secret.
+      - fedml.blockchain.wallet-address=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+      - fedml.blockchain.wallet-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+images:
+  - name: federated-kafka-ml-backend
+    newName: kafka-ml-federated-backend
+    newTag: "test"
+  - name: federated-kafka-ml-data_control_logger
+    newName: kafka-ml-federated-data-control-logger
+    newTag: "test"
+  - name: federated-kafka-ml-model_control_logger
+    newName: kafka-ml-federated-model-control-logger
+    newTag: "test"
+
+patches:
+  # Same reasoning as the main overlay's imagePullPolicy patches - these
+  # three Deployments hardcode imagePullPolicy: Always, which would try
+  # (and fail) to pull the locally-built :test images from a registry.
+  - target:
+      kind: Deployment
+      name: federated-backend
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target:
+      kind: Deployment
+      name: federated-data-control-logger
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target:
+      kind: Deployment
+      name: federated-model-control-logger
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent

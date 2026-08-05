@@ -305,6 +305,37 @@ the local Anvil devnet this was verified against - real contract
 deployment, real on-chain round coordination, real ERC20 reward transfer,
 all exercised for real, not mocked.
 
+## Real-MNIST multi-epoch pass (`epochs=5`/`agg_rounds=5`) - CONFIRMED PASSED, one real deadlock found+fixed
+
+A follow-up full-matrix pass driving CASE 5-9 with real MNIST images and
+`epochs=5`/`agg_rounds=5` (not tiny synthetic data at `epochs=1`) - see
+`model_training/tensorflow/CLAUDE.md`'s matching section for the full
+record and `integration-tests/mnist_case{5..9}_*.py` for the scripts.
+Found and fixed a real deadlock in this module's own
+`federated_mainTraining.py`'s `train_incremental_model` (CASE=6/8 only) -
+its retry-on-empty loop re-iterated an already-exhausted one-shot Python
+generator forever instead of fetching a fresh one, which silently hung a
+federated-incremental round whenever its streaming consumer joined after
+that round's data had already all arrived. See that fix's own inline
+comment for the full diagnosis - confirmed byte-identical to
+`../kafka-ml`, pre-existing, just never exercised under real (not
+synthetic-instant) timing before now.
+
+Also: `federated-module/kustomize/local` **did not exist as a committed
+overlay before this pass**, despite `kustomize/README.md` listing it as
+one of the available versions - the federated module had only ever been
+deployed by hand-rolling a one-off `kubectl apply -k` + manual image/
+imagePullPolicy patches in earlier sessions, never actually committed.
+Reconstructed and committed from the live cluster's actual applied state
+(`kubectl get deploy -o yaml`, diffed against `kustomize/base`'s
+placeholders) - mirrors the main repo's own `kustomize/local` overlay
+exactly (locally-built `:test` images, `IfNotPresent` patches, same
+`kafkaml` namespace). Deploy both together:
+```
+kubectl apply -k kustomize/local
+kubectl apply -k federated-module/kustomize/local
+```
+
 ## Remaining work
 
 1. Write/update `README.md` files (all four still describe
