@@ -360,11 +360,20 @@ nice-to-have polish.
    with nothing in CI verifying they still install or run — likely to
    bit-rot silently until someone tries to follow the README tutorial.
 
-3. **README GPU section is stale.** The "GPU configuration" instructions in
-   the root `README.md` still walk through installing Aliyun's
-   `gpushare-scheduler-extender`, but the changelog and commit history
-   indicate the project moved to the NVIDIA official device plugin
-   (see `kustomize/master-gpu`). Update the docs to match.
+3. ~~README GPU section is stale.~~ — **done** (2026-08-06). The "GPU
+   configuration" section used to walk through installing Aliyun's
+   `gpushare-scheduler-extender`/`gpushare-device-plugin` and a manual
+   `kubectl label node ... gpushare=true` step - replaced with the
+   official NVIDIA Container Toolkit + NVIDIA device plugin install
+   (`nvidia.com/gpu` as an auto-discovered allocatable resource, no
+   manual node labeling). Confirmed this is the resource name Kafka-ML's
+   own backend already requests - `gpumem` in a deployment/inference
+   payload becomes `resources.limits["nvidia.com/gpu"]`
+   (`backend/app/controllers/deployments.py:264`, `inferences.py:228`) -
+   so the doc now accurately matches what the code actually does, not
+   assumed from the changelog alone. Added a step pointing at the
+   `-gpu` kustomize overlays too, which the old section never mentioned
+   at all.
 
 4. ~~No CONTRIBUTING.md, issue templates, or PR template.~~ — **done**
    (2026-08-06): `CONTRIBUTING.md`, `SECURITY.md`,
@@ -512,14 +521,29 @@ to "next PR" than "someday". Items from the Vue-era version of this list
 are marked done/obsolete rather than deleted, per this file's usual
 policy.
 
-1. **No end-to-end tests.** The current suite (`pnpm test:run`) is unit
-   tests for `src/logic/*.ts` plus a handful of component-level tests with
-   the API mocked — solid regression coverage for business logic, but
-   nothing exercises a real click-through (create model → configuration →
-   deploy → train → infer) against a live or mocked backend. There's ad hoc
-   Playwright coverage from manual verification passes (not checked in as a
-   repeatable suite/CI job) — worth formalizing once the UI stabilizes.
-   Same gap the Vue app had before it; never got formalized there either.
+1. ~~No end-to-end tests.~~ — **done** (2026-08-06). `e2e/golden-path.spec.ts`
+   (Playwright, `pnpm run test:e2e`, CI via `frontend.yml`) drives the
+   real app - real routing, real forms, the real Monaco editor, no
+   backend/cluster involved - through create model → create configuration
+   → deploy → (simulate a training Job finishing, since no CI runner can
+   do that for real) → view real metrics → deploy the result for
+   inference, plus two smaller specs (empty-form validation, delete
+   flow). Every `/api/*` call is answered by `e2e/mock-backend.ts`, a
+   small stateful fake (same spirit as `kafkaml-client/tests`' fake
+   backend, for the same reason: a cluster-backed E2E run isn't something
+   CI can do). **Found and fixed two real bugs getting this working, not
+   just test-authoring friction**: `CodeEditor.tsx` had a genuine
+   infinite-render-loop crash ("Maximum update depth exceeded") that a
+   real user could trigger by typing multi-line indented code quickly
+   enough - a one-shot "did this change come from the editor" flag alone
+   still hit it intermittently (~40% of real runs) before landing on a
+   value-comparison fix that's actually race-free (see that file's own
+   comment for the full mechanism). And `DeploymentList.tsx` crashed
+   outright (`Cannot read properties of undefined (reading 'map')`) on
+   any deployment payload missing a `results` array - not a real backend
+   gap (confirmed `backend/app/schemas/__init__.py` always includes it),
+   but the mock backend's own first draft didn't, and the real component
+   had no defensive fallback for a shape violation either.
 2. ~~No TypeScript~~ — **done**, both in the original Vue rewrite
    (2026-07-31) and carried forward into the React rewrite (2026-08-04) -
    the whole app is typed, gated by `tsc -b` in `pnpm build` and CI.
@@ -537,15 +561,20 @@ policy.
    Gotcha #5). Acceptable for now; if it becomes a real problem, evaluate a
    lighter editor (CodeMirror 6) or loading Monaco from a CDN instead of
    bundling it. Same order of magnitude as the Vue app's own ~594 kB figure.
-5. **`reactflow` and `@tanstack/react-query` are installed but unused** -
-   `reactflow` was requested for pipeline-topology visualization, but no
-   current view is actually a topology diagram; `react-query` was
-   installed as an option but every view still hand-rolls its own
-   `useEffect` fetch, matching the old Vue app's "no state library"
-   philosophy. Neither is costing anything today (tree-shaken if truly
-   unused, or a small fixed cost) but worth revisiting if a real
-   pipeline-topology view gets requested, or if a view's loading/error/
-   refetch logic grows complex enough to justify react-query.
+5. ~~`reactflow` and `@tanstack/react-query` are installed but unused~~ -
+   **done** (2026-08-06): both removed. `reactflow` had zero imports
+   anywhere in `src/`. `@tanstack/react-query` turned out to be more than
+   a dead import - `main.tsx` was mounting a live
+   `QueryClientProvider`/`QueryClient` around the whole app even though
+   no component anywhere calls `useQuery`/`useMutation` - a real unused
+   runtime cost, not just unused code eligible for tree-shaking as the
+   original framing assumed. Removed the provider wrapper along with the
+   dependency; every view still hand-rolls its own `useEffect` fetch,
+   unchanged. `pnpm test:run` (83 tests), `pnpm typecheck`, and `pnpm
+   build` all pass clean after removal. Re-add either if a real
+   pipeline-topology view or complex loading/error/refetch logic
+   eventually justifies it - nothing else depends on them having been
+   here.
 6. **No accessibility pass on the sidebar/theme-toggle shell or on
    Monaco fields** — keyboard navigation and screen-reader behavior haven't
    been specifically verified (Monaco in particular is known to need extra

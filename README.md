@@ -896,61 +896,63 @@ $ sudo reboot
 $ nvidia-smi
 ```
 
-2. Nvidia Docker installation
+2. NVIDIA Container Toolkit installation
 
 ```bash
 # SSH into the worker machine with GPU
 $ ssh USERNAME@EXTERNAL_IP
 
-# Add the package repositories
-$ distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-$ curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-$ curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+# Add the package repository
+$ curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+$ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-$ sudo apt-get update && sudo apt-get install -y nvidia-docker2
+$ sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+```
+
+3. Configure the container runtime
+
+```bash
+# SSH into the worker machine with GPU
+$ ssh USERNAME@EXTERNAL_IP
+
+# For Docker:
+$ sudo nvidia-ctk runtime configure --runtime=docker
 $ sudo systemctl restart docker
+
+# For containerd (e.g. k3s, most managed Kubernetes node images):
+$ sudo nvidia-ctk runtime configure --runtime=containerd
+$ sudo systemctl restart containerd
 ```
 
-3. Modify the following file
-
-```bash
-# SSH into the worker machine with GPU
-$ ssh USERNAME@EXTERNAL_IP
-$ sudo tee /etc/docker/daemon.json <<EOF
-{
-    "default-runtime": "nvidia",
-    "runtimes": {
-        "nvidia": {
-            "path": "/usr/bin/nvidia-container-runtime",
-            "runtimeArgs": []
-        }
-    }
-}
-EOF
-$ sudo pkill -SIGHUP docker
-$ sudo reboot
-```
-
-4. Kubernetes GPU Sharing extension installation
+4. NVIDIA device plugin installation
 
 ```bash
 # From your local machine that has access to the Kubernetes API
-$ curl -O https://raw.githubusercontent.com/AliyunContainerService/gpushare-scheduler-extender/master/config/gpushare-schd-extender.yaml
-$ kubectl create -f gpushare-schd-extender.yaml
-
-$ wget https://raw.githubusercontent.com/AliyunContainerService/gpushare-device-plugin/master/device-plugin-rbac.yaml
-$ kubectl create -f device-plugin-rbac.yaml
-
-$ wget https://raw.githubusercontent.com/AliyunContainerService/gpushare-device-plugin/master/device-plugin-ds.yaml
-# update the local file so the first line is 'apiVersion: apps/v1'
-$ kubectl create -f device-plugin-ds.yaml
-
-# From your local machine that has access to the Kubernetes API
-$ kubectl label node worker-gpu-0 gpushare=true
+$ kubectl create -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/main/deployments/static/nvidia-device-plugin.yml
 ```
 
-Thanks to Sven Degroote from ML6team for the GPU and Kubernetes setup
-[documentation](https://blog.ml6.eu/a-guide-to-gpu-sharing-on-top-of-kubernetes-6097935ababf).
+This is the [official NVIDIA device
+plugin](https://github.com/NVIDIA/k8s-device-plugin) - it auto-discovers
+GPU nodes via the driver installed in step 1 and exposes each GPU as an
+allocatable `nvidia.com/gpu` resource, no manual node labeling step
+required. This is the exact resource name Kafka-ML's own backend already
+requests (`gpumem` in a deployment/inference payload becomes a
+`resources.limits["nvidia.com/gpu"]` on the generated training/inference
+Job or Deployment - see `backend/app/controllers/deployments.py` and
+`inferences.py`), so once the plugin's DaemonSet reports `nvidia.com/gpu`
+as allocatable on a node, no further Kafka-ML-side configuration is
+needed for GPU-backed training/inference to schedule there.
+
+5. Use the GPU-enabled Kafka-ML images
+
+The `-gpu` suffixed [kustomize versions](kustomize/README.md) (e.g.
+`master-gpu`, `v1.3-gpu`) swap the TensorFlow/PyTorch executor and
+training/inference images for CUDA-enabled builds - see that overlay's
+own `kustomization.yaml` for exactly which images. Deploy with one of
+those instead of the base version to actually make use of the GPU
+resources this section sets up.
 
 ## Threat model: exec()'d model code
 

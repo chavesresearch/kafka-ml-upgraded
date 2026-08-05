@@ -38,6 +38,22 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     css: false,
+    // e2e/ holds Playwright specs (real browser, real Monaco, mocked
+    // /api/* via route interception - see e2e/mock-backend.ts) - a
+    // completely different test runner/API (`@playwright/test`, not
+    // vitest's globals), picked up by `npx playwright test`, not this
+    // suite. Vitest's default include glob (`**/*.{test,spec}.*`) would
+    // otherwise also try to collect it and fail on the unrecognized API.
+    // Setting `exclude` replaces vitest's own default list rather than
+    // extending it, so it's repeated here in full plus `e2e/`.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/cypress/**',
+      '**/.{idea,git,cache,output,temp}/**',
+      '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build}.config.*',
+      '**/e2e/**',
+    ],
     // Real monaco-editor needs a browser (Workers, canvas layout) and its
     // module-only package.json doesn't resolve under Vitest's SSR module
     // graph anyway — see src/test-mocks/monaco-editor.ts. Aliased by exact

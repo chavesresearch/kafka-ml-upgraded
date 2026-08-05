@@ -36,21 +36,10 @@ source, it's in git history before the cutover commit, not on disk.
 - `react-router-dom` v7 (`<BrowserRouter>` + `<Routes>`, not the v7 data
   router APIs — kept close to how the Vue app's router worked)
 - `@tanstack/react-table` **v8.21.3, deliberately not v9** — see Gotchas
-- `@tanstack/react-query` — installed, available, but **not used yet**;
-  every view still does its own `useEffect` + `useState` fetch, matching
-  the Vue app's "no state library, each view fetches its own data"
-  philosophy. Worth adopting per-view if a view's loading/error/refetch
-  logic grows past what a plain `useEffect` handles cleanly.
 - `recharts` + shadcn's `chart.tsx` wrapper (`ChartContainer`,
   `ChartTooltip`, etc.) — replaces `primevue/chart` (Chart.js). This is
   shadcn's own recommended charting pairing (they ship an official
   Recharts-based chart recipe), not an arbitrary choice.
-- `reactflow` — **installed, not used anywhere yet.** The user's stack
-  request listed it conditionally ("if visualizing Kafka topic
-  producer→consumer pipelines"); no current view is actually a topology
-  diagram (Visualization is a live metrics chart, not a pipeline graph),
-  so it wasn't forced in. Worth revisiting if a real pipeline-topology
-  view gets requested.
 - `monaco-editor` **pinned to exactly `0.50.0`** — see Gotchas
 - `sonner` (toast) — replaces PrimeVue's `Toast`/`useToast`
 - Vitest + React Testing Library — replaces Vue Test Utils, same overall
@@ -202,33 +191,54 @@ k8s deployment YAML beyond what already pointed at image name
 ## Testing approach
 
 ```bash
-pnpm test:run     # Vitest + React Testing Library, 72 tests
+pnpm test:run     # Vitest + React Testing Library, 83 tests
 pnpm typecheck    # tsc -b --noEmit
 pnpm build        # tsc -b && vite build (also typechecks)
+pnpm test:e2e     # Playwright, real browser, mocked /api/* - see below
 ```
 
-72 tests total: 60 are the ported `src/logic/*.test.ts` +
+83 unit/component tests total: most are the ported `src/logic/*.test.ts` +
 `src/api.test.ts` + `src/ws.test.ts` files (unchanged from the Vue app,
 proving the ported business logic still behaves identically), plus
 `routes.test.ts` (every view module resolves without throwing - same
-cheap regression net the Vue app's `router.test.ts` had) and two
-component-level tests (`ModelList.test.tsx`, `ConfigurationView.test.tsx`
-- same scenarios the Vue app's own two component tests covered,
-translated to React Testing Library idioms).
+cheap regression net the Vue app's `router.test.ts` had) and
+component-level tests (`ModelList.test.tsx`, `ConfigurationView.test.tsx`,
+and later additions like the `InferenceList` modal coverage).
 
-**Real end-to-end verification performed, not just unit tests**: started
-`pnpm dev` against the live local backend (`localhost:8000`, via this
-same `/api` proxy pattern the old Vue `vite.config.ts` used -
-`KAFKAML_BACKEND` env var overrides the target), then drove it with a
-headless Playwright script (`npx playwright`, not committed as a
-dependency - ad hoc verification only) through all main views plus the
-model create form and a dark-mode toggle. Confirmed: real data rendered
-from the live backend, zero browser console errors across every page,
-Monaco editor renders correctly with syntax highlighting, dark mode
-repaints correctly (indigo accent, proper contrast). Also verified as the
-actual production nginx Docker image, deployed to the local Kubernetes
-cluster and driven the same way. Screenshots were not committed (ad hoc
-verification artifacts, not a repeatable suite).
+**Real, committed E2E suite (2026-08-06)**: `e2e/golden-path.spec.ts`,
+run via `pnpm run test:e2e` / CI's `frontend.yml` (not vitest - excluded
+from it explicitly in `vite.config.ts`'s `test.exclude`, different
+runner/API). Drives the real app (real routing, real forms, the real
+Monaco editor - no mocking of the app's own code) through create model →
+create configuration → deploy → simulate a training Job finishing (no
+CI runner can do that against a real cluster) → view real metrics →
+deploy the result for inference, plus two smaller specs. Every `/api/*`
+call is intercepted and answered by `e2e/mock-backend.ts`, a small
+stateful fake sharing the test process's JS heap (so a test can mutate
+`backend.results` etc. directly between steps, no bridging needed) -
+same spirit as `kafkaml-client/tests`' fake backend, for the same reason
+a cluster-backed E2E run isn't something CI can realistically do.
+Monaco has no test hooks (it's the hand-rolled wrapper described above,
+not a library with a testing API) - the spec drives it the standard way,
+clicking into `.monaco-editor` and using `page.keyboard.type()`.
+
+**Found two real bugs writing this, not just test-authoring friction**:
+see `CodeEditor.tsx`'s own `[value]`-sync effect comment for a genuine
+infinite-render-loop crash (real users typing multi-line indented code
+quickly enough could hit it - not Playwright-specific) and its
+value-comparison fix; and see `FUTURE.md`'s "No end-to-end tests" entry
+for a `DeploymentList.tsx` crash the mock backend's first draft exposed
+(not a real backend gap, confirmed against `backend/app/schemas/
+__init__.py` - the mock's own bug, but `DeploymentList.tsx` itself had no
+defensive fallback either).
+
+Earlier ad hoc Playwright verification (a throwaway, uncommitted script
+driving `pnpm dev` against the live local backend through every main
+view + a dark-mode toggle, plus the production nginx Docker image
+deployed to the local cluster) is superseded by the committed suite
+above for anything it covers, but its finding still stands as the more
+recent proof of real-backend integration: zero console errors, correct
+Monaco rendering, correct dark-mode repaints.
 
 ## Remaining work
 
@@ -237,10 +247,19 @@ verification artifacts, not a repeatable suite).
    replaced. This rewrite was verified against the live backend
    end-to-end (see above) but not clicked through screen-by-screen by a
    person yet.
-2. **No end-to-end/integration test suite** - same gap the Vue app had
-   (see `FUTURE.md`'s "No end-to-end tests" entry, written against the
-   Vue app but equally applicable here).
-3. **`reactflow` is installed but unused** - see Stack section above.
-4. **`@tanstack/react-query` is installed but unused** - every view still
-   hand-rolls its own fetch effect. Low priority unless a view's
-   load/error/refetch logic grows complex enough to justify it.
+2. ~~No end-to-end/integration test suite.~~ — **done** (2026-08-06, see
+   "Testing approach" above).
+3. ~~`reactflow` is installed but unused.~~ — **removed** (2026-08-06,
+   `FUTURE.md` frontend-follow-ups #5): confirmed zero imports anywhere
+   in `src/`, dropped from `package.json`. Revisit (re-add) if a real
+   pipeline-topology view ever gets requested - nothing else depends on
+   it having been here.
+4. ~~`@tanstack/react-query` is installed but unused.~~ — **removed**
+   (2026-08-06): turned out to be more than dead weight - `main.tsx` was
+   actually mounting a live `QueryClientProvider`/`QueryClient` around
+   the whole app, even though zero components anywhere call
+   `useQuery`/`useMutation` - real unused runtime cost, not just an
+   unused import. Removed the provider wrapper along with the
+   dependency; every view still hand-rolls its own fetch effect, exactly
+   as before. `pnpm test:run` (83 tests), `pnpm typecheck`, and `pnpm
+   build` all still pass clean.

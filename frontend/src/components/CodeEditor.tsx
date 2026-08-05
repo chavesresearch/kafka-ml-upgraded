@@ -43,6 +43,13 @@ export default function CodeEditor({
   const monacoApiRef = useRef<typeof Monaco | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  // The last value the editor itself produced (echoed up via onChange).
+  // Lets the [value]-sync effect below tell "value changed because the
+  // editor just reported it" apart from a genuinely external change (e.g.
+  // loading a different model to edit) by comparing values directly,
+  // rather than a one-shot flag - see that effect's own comment for why
+  // a flag alone isn't reliable here.
+  const lastEditorValueRef = useRef(value)
   const [isEmpty, setIsEmpty] = useState(value.length === 0)
   const { isDark } = useTheme()
 
@@ -80,6 +87,7 @@ export default function CodeEditor({
         instance.onDidChangeModelContent(() => {
           const next = instance.getValue()
           setIsEmpty(next.length === 0)
+          lastEditorValueRef.current = next
           onChangeRef.current(next)
         })
       },
@@ -95,10 +103,37 @@ export default function CodeEditor({
 
   // External updates to `value` (e.g. loading an existing model) that didn't
   // originate from this editor's own change event.
+  //
+  // Real bug, found via an actual Playwright run typing multi-line
+  // indented Python into this field (e2e/golden-path.spec.ts) - not
+  // hypothetical, and not fully fixed by the first attempt at this fix
+  // (a one-shot "did this change come from the editor" boolean ref) -
+  // that version still intermittently hit the same crash (~2 times in 5
+  // real runs), because the flag can be reset by this effect running for
+  // an *earlier* editor-originated change before a *later* one (Monaco's
+  // auto-indent/auto-closing-bracket behavior can fire a second
+  // onDidChangeModelContent for a single keystroke) has had a chance to
+  // set it again - a real ordering race under fast typing, not just a
+  // one-off timing fluke. Comparing against `lastEditorValueRef` instead
+  // is race-free: it's a value check, not a consumed one-shot flag, so
+  // it stays correct no matter how many editor-originated changes land
+  // between renders. Without either fix: `editor.getValue() !== value`
+  // goes spuriously true, `editor.setValue(value)` rolls the live editor
+  // content *backwards* to a stale value, which fires another content
+  // event, calls onChange again, and round-trips back into this same
+  // effect - "Maximum update depth exceeded" (React's own infinite-loop
+  // guard, confirmed in a real browser console, not a hang).
   useEffect(() => {
+    if (value === lastEditorValueRef.current) {
+      // This value update just echoes what the editor already has -
+      // nothing to sync, and no reason to fight with in-progress typing.
+      setIsEmpty(value.length === 0)
+      return
+    }
     const editor = editorRef.current
     if (editor && editor.getValue() !== value) {
       editor.setValue(value)
+      lastEditorValueRef.current = value
     }
     setIsEmpty(value.length === 0)
   }, [value])
