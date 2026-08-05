@@ -68,6 +68,7 @@ HTTP, and only to each other.
 | `federated_data_control_logger/` | uv conversion only - no code changes needed. |
 | `federated_model_control_logger/` | uv conversion + one real bug fix (`auto_offset_reset='earliest'` - see "Django→Litestar rewrite" below). |
 | `federated_backend/` | **Rewritten Django→Litestar** (2026-08-05) - see "federated_backend/ — Django→Litestar rewrite" below. Previously "kept Django, not proportionate to rewrite"; revisited once `backend` was the only other non-Litestar service left and the rewrite let two real bugs get fixed at the root instead of patched around. |
+| `kustomize/` | `v2.0`/`v2.0-gpu` added 2026-08-05, alongside the pre-existing `master`/`master-gpu`/`v1.1`/`v1.1-gpu`/`base`/`local` (the last two of which pre-date and are unaffected by the rewrite above - zero resource-shape changes needed). See `kustomize/README.md`'s version table. |
 
 **`federated_model_training/pytorch/` does not exist** - only a `.gitkeep`
 in the original. PyTorch federated training was never implemented

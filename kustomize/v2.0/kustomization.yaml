@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# v2.0: the reworked release - React 19 frontend (was Angular/Vue),
+# Litestar/SQLAlchemy async backend (was Django/DRF), modernized
+# model_training/model_inference/mlcode_executor/datasources dependency
+# stacks, web3 7.x (was 5.x). Same `base` every other version overlay
+# uses - the rework changed the deployed services' internals, not the
+# Kubernetes resource shapes those services live in, so `base` needed no
+# changes for this version. See the repo root README/CHANGELOG for the
+# full list of what changed.
+resources:
+  - "../base"
+
+configMapGenerator:
+  - name: kafkaml-configmap
+    behavior: merge
+    literals:
+      - tensorflow.training.image=ertis/kafka-ml-tensorflow_model_training:v2.0
+      - tensorflow.inference.image=ertis/kafka-ml-tensorflow_model_inference:v2.0
+      - pytorch.training.image=ertis/kafka-ml-pytorch_model_training:v2.0
+      - pytorch.inference.image=ertis/kafka-ml-pytorch_model_inference:v2.0
+
+images:
+  - name: kafka-ml-backend
+    newName: ertis/kafka-ml-backend
+    newTag: v2.0
+  - name: kafka-ml-frontend
+    newName: ertis/kafka-ml-frontend
+    newTag: v2.0
+  - name: kafka-ml-kafka_control_logger
+    newName: ertis/kafka-ml-kafka_control_logger
+    newTag: v2.0
+  - name: kafka-ml-pthexecutor
+    newName: ertis/kafka-ml-pthexecutor
+    newTag: v2.0
+  - name: kafka-ml-tfexecutor
+    newName: ertis/kafka-ml-tfexecutor
+    newTag: v2.0

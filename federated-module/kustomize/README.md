@@ -9,10 +9,20 @@ Kubernetes. Notably the following versions are available:
 | `master-gpu` | `github.com/ertis-research/kafka-ml/federated-module/kustomize/master-gpu` |
 | `v1.1`       | `github.com/ertis-research/kafka-ml/federated-module/kustomize/v1.1`       |
 | `v1.1-gpu`   | `github.com/ertis-research/kafka-ml/federated-module/kustomize/v1.1-gpu`   |
+| `v2.0`       | `github.com/ertis-research/kafka-ml/federated-module/kustomize/v2.0`       |
+| `v2.0-gpu`   | `github.com/ertis-research/kafka-ml/federated-module/kustomize/v2.0-gpu`   |
 | `local`      | `github.com/ertis-research/kafka-ml/federated-module/kustomize/local`      |
 
 These versions should work with any Kubernetes compatible cluster, such as K8s
-and K3s.
+and K3s. There was never a versioned overlay between `v1.1` and `v2.0` in
+this module (the main module has `v1.0`/`v1.3` in between - this module's
+`federated_backend` didn't exist as a separately-versioned release until
+now) - `v2.0` is the reworked release, see `../../kustomize/README.md`'s
+`v2.0` note for what changed. `federated_backend` itself went
+Django→Litestar as part of this rework (see
+`../CLAUDE.md`'s "federated_backend/ — Django→Litestar rewrite" section)
+with **zero** resource-shape changes, so `base` (and every overlay below)
+needed no changes for it either.
 
 ## Installation
 

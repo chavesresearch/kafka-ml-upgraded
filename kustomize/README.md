@@ -13,6 +13,8 @@ Kubernetes. Notably the following versions are available:
 | `v1.1-gpu`          | `github.com/ertis-research/kafka-ml/kustomize/v1.1-gpu`          |
 | `v1.3`              | `github.com/ertis-research/kafka-ml/kustomize/v1.3`              |
 | `v1.3-gpu`          | `github.com/ertis-research/kafka-ml/kustomize/v1.3-gpu`          |
+| `v2.0`              | `github.com/ertis-research/kafka-ml/kustomize/v2.0`              |
+| `v2.0-gpu`          | `github.com/ertis-research/kafka-ml/kustomize/v2.0-gpu`          |
 | `local`             | `github.com/ertis-research/kafka-ml/kustomize/local`             |
 
 These versions should work with any Kubernetes compatible cluster, such as K8s
@@ -23,10 +25,19 @@ longer exists - and was silently missing `v1.3`/`v1.3-gpu`, which do. Fixed
 CUDA-enabled image tag", see the note below, so there was nothing
 NVIDIA-specific to lose.)
 
+`v2.0` is the reworked release: React 19 frontend (was Angular/Vue),
+Litestar/SQLAlchemy async backend and federated backend (both were
+Django/DRF), modernized `model_training`/`model_inference`/
+`mlcode_executor`/`datasources` dependency stacks, `web3` 7.x (was 5.x).
+See the repo root README/`FUTURE.md` for the full list of what changed -
+`kustomize/base` itself needed **zero** changes for this rework, since it
+changed the deployed services' internals, not the Kubernetes resource
+shapes those services run in.
+
 ### A note on GPU support and version staleness
 
 Each `{version}-gpu` overlay (`master-gpu`, `v1.0-gpu`, `v1.1-gpu`,
-`v1.3-gpu`) only swaps in `-gpu`-suffixed image tags (via
+`v1.3-gpu`, `v2.0-gpu`) only swaps in `-gpu`-suffixed image tags (via
 `kustomize/components/gpu-executor-images`, a single shared Kustomize
 Component every `{version}-gpu` overlay references - not duplicated
 per-version) - it does **not** encode any GPU device-plugin/scheduler
@@ -35,8 +46,10 @@ entirely on the operator to set up cluster-side - see the root README's
 "GPU configuration" section. This means there's no "GPU scheduling
 plugin migration" for these overlays to have drifted out of sync on -
 every version's `-gpu` variant does the same one thing (image tag swap),
-verified identical across all 4 with a real `kubectl kustomize` diff
-before and after extracting the shared component.
+verified identical across all 4 pre-existing overlays with a real
+`kubectl kustomize` diff before and after extracting the shared
+component (2026-08-04); `v2.0-gpu` (2026-08-05) reuses that same
+component unchanged, verified the same way against `v1.3-gpu`.
 
 ## Installation
 

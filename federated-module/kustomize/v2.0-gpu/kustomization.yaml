@@ -2,13 +2,15 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - "../v1.1"
+  - "../v2.0"
+
+# namespace: kafkaml
 
 configMapGenerator:
   - name: federated-kafkaml-configmap
     behavior: merge
     literals:
-      - federated.tensorflow.training.image=ertis/federated-kafka-ml-tensorflow_model_training-gpu:v1.1
-      - federated.pytorch.training.image=ertis/federated-kafka-ml-pytorch_model_training-gpu:v1.1 # Non existing
+      - federated.tensorflow.training.image=ertis/federated-kafka-ml-tensorflow_model_training-gpu:v2.0
+      - federated.pytorch.training.image=ertis/federated-kafka-ml-pytorch_model_training-gpu:v2.0 # Non existing
       # - kml.cloud.brokers=kafka-cloud.broker:9092
       # - federated.data.brokers=kafka-federated.broker:9092

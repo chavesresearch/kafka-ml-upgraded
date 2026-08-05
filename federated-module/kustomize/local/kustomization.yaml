@@ -7,6 +7,9 @@
 # Deploy alongside the main overlay:
 #   kubectl apply -k kustomize/local
 #   kubectl apply -k federated-module/kustomize/local
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
 resources:
   - "../base"
 

@@ -184,6 +184,31 @@ nice-to-have polish.
    way: `kustomize/README.md`'s version table listed a `v1.1-gpu-nvidia`
    directory that doesn't exist, and was missing `v1.3`/`v1.3-gpu`, which
    do.
+   **Follow-up, 2026-08-05**: two more real gaps found and fixed while
+   preparing this rework for its eventual upstream release as `v2.0`.
+   (1) Every versioned overlay except `base`/`federated-module/kustomize/base`
+   was missing an explicit `apiVersion`/`kind` on its own
+   `kustomization.yaml` (kustomize silently defaults these when absent,
+   confirmed via a real `kubectl kustomize`/`kustomize build` output diff
+   before/after adding them to all 20 overlays across both modules -
+   byte-identical, purely additive). (2) `federated-module/kustomize/`
+   already had real `master`/`master-gpu`/`v1.1`/`v1.1-gpu` overlays
+   (missed on first read this session - only `base`/`local` were checked
+   before concluding they didn't exist) - added `v2.0`/`v2.0-gpu` there to
+   match, plus the equivalent `kustomize/v2.0`/`v2.0-gpu` for the main
+   module. Both new overlay pairs target `ertis/kafka-ml-*`/
+   `ertis/federated-kafka-ml-*:v2.0` (the same Docker Hub namespace every
+   other version uses, per `.github/workflows/build.yml`'s
+   `USERNAME: ertis`) rather than this fork's own registry, since the
+   user's plan is to merge this rework upstream and cut the real `v2.0`
+   release there. Verified: `kustomize build` clean on all 20 overlays,
+   plus a real `kubectl apply --dry-run=server` against the live cluster
+   for both `local` overlays (unchanged, matching what's actually
+   deployed) and both new `v2.0` overlays (schema-valid, `configured` -
+   would swap in the not-yet-published `:v2.0` images if applied for
+   real). See `kustomize/README.md` and
+   `federated-module/kustomize/README.md` for the current version
+   tables.
 
 6. ~~No dependency update automation.~~ — **done** (2026-08-04):
    `.github/dependabot.yml` now covers every ecosystem in the repo — 16
