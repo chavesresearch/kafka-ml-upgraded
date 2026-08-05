@@ -386,6 +386,16 @@ nice-to-have polish.
    (`kafka-python` connects eagerly in the constructor) with no broker
    available in CI, the same "impractical to reproduce in CI" call already
    made for the 9-CASE dispatch itself (see Critical item 4 above).
+   **Found a real, pre-existing bug the first time this CI check ran**:
+   `HCOPD_Avro_format`'s `requirements.txt` never declared `pandas` or
+   `scikit-learn` at all, despite both scripts importing them
+   (`HCOPD_data_stream_producer.py`/`HCOPD_inference.py` use
+   `pandas`/`sklearn.preprocessing`) - anyone following that example's
+   README would have hit a bare `ModuleNotFoundError` on the very first
+   run, unrelated to any version staleness. Not something the version-pin
+   audit above would have caught by itself (the file installed "cleanly" -
+   it was just missing entries). Fixed by adding both, confirmed via a
+   real `gh workflow run` (not just the local venv test) before and after.
 
 3. ~~README GPU section is stale.~~ — **done** (2026-08-06). The "GPU
    configuration" section used to walk through installing Aliyun's

@@ -1,4 +1,6 @@
 tensorflow==2.21.0
 kafka-python==3.0.10
+pandas==3.0.5
 numpy==2.4.6
+scikit-learn==1.9.0
 ../../datasources  # kafkaml_datasources - installed from this monorepo, not published to PyPI
