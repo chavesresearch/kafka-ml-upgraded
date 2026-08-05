@@ -396,6 +396,18 @@ nice-to-have polish.
    audit above would have caught by itself (the file installed "cleanly" -
    it was just missing entries). Fixed by adding both, confirmed via a
    real `gh workflow run` (not just the local venv test) before and after.
+   The same real CI run then caught a second, identical-shaped bug:
+   `MLGPARK_STREAM_RAW_format`'s `requirements.txt` was missing `pandas`
+   (imported by `MLGPARK_dataset_training_example.py`) and `urllib3`
+   (`MLGPARK_dataset_inference_example.py` calls `urllib3.PoolManager()`
+   directly - it happens to already be pulled in transitively via
+   `tensorflow`'s own `requests` dependency today, but declaring it
+   explicitly is the whole point of this audit, not relying on another
+   package's dependency tree to keep providing it by accident). After both
+   fixes, cross-checked all 9 examples' actual `import`/`from` statements
+   against their `requirements.txt` directly (AST-parsed, same technique
+   `check_imports.py` uses) to confirm no third instance of this same gap
+   existed before calling this item done.
 
 3. ~~README GPU section is stale.~~ — **done** (2026-08-06). The "GPU
    configuration" section used to walk through installing Aliyun's
