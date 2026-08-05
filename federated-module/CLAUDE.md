@@ -6,10 +6,13 @@ complete, multi-service end-to-end rounds - main trainer, both
 control-logger relays, `federated_backend` (including real Kubernetes Job
 creation), and the `federated_model_training` edge worker all exercised
 together for real, not mocked, against a cluster wiped and redeployed
-from scratch first. Two real bugs were found and fixed getting CASE 6/8
-(the incremental variants) working - see "CASE 6-9 - CONFIRMED PASSED"
-below. See the bottom of the `federated_backend/` section below for the
-original CASE=5 run.
+from scratch first. `federated_backend` is now a **Litestar** service
+(rewritten from Django 2026-08-05, see "federated_backend/ —
+Django→Litestar rewrite" below) - don't look for `automl`/`autoweb`
+Django apps in this tree anymore, they're gone (preserved at
+`../../kafka-ml/federated-module/federated_backend` if needed). Two real
+bugs were found and fixed getting CASE 6/8 (the incremental variants)
+working - see "CASE 6-9 - CONFIRMED PASSED" below.
 
 A faithful port of the original `federated-module`, preserved at
 `../../kafka-ml/federated-module` as historical reference. Same
@@ -63,8 +66,8 @@ HTTP, and only to each other.
 |---|---|
 | `federated_model_training/tensorflow/` | Functionally complete. See its own section below. |
 | `federated_data_control_logger/` | uv conversion only - no code changes needed. |
-| `federated_model_control_logger/` | uv conversion only - no code changes needed. |
-| `federated_backend/` | uv conversion + Django/DRF/kubernetes-client version bump (kept Django - no framework rewrite, unlike the main backend's Litestar port, since this is a small 587-line satellite service and a full rewrite wasn't proportionate to what was asked). Two real bugs found and fixed - see below. |
+| `federated_model_control_logger/` | uv conversion + one real bug fix (`auto_offset_reset='earliest'` - see "Django→Litestar rewrite" below). |
+| `federated_backend/` | **Rewritten Django→Litestar** (2026-08-05) - see "federated_backend/ — Django→Litestar rewrite" below. Previously "kept Django, not proportionate to rewrite"; revisited once `backend` was the only other non-Litestar service left and the rewrite let two real bugs get fixed at the root instead of patched around. |
 
 **`federated_model_training/pytorch/` does not exist** - only a `.gitkeep`
 in the original. PyTorch federated training was never implemented
@@ -147,7 +150,19 @@ both compile and import cleanly, both Docker images build. Dropped
 Python 3.12 - still works, only a `DeprecationWarning`; left as-is per
 "fix only what's broken", not a hard break.
 
-## federated_backend/
+## federated_backend/ (original Django port - superseded, see below)
+
+**Superseded 2026-08-05 by a full Django→Litestar rewrite** - see
+"federated_backend/ — Django→Litestar rewrite" further down for the
+current implementation. This section is kept as historical record of the
+Django port's own history (same "preserve the story, mark what changed"
+convention this project uses elsewhere, e.g. `frontend/CLAUDE.md`'s Vue
+history) - none of the Django code it describes exists in this tree
+anymore (preserved at `../../kafka-ml/federated-module/federated_backend`
+if ever needed), but the bugs found and reasoning below are still
+accurate about *what was true at the time*, and the rewrite fixed the
+same two real bugs at their root instead of working around them - worth
+reading both if picking this back up.
 
 Kept Django (no Litestar rewrite, unlike the main `backend`) - this is a
 small, 587-line satellite service with two endpoints, not the actively-used
@@ -236,6 +251,89 @@ and posted a real finished result (`status: "finished"`, real
 accuracy/loss) back to `backend`. Every piece in this module
 was exercised for real in this one run.
 
+## federated_backend/ — Django→Litestar rewrite (2026-08-05)
+
+Rewritten from Django/DRF to Litestar, matching `../backend`'s own stack -
+same faithful-port philosophy as every other rewrite in this project
+(same two endpoint paths, same request/response shapes, same env var
+names, so the kustomize deployment manifest needed **zero** changes).
+Prompted mid-session by the user, during what started as a routine Django
+version bump: "why don't we change it to a litestar" - agreed to do it as
+its own dedicated pass (not bundled into the routine dependency bump),
+given this service *is* the matching/deploy logic every CASE 5-9
+federated test depends on, and a rewrite needed full re-verification, not
+a quick swap. See `FUTURE.md` Medium item 7 for that framing.
+
+**Layout**: `app/{config,db,models,matching,kubernetes_deploy,
+controllers,main}.py`, `tests/{test_matching,test_views,
+test_kubernetes_deploy}.py` - one file per concern instead of Django's
+`automl`/`autoweb` app split, matching `../backend/app/`'s own layout.
+`ModelSource`/`Datasource` are plain SQLAlchemy 2.0 async models (schema
+created via `Base.metadata.create_all()` at lifespan startup, not real
+Alembic migrations - proportionate for two small, stable tables, unlike
+`../backend`'s evolving schema). `check_colission()`/`is_blank()` moved to
+`app/matching.py` as pure functions, ported byte-for-byte including the
+real "these are JSON-encoded *strings*, not native dicts" wire-format
+gotcha (see `app/models.py`'s docstring - `ModelSource.blockchain` is a
+genuine native JSON column since the real wire format sends it as a
+nested dict, not a string; `data_restriction`/`dataset_restrictions` are
+plain `Text` columns since the real format always sends those as
+JSON-encoded strings that `check_colission` itself `json.loads()`s -
+getting this distinction backwards was exactly the "false alarm" incident
+the old Django section above documents, worth re-reading before touching
+either field's type). `deploy_on_kubernetes` moved to
+`app/kubernetes_deploy.py`, now `async` via `kubernetes_asyncio` (was
+sync `kubernetes` before) - same `kubernetes_api_client()` fix as
+`../backend/app/utils.py`'s own (byte-identical bug, independently found
+in both services' original code, now sharing the identical fix pattern
+though not the same source file - this service still doesn't import from
+`../backend`, deliberately, same isolation reasoning as before).
+
+**Two real bugs fixed at the root as part of this rewrite** (both already
+flagged in FUTURE.md before the rewrite; fixing them was the actual
+motivation, not just the Django→Litestar swap itself):
+
+1. **`federated_backend` never marked a matched `ModelSource`/`Datasource`
+   row consumed** (FUTURE.md High item 9) - every new registration
+   re-scanned and could re-match against *every* row ever inserted,
+   forever. Fixed: `create_datasource`/`model_from_control_logger` now
+   `await db_session.delete(...)` both sides of a successful match, right
+   after `deploy_on_kubernetes` is awaited - a matched pair can never be
+   matched again. Covered by `test_views.py`'s own assertions (row counts
+   drop to 0 after a match, not just "deploy was called").
+2. **The *real*, precise root cause of the "replay on restart" variant**
+   (previously documented here only as an observed symptom, not a
+   pinned-down mechanism - corrected now): `federated_model_control_logger.py`
+   explicitly passed `auto_offset_reset='earliest'` to its `KafkaConsumer`
+   - combined with a fresh random `group_id` every restart (so there's
+   never a prior committed offset for the new group to resume from),
+   *every* restart replayed the topic's **entire retained history** from
+   the very beginning, re-POSTing every ModelSource registration ever
+   published in the session at once. Confirmed via `kubectl logs` on a
+   real restart (offsets 3 through 9, spanning hours, all replayed in the
+   same second) - the sibling `federated_data_control_logger.py` never
+   passes this kwarg at all and correctly defaults to `'latest'`, which is
+   what made the asymmetry easy to miss (one of the two loggers behaved
+   correctly the whole time). Fixed by dropping the kwarg to match its
+   sibling's default. **Both fixes were needed together** - mark-consumed
+   alone doesn't help if the producer-side replay recreates fresh
+   unconsumed rows every restart, and the offset fix alone doesn't help
+   the *within-one-session* re-matching case items 7 (old, pre-rewrite)
+   already documented.
+
+**Verified for real, not just via the 14-test unit/endpoint suite**: CASE
+5, 6, 7, and 9 (single federated, federated-incremental, federated-
+distributed, and blockchain - the four structurally distinct matching/
+deploy paths) all re-run end-to-end against the live cluster after the
+rewrite, each reaching real `status: "finished"` results with correct
+per-round metrics and **zero duplicate edge worker Jobs** - including
+CASE=6 specifically, the exact case whose investigation surfaced both
+bugs above in the first place. Confirmed via `kubectl get jobs` after
+each run: exactly one controller + one worker Job every time, not the
+7-8 duplicates a `federated-backend`/logger restart used to spawn before
+this fix. See `model_training/tensorflow/CLAUDE.md`'s "Real-MNIST
+multi-epoch pass" section for the original discovery of both bugs.
+
 ## CASE 6-9 - CONFIRMED PASSED, full stack re-verified from a clean wipe
 
 Run as part of a deliberate full-matrix pass (namespace deleted and
@@ -281,45 +379,36 @@ trainer's side):
    itself already skips the total_msg>=min_data comparison for cases 2/4,
    so nothing else needed to change.
 
-**A resource-hygiene issue found, not fixed (flagged, out of scope for
-this pass)**: neither `Datasource` nor `ModelSource` rows are ever marked
+**A resource-hygiene issue found and now fixed** (was flagged
+out-of-scope here originally, then fixed as part of the Django→Litestar
+rewrite - see "federated_backend/ — Django→Litestar rewrite" above for
+the full account, this paragraph is kept as the original discovery
+record): neither `Datasource` nor `ModelSource` rows were ever marked
 consumed or deleted after a successful match - confirmed identical in
-`../kafka-ml`, a pre-existing design gap. Every new registration re-scans
-and re-matches against every past registration forever. Running CASE
-1-9's tests back-to-back in one session without restarting
+`../kafka-ml`, a pre-existing design gap. Every new registration
+re-scanned and re-matched against every past registration forever.
+Running CASE 1-9's tests back-to-back in one session without restarting
 `federated-backend` between the federated ones caused 8 duplicate edge
 worker Jobs to spin up from stale earlier-test registrations, briefly
-overloading the local cluster. Each case is solid in isolation (that's
-what's shipped); this is a real risk for sustained federated usage,
-worth fixing properly (mark-consumed or delete-after-match) as a
-follow-up - see `model_training/tensorflow/CLAUDE.md`'s matching note.
+overloading the local cluster.
 
-**Worse variant found during a later dependency-upgrade pass (2026-08-05)**:
-restarting `federated-backend` alone (the mitigation used throughout the
-MNIST verification pass) is *not* enough to avoid this - restarting
-`federated-data-control-logger`/`federated-model-control-logger`
-*themselves* (necessary whenever their own images change, e.g. a routine
-dependency bump) causes their Kafka consumers to replay the **entire
-session's retained control-topic history**, re-forwarding every past
-registration to `federated-backend` at once. Combined with the
-never-marks-consumed gap above, one restart of just the two logger
-services spawned **7 duplicate edge worker Jobs in the same second**,
-covering registrations from unrelated CASE 6/7/8 runs from hours earlier
-in the same session - not just the one new registration that prompted the
-restart. Confirmed by checking `kubectl get pods -o
-custom-columns=NAME,CREATED` - all 7 shared an identical creation
-timestamp, immediately after the logger restart. **This isn't a one-time
-replay - it recurred identically on a second, later restart of the same
-two logger services in the same session** (the exact same 7-8 stale
-`federated_string_id`s re-matched again, confirmed by name), so nothing
-about the first replay "used up" or cleared those stale registrations -
-expect this on *every* future restart of either logger service for as
-long as those old messages stay in the topic. Cleaned up manually
-(`kubectl delete job <name>`) each time; a real fix needs to address
-*both* "mark consumed" *and* "don't replay control-topic history from
-before this consumer instance's own uptime" (e.g. commit offsets, or seek
-to end-of-topic on start instead of the default earliest/whatever offset
-was last committed by a now-irrelevant prior instance).
+A second, worse variant was found investigating this further the same
+day: restarting `federated-backend` alone wasn't enough to avoid it -
+restarting `federated-data-control-logger`/`federated-model-control-logger`
+also triggered it, **confirmed twice, hours apart, same stale
+registrations both times**. The precise mechanism (initially only
+described as an observed symptom, not pinned down) turned out to be a
+real, separate bug, not generic "Kafka replay": `federated_model_control_logger.py`
+explicitly passed `auto_offset_reset='earliest'` to its consumer, so
+*every* restart replayed that topic's entire history from the start -
+confirmed via `kubectl logs` (offsets 3-9, spanning hours, replayed in
+one second) and by contrast with its sibling
+`federated_data_control_logger.py`, which never passes this kwarg and
+correctly defaults to `'latest'`. **Both bugs are now fixed** (mark-
+consumed in the new Litestar `federated_backend`, the offset default in
+`federated_model_control_logger.py`) and verified: CASE 5/6/7/9 all
+re-run clean, zero duplicate Jobs, including two separate
+`federated-backend`/logger restarts in between.
 
 **CASE=9 (blockchain) additionally required precompiling
 `FederatedLearning.sol` via Foundry** instead of `blockchain_utils.py`'s

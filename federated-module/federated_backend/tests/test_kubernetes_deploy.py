@@ -1,22 +1,25 @@
-"""Regression test for automl/views.py's deploy_on_kubernetes() security
-hardening (FUTURE.md's exec() sandboxing pass) - the edge worker Job it
-builds must carry a non-root/no-capabilities/seccomp securityContext, same
-as ../../../backend/app/job_manifest_generator.py's manifests.
+"""Regression test for app/kubernetes_deploy.py's deploy_on_kubernetes()
+security hardening (FUTURE.md's exec() sandboxing pass) - the edge worker
+Job it builds must carry a non-root/no-capabilities/seccomp
+securityContext, same as ../../../backend/app/job_manifest_generator.py's
+manifests. Ported from the original Django test_deploy_on_kubernetes.py.
 
 Mocks config.load_incluster_config (would raise outside a real cluster)
 and client.BatchV1Api - this test never talks to a real Kubernetes API,
 it only inspects the manifest dict passed to create_namespaced_job.
 """
 
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from automl.views import deploy_on_kubernetes
+from app.kubernetes_deploy import deploy_on_kubernetes
 
 
-@patch("automl.views.client.BatchV1Api")
-@patch("automl.views.config.load_incluster_config")
+@patch("app.kubernetes_deploy.client.BatchV1Api")
+@patch("app.kubernetes_deploy.k8s_config.load_incluster_config")
 def test_deploy_on_kubernetes_job_is_hardened(mock_load_config, mock_batch_api_cls):
     mock_api_instance = MagicMock()
+    mock_api_instance.create_namespaced_job = AsyncMock()
     mock_batch_api_cls.return_value = mock_api_instance
 
     datasource_item = {
@@ -24,16 +27,16 @@ def test_deploy_on_kubernetes_job_is_hardened(mock_load_config, mock_batch_api_c
         "unsupervised_topic": "",
         "input_format": "RAW",
         "input_config": "{}",
-        "validation_rate": "0.2",
-        "test_rate": "0.1",
+        "validation_rate": 0.2,
+        "test_rate": 0.1,
         "total_msg": 100,
     }
     model_item = {"federated_string_id": "fed-1"}
 
-    deploy_on_kubernetes(datasource_item, model_item, framework="tf", case=1)
+    asyncio.run(deploy_on_kubernetes(datasource_item, model_item, framework="tf", case=1))
 
-    assert mock_api_instance.create_namespaced_job.called
-    job_manifest = mock_api_instance.create_namespaced_job.call_args.kwargs["body"]
+    assert mock_api_instance.create_namespaced_job.await_args is not None
+    job_manifest = mock_api_instance.create_namespaced_job.await_args.kwargs["body"]
     template = job_manifest["spec"]["template"]
     assert template["metadata"]["labels"]["app"] == "kafka-ml-training"
     pod_spec = template["spec"]

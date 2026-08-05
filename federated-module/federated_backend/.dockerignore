@@ -2,6 +2,6 @@
 __pycache__/
 *.pyc
 .env
-.git/
 db.sqlite3
-models/
+.pytest_cache/
+tests/

@@ -47,7 +47,24 @@ if __name__ == '__main__':
     logging.info("Received environment information (bootstrap_servers, backend, control_topic, control_topic) ([%s], [%s], [%s])", 
               bootstrap_servers, backend, control_topic)
     
-    consumer = KafkaConsumer(control_topic, enable_auto_commit=False, bootstrap_servers=bootstrap_servers, group_id=f'federated_model_control_logger-{uuid4().hex[:8]}', auto_offset_reset='earliest')
+    # Real bug, found via actually restarting this service and watching
+    # what it re-sent (not by inspection): `auto_offset_reset='earliest'`
+    # here, combined with a fresh random `group_id` on every restart (no
+    # prior committed offset for a brand-new group to resume from), means
+    # *every* restart replays this topic's *entire* retained history from
+    # the very beginning - every ModelSource registration ever published,
+    # re-POSTed to federated_backend at once. Confirmed via
+    # `kubectl logs` on a real restart: offsets 3 through 9 (7 old
+    # registrations spanning hours) were all replayed and re-sent in the
+    # same second. The sibling `federated_data_control_logger.py` doesn't
+    # pass this kwarg at all, so it correctly defaults to `'latest'` - a
+    # fresh group only sees new messages, exactly the asymmetry that made
+    # this hard to spot (one of the two loggers behaved correctly).
+    # Combined with federated_backend's own now-fixed "never marks
+    # consumed" gap (see federated-module/CLAUDE.md), this is what spawned
+    # duplicate edge worker Jobs from hours-old registrations on every
+    # restart. Dropped to match the sibling's correct default.
+    consumer = KafkaConsumer(control_topic, enable_auto_commit=False, bootstrap_servers=bootstrap_servers, group_id=f'federated_model_control_logger-{uuid4().hex[:8]}')
     """Starts a Kafka consumer to receive the datasource information from the control topic"""
     
     url = 'http://'+backend+'/model-control-logger/' 

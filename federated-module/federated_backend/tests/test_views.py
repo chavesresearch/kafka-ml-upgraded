@@ -1,28 +1,44 @@
-"""Endpoint-level tests for DatasourceList/ModelFromControlLogger, using
-Django's real test client + test database (pytest-django's django_db
-fixture) - no live Kafka/Kubernetes needed. `deploy_on_kubernetes` is
-mocked (same spirit as ../../../backend/CLAUDE.md's `_check_model_code`
-mocking pattern) since a real collision match would otherwise try to call
-the real Kubernetes API.
+"""Endpoint-level tests for create_datasource/model_from_control_logger,
+ported from the original Django test_views.py - same scenarios, same
+assertions, against Litestar's TestClient instead of Django's.
+``deploy_on_kubernetes`` is mocked (it's now async - `AsyncMock`) since a
+real collision match would otherwise try to call the real Kubernetes API.
 
 `data_restriction`/`dataset_restrictions` are always sent as JSON-encoded
-*strings* (`"{}"`), never native dicts/objects - see
-test_check_colission.py's module docstring for why: check_colission()
-calls json.loads() on both, which crashes on an already-decoded dict.
-First-hand confirmed this by initially writing these payloads with native
-`{}` and hitting exactly the TypeError CLAUDE.md describes, before fixing
-the test payloads to match the real wire format.
+*strings* (`"{}"`), never native dicts/objects - see test_matching.py's
+module docstring for why.
 """
 
-import json
-from unittest.mock import patch
+import asyncio
+from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
-import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from automl.models import Datasource, ModelSource
+from app.db import engine
+from app.models import Datasource, ModelSource
 
 
-@pytest.mark.django_db
+def _seed(*rows):
+    async def _add():
+        async with AsyncSession(engine) as session:
+            async with session.begin():
+                session.add_all(rows)
+
+    asyncio.run(_add())
+
+
+def _count(model) -> int:
+    from sqlalchemy import func, select
+
+    async def _q():
+        async with AsyncSession(engine) as session:
+            result = await session.execute(select(func.count()).select_from(model))
+            return result.scalar_one()
+
+    return asyncio.run(_q())
+
+
 def test_create_datasource_persists_row(client):
     payload = {
         "incremental": False,
@@ -32,42 +48,37 @@ def test_create_datasource_persists_row(client):
         "input_config": '{"data_reshape": "10"}',
         "description": "",
         "dataset_restrictions": "{}",
-        "validation_rate": "0.2",
-        "test_rate": "0.1",
+        "validation_rate": 0.2,
+        "test_rate": 0.1,
         "total_msg": 100,
-        "time": "2026-01-01T00:00:00Z",
+        "time": "2026-01-01T00:00:00",
     }
 
-    response = client.post(
-        "/federated-datasources/", data=json.dumps(payload), content_type="application/json"
-    )
+    response = client.post("/federated-datasources/", json=payload)
 
     assert response.status_code == 201
-    assert Datasource.objects.count() == 1
-    assert Datasource.objects.get().topic == "t1"
+    assert _count(Datasource) == 1
 
 
-@pytest.mark.django_db
 def test_create_datasource_invalid_payload_rejected(client):
-    response = client.post(
-        "/federated-datasources/", data=json.dumps({}), content_type="application/json"
-    )
+    response = client.post("/federated-datasources/", json={})
     assert response.status_code == 406
-    assert Datasource.objects.count() == 0
+    assert _count(Datasource) == 0
 
 
-@pytest.mark.django_db
-@patch("automl.views.deploy_on_kubernetes")
+@patch("app.controllers.deploy_on_kubernetes", new_callable=AsyncMock)
 def test_create_datasource_matching_model_triggers_deploy(mock_deploy, client):
-    ModelSource.objects.create(
-        federated_string_id="fed-1",
-        input_shape="10",
-        output_shape="1",
-        data_restriction="{}",
-        min_data=1,
-        framework="tf",
-        distributed=False,
-        blockchain={},
+    _seed(
+        ModelSource(
+            federated_string_id="fed-1",
+            input_shape="10",
+            output_shape="1",
+            data_restriction="{}",
+            min_data=1,
+            framework="tf",
+            distributed=False,
+            blockchain={},
+        )
     )
 
     payload = {
@@ -78,34 +89,36 @@ def test_create_datasource_matching_model_triggers_deploy(mock_deploy, client):
         "input_config": '{"data_reshape": "10"}',
         "description": "",
         "dataset_restrictions": "{}",
-        "validation_rate": "0.2",
-        "test_rate": "0.1",
+        "validation_rate": 0.2,
+        "test_rate": 0.1,
         "total_msg": 100,
-        "time": "2026-01-01T00:00:00Z",
+        "time": "2026-01-01T00:00:00",
     }
 
-    response = client.post(
-        "/federated-datasources/", data=json.dumps(payload), content_type="application/json"
-    )
+    response = client.post("/federated-datasources/", json=payload)
 
     assert response.status_code == 201
-    mock_deploy.assert_called_once()
+    mock_deploy.assert_awaited_once()
     # case=1: not distributed, not incremental, no blockchain
     assert mock_deploy.call_args.args[3] == 1
+    # mark-consumed fix: the matched pair is gone after a successful match
+    assert _count(ModelSource) == 0
+    assert _count(Datasource) == 0
 
 
-@pytest.mark.django_db
-@patch("automl.views.deploy_on_kubernetes")
+@patch("app.controllers.deploy_on_kubernetes", new_callable=AsyncMock)
 def test_create_datasource_non_matching_model_does_not_deploy(mock_deploy, client):
-    ModelSource.objects.create(
-        federated_string_id="fed-1",
-        input_shape="999",  # mismatched shape
-        output_shape="1",
-        data_restriction="{}",
-        min_data=1,
-        framework="tf",
-        distributed=False,
-        blockchain={},
+    _seed(
+        ModelSource(
+            federated_string_id="fed-1",
+            input_shape="999",  # mismatched shape
+            output_shape="1",
+            data_restriction="{}",
+            min_data=1,
+            framework="tf",
+            distributed=False,
+            blockchain={},
+        )
     )
 
     payload = {
@@ -116,31 +129,33 @@ def test_create_datasource_non_matching_model_does_not_deploy(mock_deploy, clien
         "input_config": '{"data_reshape": "10"}',
         "description": "",
         "dataset_restrictions": "{}",
-        "validation_rate": "0.2",
-        "test_rate": "0.1",
+        "validation_rate": 0.2,
+        "test_rate": 0.1,
         "total_msg": 100,
-        "time": "2026-01-01T00:00:00Z",
+        "time": "2026-01-01T00:00:00",
     }
 
-    response = client.post(
-        "/federated-datasources/", data=json.dumps(payload), content_type="application/json"
-    )
+    response = client.post("/federated-datasources/", json=payload)
 
     assert response.status_code == 201
-    mock_deploy.assert_not_called()
+    mock_deploy.assert_not_awaited()
+    # no match - both rows survive
+    assert _count(ModelSource) == 1
+    assert _count(Datasource) == 1
 
 
-@pytest.mark.django_db
-@patch("automl.views.deploy_on_kubernetes")
+@patch("app.controllers.deploy_on_kubernetes", new_callable=AsyncMock)
 def test_model_from_control_logger_persists_and_matches_existing_datasource(mock_deploy, client):
-    Datasource.objects.create(
-        incremental=False,
-        topic="t1",
-        input_format="RAW",
-        input_config='{"data_reshape": "10"}',
-        dataset_restrictions="{}",
-        total_msg=100,
-        time="2026-01-01T00:00:00Z",
+    _seed(
+        Datasource(
+            incremental=False,
+            topic="t1",
+            input_format="RAW",
+            input_config='{"data_reshape": "10"}',
+            dataset_restrictions="{}",
+            total_msg=100,
+            time=datetime.fromisoformat("2026-01-01T00:00:00"),
+        )
     )
 
     payload = {
@@ -155,10 +170,9 @@ def test_model_from_control_logger_persists_and_matches_existing_datasource(mock
         "distributed": False,
     }
 
-    response = client.post(
-        "/model-control-logger/", data=json.dumps(payload), content_type="application/json"
-    )
+    response = client.post("/model-control-logger/", json=payload)
 
     assert response.status_code == 201
-    assert ModelSource.objects.count() == 1
-    mock_deploy.assert_called_once()
+    mock_deploy.assert_awaited_once()
+    assert _count(ModelSource) == 0
+    assert _count(Datasource) == 0

@@ -1,23 +1,25 @@
 [project]
 name = "kafka-ml-federated-backend"
 version = "0.1.0"
-requires-python = ">=3.14,<3.15"
+requires-python = ">=3.12,<3.13"
+# sqlalchemy==2.0.36's typing internals break on Python 3.14 - same bug
+# as ../../backend/pyproject.toml, see FUTURE.md Medium item 6 for the
+# full diagnosis (a real TypeError in make_union_type, hit at import time
+# for any Mapped[X | None] column). Confirmed here too before pinning
+# down, not assumed just because backend hit it.
 dependencies = [
-    "confluent-kafka==2.15.0",
-    "django==6.0.8",
-    "django-cors-headers==4.9.0",
-    "django-model-utils==5.0.0",
-    "djangorestframework==3.17.2",
-    "gunicorn==26.0.0",
-    "kubernetes==36.0.3",
+    "aiosqlite==0.22.1",
+    "greenlet==3.5.4",
+    "kubernetes-asyncio==36.1.0",
+    "litestar==2.24.0",
+    "sqlalchemy==2.0.36",
+    "uvicorn==0.52.1",
 ]
 
 [dependency-groups]
 dev = [
     "pytest==9.1.1",
-    "pytest-django==4.12.0",
 ]
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "autoweb.settings"
 pythonpath = ["."]

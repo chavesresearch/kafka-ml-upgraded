@@ -252,21 +252,19 @@ nice-to-have polish.
    worth fixing both together if either comes up again, same root design
    flaw in two files.
 
-9. **`federated_backend` never marks a matched `Datasource`/`ModelSource`
-   row consumed, and this is worse than originally scoped: restarting
-   either `federated_data_control_logger` or `federated_model_control_logger`
-   (not just `federated_backend` itself) replays their Kafka consumers'
-   entire retained control-topic history, re-forwarding every past
-   registration from the *whole session* to `federated_backend` at once.**
-   Confirmed **recurring** - the identical set of 7-8 stale registrations
-   re-matched and re-spawned duplicate edge worker Jobs on two separate
-   restarts, hours apart, in the same session (see `federated-module/
-   CLAUDE.md`'s "Worse variant" note). A real fix needs both "mark
-   consumed" *and* "don't replay history predating this consumer
-   instance's own startup" (e.g. commit offsets, or seek-to-end on
-   start). Promoted from Medium/flagged-only to explicitly tracked here
-   given it's now confirmed to compound on every routine service
-   restart, not just a one-off multi-test-in-one-session artifact.
+9. ~~`federated_backend` never marks a matched `Datasource`/`ModelSource`
+   row consumed, and restarting either control-logger service replayed
+   their entire retained Kafka history, re-matching every past
+   registration at once.~~ — **done** (2026-08-05), fixed as part of the
+   Django→Litestar rewrite (Medium item 7 below): the new
+   `federated_backend` deletes both matched rows right after a successful
+   deploy, and `federated_model_control_logger.py`'s
+   `auto_offset_reset='earliest'` (the actual, precisely-identified cause
+   of the replay - not generic "Kafka replay behavior", confirmed via
+   `kubectl logs`) was dropped to match its sibling's correct `'latest'`
+   default. Verified via real CASE 5/6/7/9 re-runs across two separate
+   service restarts: zero duplicate Jobs both times. See
+   `federated-module/CLAUDE.md`'s rewrite section for the full record.
 
 ## Medium
 
@@ -343,21 +341,21 @@ nice-to-have polish.
    stable release (2.1 was still beta as of this check - also blocked
    from bumping to for a different reason, no stable release yet).
 
-7. **`federated_backend` (Django) is now the only non-Litestar backend
-   service** - `backend` was rewritten to Litestar in an earlier session;
-   `federated_backend` was deliberately kept on Django then (small,
-   587-line, 2-endpoint satellite service, not proportionate for a full
-   rewrite at the time - see Medium item 1 above). Revisited 2026-08-05
-   during a routine Django version bump: user confirmed the calculus is
-   worth revisiting given `backend`'s already the only other stack, but
-   asked to keep it as its own dedicated follow-up rather than bundling
-   it into that day's dependency-audit pass, given this service is the
-   exact matching/deploy logic every CASE 5-9 federated test depends on
-   and a rewrite here needs full re-verification, not a quick swap. Worth
-   doing this at the same time as fixing Medium/High item 9 above (the
-   never-marks-consumed bug) and dropping the sync `kubernetes` client for
-   `kubernetes_asyncio` (matching `backend`'s own approach) while already
-   touching this code.
+7. ~~`federated_backend` (Django) is now the only non-Litestar backend
+   service.~~ — **done** (2026-08-05): rewritten to Litestar + SQLAlchemy
+   async + `kubernetes_asyncio`, as its own dedicated follow-up right
+   after the routine dependency-audit pass that first surfaced this item
+   (user: "why don't we change it to a litestar" - agreed to scope it
+   separately given this service is the exact matching/deploy logic every
+   CASE 5-9 federated test depends on). Done in the same pass: High item 9
+   below (mark-consumed) and a real, precise fix for the "replay on
+   restart" bug (`federated_model_control_logger.py`'s
+   `auto_offset_reset='earliest'`, previously only described here as an
+   observed symptom, not a pinned-down cause). Verified via 14 ported
+   tests plus real CASE 5/6/7/9 re-runs against the live cluster, zero
+   duplicate Jobs across two separate service restarts. See
+   `federated-module/CLAUDE.md`'s "federated_backend/ — Django→Litestar
+   rewrite" section for the full record.
 
 8. **`website/`'s `typescript` pin is stuck at `~6.0.2` while `frontend/`
    moved to `~7.0.2` cleanly** (2026-08-05) - TypeScript 7 removed the
