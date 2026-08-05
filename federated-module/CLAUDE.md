@@ -294,6 +294,33 @@ what's shipped); this is a real risk for sustained federated usage,
 worth fixing properly (mark-consumed or delete-after-match) as a
 follow-up - see `model_training/tensorflow/CLAUDE.md`'s matching note.
 
+**Worse variant found during a later dependency-upgrade pass (2026-08-05)**:
+restarting `federated-backend` alone (the mitigation used throughout the
+MNIST verification pass) is *not* enough to avoid this - restarting
+`federated-data-control-logger`/`federated-model-control-logger`
+*themselves* (necessary whenever their own images change, e.g. a routine
+dependency bump) causes their Kafka consumers to replay the **entire
+session's retained control-topic history**, re-forwarding every past
+registration to `federated-backend` at once. Combined with the
+never-marks-consumed gap above, one restart of just the two logger
+services spawned **7 duplicate edge worker Jobs in the same second**,
+covering registrations from unrelated CASE 6/7/8 runs from hours earlier
+in the same session - not just the one new registration that prompted the
+restart. Confirmed by checking `kubectl get pods -o
+custom-columns=NAME,CREATED` - all 7 shared an identical creation
+timestamp, immediately after the logger restart. **This isn't a one-time
+replay - it recurred identically on a second, later restart of the same
+two logger services in the same session** (the exact same 7-8 stale
+`federated_string_id`s re-matched again, confirmed by name), so nothing
+about the first replay "used up" or cleared those stale registrations -
+expect this on *every* future restart of either logger service for as
+long as those old messages stay in the topic. Cleaned up manually
+(`kubectl delete job <name>`) each time; a real fix needs to address
+*both* "mark consumed" *and* "don't replay control-topic history from
+before this consumer instance's own uptime" (e.g. commit offsets, or seek
+to end-of-topic on start instead of the default earliest/whatever offset
+was last committed by a now-irrelevant prior instance).
+
 **CASE=9 (blockchain) additionally required precompiling
 `FederatedLearning.sol` via Foundry** instead of `blockchain_utils.py`'s
 previous runtime `solcx.install_solc()`/`compile_standard()` - solcx only

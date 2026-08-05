@@ -8,7 +8,7 @@ requires-python = ">=3.11,<3.12"
 dependencies = [
     "confluent-kafka==2.15.0",
     "fastavro==1.12.2",
-    "kafka-python==3.0.9",
+    "kafka-python==3.0.10",
     "numpy==2.4.6",
     # web3==5.28.0 (2022-era) does a bare `import pkg_resources` at import
     # time; setuptools removed pkg_resources as of 81.0.0. Same pin/reason
@@ -40,7 +40,7 @@ override-dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest==8.4.2",
+    "pytest==9.1.1",
 ]
 
 [tool.pytest.ini_options]

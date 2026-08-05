@@ -644,10 +644,10 @@ dev = [
 requires-dist = [
     { name = "confluent-kafka", specifier = "==2.15.0" },
     { name = "fastavro", specifier = "==1.12.2" },
-    { name = "kafka-python", specifier = "==3.0.9" },
+    { name = "kafka-python", specifier = "==3.0.10" },
     { name = "matplotlib", specifier = "==3.11.1" },
     { name = "numpy", specifier = "==2.4.6" },
-    { name = "requests", specifier = "==2.32.5" },
+    { name = "requests", specifier = "==2.34.2" },
     { name = "scikit-learn", specifier = "==1.9.0" },
     { name = "seaborn", specifier = "==0.13.2" },
     { name = "setuptools", specifier = "<81" },
@@ -657,15 +657,15 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = "==8.4.2" }]
+dev = [{ name = "pytest", specifier = "==9.1.1" }]
 
 [[package]]
 name = "kafka-python"
-version = "3.0.9"
+version = "3.0.10"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/99/ae/2a6a54192fa336d10306a10f67a2db7ebb70bbe1600127b29fd45f18af50/kafka_python-3.0.9.tar.gz", hash = "sha256:703c00a59d9853494a9821f8665d99e9443951dabe657a0b2a24e9e50a70703d", size = 513213, upload-time = "2026-07-21T18:19:27.838Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2b/1a/828be30211d0c78d02a7b3bd6dd36d6cc39539693600960315d41192bd5e/kafka_python-3.0.10.tar.gz", hash = "sha256:06950fed5e705ec5207458ca6ae43b6c0ae1de4146ddbf7877f42a893830100c", size = 513160, upload-time = "2026-08-04T23:44:15.106Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/a0/d6c0d888a865fe06fc9746ca0519f511acca4b36a750e04b703ed47fdd61/kafka_python-3.0.9-py3-none-any.whl", hash = "sha256:506ba871979b79813120bbf522bd71d827611c0756de57aac5a15f111a11bed4", size = 614119, upload-time = "2026-07-21T18:19:25.739Z" },
+    { url = "https://files.pythonhosted.org/packages/87/e1/23a30f129281533f14c09616f3182dee952eaf70d62c2342387b888d9047/kafka_python-3.0.10-py3-none-any.whl", hash = "sha256:9b2597f194009dcab8f7207ce9a15d59cb5d30bf5aa742fea69dffbd2866b2d1", size = 614240, upload-time = "2026-08-04T23:44:12.336Z" },
 ]
 
 [[package]]
@@ -1262,7 +1262,7 @@ wheels = [
 
 [[package]]
 name = "pytest"
-version = "8.4.2"
+version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
@@ -1271,9 +1271,9 @@ dependencies = [
     { name = "pluggy" },
     { name = "pygments" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a3/5c/00a0e072241553e1a7496d638deababa67c5058571567b92a7eaa258397c/pytest-8.4.2.tar.gz", hash = "sha256:86c0d0b93306b961d58d62a4db4879f27fe25513d4b969df351abdddb3c30e01", size = 1519618, upload-time = "2025-09-04T14:34:22.711Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/a4/20da314d277121d6534b3a980b29035dcd51e6744bd79075a6ce8fa4eb8d/pytest-8.4.2-py3-none-any.whl", hash = "sha256:872f880de3fc3a5bdc88a11b39c9710c3497a547cfa9320bc3c5e62fbf272e79", size = 365750, upload-time = "2025-09-04T14:34:20.226Z" },
+    { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
 ]
 
 [[package]]
@@ -1306,7 +1306,7 @@ wheels = [
 
 [[package]]
 name = "requests"
-version = "2.32.5"
+version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1314,9 +1314,9 @@ dependencies = [
     { name = "idna" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/74/b3ff8e6c8446842c3f5c837e9c3dfcfe2018ea6ecef224c710c85ef728f4/requests-2.32.5.tar.gz", hash = "sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf", size = 134517, upload-time = "2025-08-18T20:46:02.573Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz", hash = "sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed", size = 142856, upload-time = "2026-05-14T19:25:27.735Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/db/4254e3eabe8020b458f1a747140d32277ec7a271daf1d235b70dc0b4e6e3/requests-2.32.5-py3-none-any.whl", hash = "sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6", size = 64738, upload-time = "2025-08-18T20:46:00.542Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl", hash = "sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0", size = 73075, upload-time = "2026-05-14T19:25:26.443Z" },
 ]
 
 [[package]]
@@ -1489,7 +1489,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "kafka-python", specifier = "==3.0.9" },
+    { name = "kafka-python", specifier = "==3.0.10" },
     { name = "tensorflow", specifier = ">=2.16" },
 ]
 

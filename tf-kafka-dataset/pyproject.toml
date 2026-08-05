@@ -5,7 +5,7 @@ description = "tf.data.Dataset sources that read directly from Apache Kafka, wit
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "kafka-python==3.0.9",
+    "kafka-python==3.0.10",
     "tensorflow>=2.16",
 ]
 

@@ -234,6 +234,40 @@ nice-to-have polish.
    passed cleanly, confirming the hardening changes themselves introduced
    no regression.
 
+8. ~~`federated_mainTraining.py`'s `train_incremental_model` (CASE=6/8,
+   federated-incremental) could deadlock permanently~~ — **done**
+   (2026-08-05): the sibling bug to item 7 above, in the federated
+   trainer's copy of this same "zero non-empty streaming batches" edge
+   case - but a different failure mode. Where item 7's plain (non-
+   federated) version crashes with `UnboundLocalError` (caught, retried
+   forever, same net effect), this federated version's own retry-on-empty
+   `while` loop re-iterated an already-*exhausted* Python generator
+   forever - a true silent deadlock, no error, no timeout, ever. Found via
+   a real end-to-end CASE=6 run with real MNIST data and real network-
+   round-trip timing (the tiny-synthetic-data tests never had a large
+   enough round-trip window to expose it). Fixed by re-fetching a fresh
+   generator/consumer on an empty pass instead of reusing the dead one -
+   see `federated-module/CLAUDE.md`'s "Real-MNIST multi-epoch pass"
+   section. Item 7's plain-`mainTraining.py` sibling is still open -
+   worth fixing both together if either comes up again, same root design
+   flaw in two files.
+
+9. **`federated_backend` never marks a matched `Datasource`/`ModelSource`
+   row consumed, and this is worse than originally scoped: restarting
+   either `federated_data_control_logger` or `federated_model_control_logger`
+   (not just `federated_backend` itself) replays their Kafka consumers'
+   entire retained control-topic history, re-forwarding every past
+   registration from the *whole session* to `federated_backend` at once.**
+   Confirmed **recurring** - the identical set of 7-8 stale registrations
+   re-matched and re-spawned duplicate edge worker Jobs on two separate
+   restarts, hours apart, in the same session (see `federated-module/
+   CLAUDE.md`'s "Worse variant" note). A real fix needs both "mark
+   consumed" *and* "don't replay history predating this consumer
+   instance's own startup" (e.g. commit offsets, or seek-to-end on
+   start). Promoted from Medium/flagged-only to explicitly tracked here
+   given it's now confirmed to compound on every routine service
+   restart, not just a one-off multi-test-in-one-session artifact.
+
 ## Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated
@@ -278,6 +312,60 @@ nice-to-have polish.
 4. **No CONTRIBUTING.md, issue templates, or PR template.** For a
    research-originated project that already takes outside contributions
    (per the publications list in the README), this is easy friction to remove.
+
+5. **`web3==5.28.0` (backend, model_training/tensorflow,
+   federated_model_training/tensorflow) is 3 major versions behind, and
+   is the root cause of several existing workarounds, not just its own
+   staleness.** Deliberately left untouched during the 2026-08-05
+   dependency-audit pass (too much real API-breaking-change risk to
+   bundle into a routine bump, given it's exactly what CASE=9's
+   blockchain path depends on, freshly re-verified that same session).
+   Upgrading to a current stable major would let all of these go away
+   together: `backend`'s `protobuf` pin stuck at `3.20.3` (2022-era, web3
+   hard-pins `protobuf<4` - `model_training/tensorflow` already needed an
+   explicit override to coexist with TensorFlow, `backend` never got one
+   since it doesn't need TF); the `setuptools<81` pin (web3 does a bare
+   `import pkg_resources`); the `inspect.getargspec = inspect.getfullargspec`
+   shim in three files (old `eth-abi` → old `parsimonious` calls the
+   Python-3.11-removed `getargspec`). Do this as its own dedicated pass
+   with full CASE=9 re-verification afterward, not a drive-by version bump.
+
+6. **`backend` is stuck on Python 3.12 while 7 sibling `python:3.12-slim`
+   services successfully moved to 3.14** (2026-08-05 dependency-audit
+   pass) - `sqlalchemy==2.0.36`'s typing internals
+   (`util/typing.py::make_union_type`) raise `TypeError: descriptor
+   '__getitem__' requires a 'typing.Union' object but received a 'tuple'`
+   on Python 3.14, hit while importing `app/models.py`'s `Mapped[...]`
+   annotations - not a test-only issue, the app wouldn't boot. Confirmed
+   empirically (a real failed `pytest` collection, not assumed from a
+   changelog) before reverting just this one service back to
+   `python:3.12-slim`. Revisit once SQLAlchemy ships a 3.14-compatible
+   stable release (2.1 was still beta as of this check - also blocked
+   from bumping to for a different reason, no stable release yet).
+
+7. **`federated_backend` (Django) is now the only non-Litestar backend
+   service** - `backend` was rewritten to Litestar in an earlier session;
+   `federated_backend` was deliberately kept on Django then (small,
+   587-line, 2-endpoint satellite service, not proportionate for a full
+   rewrite at the time - see Medium item 1 above). Revisited 2026-08-05
+   during a routine Django version bump: user confirmed the calculus is
+   worth revisiting given `backend`'s already the only other stack, but
+   asked to keep it as its own dedicated follow-up rather than bundling
+   it into that day's dependency-audit pass, given this service is the
+   exact matching/deploy logic every CASE 5-9 federated test depends on
+   and a rewrite here needs full re-verification, not a quick swap. Worth
+   doing this at the same time as fixing Medium/High item 9 above (the
+   never-marks-consumed bug) and dropping the sync `kubernetes` client for
+   `kubernetes_asyncio` (matching `backend`'s own approach) while already
+   touching this code.
+
+8. **`website/`'s `typescript` pin is stuck at `~6.0.2` while `frontend/`
+   moved to `~7.0.2` cleanly** (2026-08-05) - TypeScript 7 removed the
+   `baseUrl` compiler option entirely, and `website/tsconfig.json` extends
+   `@docusaurus/tsconfig@3.10.2`, which still sets `baseUrl` itself - not
+   fixable from this repo (can't edit a third-party package's own
+   tsconfig). Revisit once a `@docusaurus/tsconfig` release drops
+   `baseUrl` for `paths`.
 
 ## Low
 

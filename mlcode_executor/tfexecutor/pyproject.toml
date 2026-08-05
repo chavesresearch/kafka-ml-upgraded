@@ -8,7 +8,7 @@ version = "0.1.0"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "fastavro==1.12.2",
-    "kafka-python==3.0.9",
+    "kafka-python==3.0.10",
     "litestar==2.24.0",
     "multipart==2.0.0",
     # 2.5.x dropped Python 3.11 wheels - 2.4.6 is the latest release that
@@ -21,7 +21,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest==8.4.2",
+    "pytest==9.1.1",
 ]
 
 [tool.pytest.ini_options]

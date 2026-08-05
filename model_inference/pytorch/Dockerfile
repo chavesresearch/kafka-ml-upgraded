@@ -1,7 +1,7 @@
 # --build-arg BASEIMG=pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime for GPU
 # version (also drop the [tool.uv] pytorch-cpu index section in
 # pyproject.toml - see the comment there)
-ARG BASEIMG=python:3.12-slim
+ARG BASEIMG=python:3.14-slim
 FROM ${BASEIMG}
 
 # set work directory
