@@ -8,22 +8,14 @@ import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartToo
 import MultiSelect from '@/components/MultiSelect'
 import { getChartInfo, getConfusionMatrix, downloadJSON } from '@/api'
 import { useNotify } from '@/notify'
-import { availableMetricNames, buildChartData } from '@/logic/plot'
-import type { ChartDataShape, ChartMetric } from '@/types'
+import { availableMetricNames, buildChartData, toRechartsData } from '@/logic/plot'
+import type { ChartMetric } from '@/types'
 
 // Same palette as the original Angular/Vue plot view.
 const COLORS = [
   '#FF3333', '#FF33FF', '#CC33FF', '#0000FF', '#33CCFF',
   '#33FFFF', '#33FF66', '#CCFF33', '#FFCC00', '#FF6600',
 ]
-
-function toRechartsData(shape: ChartDataShape): Record<string, string | number>[] {
-  return shape.labels.map((label, i) => {
-    const row: Record<string, string | number> = { x: label }
-    for (const dataset of shape.datasets) row[dataset.label] = dataset.data[i]
-    return row
-  })
-}
 
 export default function PlotView() {
   const { id } = useParams()

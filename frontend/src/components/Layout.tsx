@@ -45,6 +45,7 @@ const sectionPatterns: { prefix: string; label: string }[] = [
   { prefix: '/results/inference-iot/', label: 'Inference' },
   { prefix: '/results/inference/', label: 'Inference' },
   { prefix: '/results/chart/', label: 'Training' },
+  { prefix: '/results/compare', label: 'Training' },
   { prefix: '/results', label: 'Training' },
   { prefix: '/model-create', label: 'Models' },
   { prefix: '/model/', label: 'Models' },

@@ -57,7 +57,8 @@ source, it's in git history before the cutover commit, not on disk.
 | `src/notify.ts` | Thin wrapper around `sonner`'s `toast`, same `{ok, error}` shape the Vue app's `useNotify()` had. |
 | `src/hooks/useConfirm.tsx` | Replaces PrimeVue's imperative `useConfirm()` — same call shape (`confirm({header, message, accept})`), backed by shadcn's `AlertDialog` instead of a global singleton. Every view that needs it renders `{dialog}` somewhere in its own tree (no app-wide `<ConfirmDialog/>` singleton like the Vue app had). |
 | `src/components/DataTable.tsx` | Generic sortable/filterable/paginated table shared by every list view (`ModelList`, `InferenceList`, `DatasourceList`, `IoTDeviceList`, `ResultList`) — mirrors the *one* PrimeVue `<DataTable>` component reused the same way throughout the Vue app. Built on `@tanstack/react-table`. |
-| `src/components/MultiSelect.tsx` | Hand-rolled multi-select (trigger + popover + checkbox list) — shadcn/ui doesn't ship one. Used by `ConfigurationView` (`ml_models`), `InferenceIoTView` (`device_token`), `PlotView` (metric picker). Not a `<select multiple>` — needs chip-style selected-item display to match the old UX. |
+| `src/components/MultiSelect.tsx` | Hand-rolled multi-select (trigger + popover + checkbox list) — shadcn/ui doesn't ship one. Used by `ConfigurationView` (`ml_models`), `InferenceIoTView` (`device_token`), `PlotView`/`ResultCompareView` (metric pickers), `ResultList`/`ResultCompareView` (results-to-compare pickers). Not a `<select multiple>` — needs chip-style selected-item display to match the old UX. |
+| `src/components/MetricsTable.tsx` | One result's train/val/test metric rows (rendering half of `logic/format.ts`'s `buildMetricsTable`) — extracted from `ResultList`'s metrics dialog so `ResultCompareView`'s per-result summary cards reuse the exact same markup. |
 | `src/components/CodeEditor.tsx` | Hand-rolled Monaco wrapper (refs + `useEffect`, not `@monaco-editor/react` — deliberately not using that library, see Gotchas). Same lazy-loading contract as the Vue version: `monacoEnvironment.ts` + Monaco's core editor module are both loaded via a runtime `import()` inside a mount effect, never from `main.tsx`, so Monaco never lands in the app's main chunk. |
 | `src/monacoEnvironment.ts` | Copied unchanged from the Vue app (framework-free side-effect module: worker wiring + python/lua language registration only, not the full 40+-language bundle). |
 | `src/components/Layout.tsx` | Sidebar + topbar shell (`<Outlet/>`-based), replaces `App.vue`. Desktop sidebar always visible; mobile uses a shadcn `Sheet` slide-over instead of PrimeVue's `Sidebar`. |
@@ -191,13 +192,13 @@ k8s deployment YAML beyond what already pointed at image name
 ## Testing approach
 
 ```bash
-pnpm test:run     # Vitest + React Testing Library, 83 tests
+pnpm test:run     # Vitest + React Testing Library, 98 tests
 pnpm typecheck    # tsc -b --noEmit
 pnpm build        # tsc -b && vite build (also typechecks)
 pnpm test:e2e     # Playwright, real browser, mocked /api/* - see below
 ```
 
-83 unit/component tests total: most are the ported `src/logic/*.test.ts` +
+98 unit/component tests total: most are the ported `src/logic/*.test.ts` +
 `src/api.test.ts` + `src/ws.test.ts` files (unchanged from the Vue app,
 proving the ported business logic still behaves identically), plus
 `routes.test.ts` (every view module resolves without throwing - same
@@ -239,6 +240,53 @@ deployed to the local cluster) is superseded by the committed suite
 above for anything it covers, but its finding still stands as the more
 recent proof of real-backend integration: zero console errors, correct
 Monaco rendering, correct dark-mode repaints.
+
+## Training-results comparison view (2026-08-06)
+
+`/results/compare?ids=1,2,...` (`ResultCompareView.tsx`) overlays 2-5
+training results' metric curves side by side - one facet (chart) per
+metric, one line per (result, split), so "did this hyperparameter change
+help?" doesn't mean manually eyeballing two separate metric dialogs.
+Reached from `ResultList.tsx`'s new "Compare results" `MultiSelect` picker
+above the table. Query string, not a path param (`?ids=`, not `/:ids`) -
+a set of ids to compare is a filter/selection, not a resource identifier,
+and it lets the compare page itself add/remove results via
+`setSearchParams` with zero extra fetch (the full `getResults()` list is
+already fetched to resolve the picked ids). Verified this is genuinely new
+territory for the router (a static `/results/compare` next to the existing
+dynamic `/results/:id`) by reading react-router 7's own ranking source -
+static segments always outrank dynamic ones, so this is safe regardless of
+array order - then confirmed live in a browser anyway, not just trusted
+the math.
+
+Design, all in `src/logic/plot.ts` (`MAX_COMPARE_RESULTS`, `parseCompareIds`,
+`availableComparisonMetricNames`, `buildComparisonChartData`,
+`toRechartsData` promoted out of `PlotView`'s former private copy):
+small multiples (one chart per metric) rather than one mega chart with
+every metric/result/split overlaid - facets N results x M metrics x 2
+splits into per-metric charts of just N x 2 lines each, same convention
+TensorBoard/W&B already use for this. Composite encoding within a facet:
+color = result identity (the app's existing 5-slot `--chart-1`..`--chart-5`
+theme-aware palette, `index.css` - not a new palette, hence the 5-result
+cap), line style = split (solid = train, dashed = validation). A shorter
+run's line visibly stops rather than flattening out (no data past its own
+length, not padded with fabricated values) - confirmed live with two real
+seeded results (3 vs. 6 epochs). `MetricsTable.tsx` was extracted from
+`ResultList`'s metrics dialog (zero behavior change there) so the compare
+view's per-result summary cards reuse it instead of a new pivot function.
+
+Verified against 2 real finished CASE=1 results seeded through the actual
+API/Kafka (same approach as `integration-tests/test_case1_single_classic.py`),
+not just the mocked E2E suite - confirmed the URL routing doesn't fall
+through to `ResultList`, correct color-per-result and dash-per-split
+rendering, tooltip disambiguates train vs. validation per result (initially
+didn't - both lines of one result showed an identical label, only the
+value differed - fixed by suffixing the `ChartConfig` label with
+"(training)"/"(validation)"), dark-mode toggle actually changes the
+rendered line colors (since they're `var(--chart-N)` references, not
+resolved hex strings - a bar `PlotView` itself doesn't clear), and a
+malformed `?ids=999,abc` shows a friendly "not found" message instead of
+crashing.
 
 ## Remaining work
 

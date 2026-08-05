@@ -15,6 +15,7 @@ const ResultList = lazy(() => import('./views/ResultList'))
 const InferenceView = lazy(() => import('./views/InferenceView'))
 const InferenceIoTView = lazy(() => import('./views/InferenceIoTView'))
 const PlotView = lazy(() => import('./views/PlotView'))
+const ResultCompareView = lazy(() => import('./views/ResultCompareView'))
 const InferenceList = lazy(() => import('./views/InferenceList'))
 const DatasourceList = lazy(() => import('./views/DatasourceList'))
 const VisualizationView = lazy(() => import('./views/VisualizationView'))
@@ -37,6 +38,7 @@ export const routes: RouteObject[] = [
   { path: '/results/inference/:id', element: <InferenceView /> },
   { path: '/results/inference-iot/:id', element: <InferenceIoTView /> },
   { path: '/results/chart/:id', element: <PlotView /> },
+  { path: '/results/compare', element: <ResultCompareView /> },
   { path: '/inferences', element: <InferenceList /> },
   { path: '/datasources', element: <DatasourceList /> },
   { path: '/visualization', element: <VisualizationView /> },

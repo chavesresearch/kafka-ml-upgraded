@@ -14,16 +14,20 @@ import {
   PencilLine,
   LogIn,
   Check,
+  GitCompareArrows,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Label } from '@/components/ui/label'
 import DataTable from '@/components/DataTable'
+import MetricsTable from '@/components/MetricsTable'
+import MultiSelect from '@/components/MultiSelect'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getResults, getResultsOfDeployment, deleteResult, stopTraining, getTrainedModel, downloadBlob } from '@/api'
 import { useNotify } from '@/notify'
 import { buildMetricsTable, formatDate } from '@/logic/format'
+import { MAX_COMPARE_RESULTS } from '@/logic/plot'
 import type { TrainingResult, TrainingStatus } from '@/types'
 
 const statusIcons: Record<TrainingStatus, typeof PencilLine> = {
@@ -50,6 +54,7 @@ export default function ResultList() {
   const [results, setResults] = useState<TrainingResult[]>([])
   const [metricsDialogOpen, setMetricsDialogOpen] = useState(false)
   const [metricsDialogData, setMetricsDialogData] = useState<TrainingResult | null>(null)
+  const [compareIds, setCompareIds] = useState<string[]>([])
 
   const refreshData = useCallback(async () => {
     try {
@@ -110,6 +115,18 @@ export default function ResultList() {
         }
       },
     })
+  }
+
+  function onCompareSelectionChange(next: string[]) {
+    if (next.length > MAX_COMPARE_RESULTS) {
+      notify.error(`You can compare up to ${MAX_COMPARE_RESULTS} results at once`)
+      return
+    }
+    setCompareIds(next)
+  }
+
+  function goToCompare() {
+    navigate(`/results/compare?ids=${compareIds.join(',')}`)
   }
 
   const columns: ColumnDef<TrainingResult, unknown>[] = [
@@ -213,6 +230,23 @@ export default function ResultList() {
         </Button>
       </div>
 
+      {results.length >= 2 && (
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
+          <div className="min-w-64 flex-1 space-y-1.5">
+            <Label>Compare results</Label>
+            <MultiSelect
+              options={results.map((r) => ({ value: String(r.id), label: `Result ${r.id} — ${r.model.name}` }))}
+              value={compareIds}
+              onChange={onCompareSelectionChange}
+              placeholder="Select 2 or more results"
+            />
+          </div>
+          <Button variant="outline" disabled={compareIds.length < 2} onClick={goToCompare}>
+            <GitCompareArrows /> Compare ({compareIds.length})
+          </Button>
+        </div>
+      )}
+
       <DataTable columns={columns} data={results} getRowId={(r) => String(r.id)} />
 
       <Dialog open={metricsDialogOpen} onOpenChange={setMetricsDialogOpen}>
@@ -227,36 +261,9 @@ export default function ResultList() {
                 metricsDialogData.val_metrics,
                 metricsDialogData.test_metrics
               )
-              return rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No metrics reported yet.</p>
-              ) : (
+              return (
                 <div className="space-y-3">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Metric</TableHead>
-                        <TableHead className="text-right">Training</TableHead>
-                        <TableHead className="text-right">Validation</TableHead>
-                        <TableHead className="text-right">Test</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {rows.map((row) => (
-                        <TableRow key={row.name}>
-                          <TableCell className="font-medium">{row.name}</TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {row.train ?? <span className="text-muted-foreground">—</span>}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {row.val ?? <span className="text-muted-foreground">—</span>}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {row.test ?? <span className="text-muted-foreground">—</span>}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <MetricsTable rows={rows} />
                   {metricsDialogData.training_time != null && (
                     <p className="text-sm text-muted-foreground">
                       Training time: {metricsDialogData.training_time}
