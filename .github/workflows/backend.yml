@@ -13,6 +13,22 @@ on:
   release:
     types:
       - created
+  workflow_dispatch:
+
+# The repo's default GITHUB_TOKEN permissions are read-only (org/repo
+# setting, not something this file controls). Without an explicit grant
+# here, calling ./.github/workflows/build.yml below (which requests
+# packages: write to push the built image) fails at *startup* - before
+# any job even runs - since a reusable workflow can never be granted more
+# than its caller already has. Every workflow in this repo that calls
+# build.yml had this exact gap (confirmed via a real `gh run list`: 100%
+# startup_failure history on all of them, going back to before this
+# session - website.yml was the sole survivor, since it doesn't call
+# build.yml and already declared its own permissions).
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -21,9 +37,9 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v9
         with:
           version: "0.9.x"
       - name: Run tests

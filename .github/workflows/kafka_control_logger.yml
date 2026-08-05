@@ -10,6 +10,15 @@ on:
   release:
     types:
       - created
+  workflow_dispatch:
+
+# See backend.yml's identical block for why this is needed - without it,
+# calling build.yml below fails at startup (repo default token is
+# read-only; a reusable workflow can't be granted more than its caller has).
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-control-logger:
     uses: ./.github/workflows/build.yml
