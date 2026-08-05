@@ -356,9 +356,36 @@ nice-to-have polish.
    backward on separation of concerns, not forward. No code changes as a
    result of this evaluation.
 
-2. **`examples/*/requirements.txt` pin old, unaudited versions per example**
-   with nothing in CI verifying they still install or run — likely to
-   bit-rot silently until someone tries to follow the README tutorial.
+2. ~~`examples/*/requirements.txt` pin old, unaudited versions per example~~
+   — **done** (2026-08-06). All 9 examples were pinned to `tensorflow==2.7.0`
+   (Oct 2021, EOL) and `kafka-python==3.0.9` - one patch behind the
+   `3.0.10` every other project in this repo already uses. Bumped to the
+   same versions already verified elsewhere in this repo rather than just
+   "latest": `tensorflow==2.21.0` + `numpy==2.4.6` (the pairing
+   `model_training/tensorflow`/`model_inference/tensorflow`/
+   `mlcode_executor/tfexecutor` already established - `numpy` 2.5.x isn't
+   compatible with this `tensorflow` version), `tensorflow-datasets==4.9.10`
+   (matches `mlcode_executor/tfexecutor`), `kafka-python==3.0.10` (matches
+   `datasources`/`model_training/tensorflow`), `scikit-learn==1.9.0` (matches
+   `model_training/tensorflow`). `pandas` had no existing pin anywhere else
+   in the repo to match - bumped to current `3.0.5`, confirmed by a real
+   install (not assumed compatible from version numbers alone). Verified
+   with a real `uv venv --python 3.11` + `uv pip install -r requirements.txt`
+   for every example (including the local `../../datasources` path
+   dependency), plus an import smoke test confirming the exact `tf.keras`
+   APIs the scripts call (`datasets.mnist.load_data`,
+   `datasets.cifar10.load_data`, `utils.to_categorical`) still exist in
+   2.21.0. New `.github/workflows/examples.yml` (matrix over all 9
+   directories) now runs this same install + a generic
+   `examples/check_imports.py` on every push/PR touching `examples/**` or
+   `datasources/**` - it AST-parses each example's own `.py` files for their
+   real `import`/`from` statements and confirms each resolves, rather than a
+   hand-maintained parallel dependency list that would itself go stale.
+   Does **not** actually run the scripts - they open a live
+   `KafkaProducer`/`KafkaConsumer` immediately at import time
+   (`kafka-python` connects eagerly in the constructor) with no broker
+   available in CI, the same "impractical to reproduce in CI" call already
+   made for the 9-CASE dispatch itself (see Critical item 4 above).
 
 3. ~~README GPU section is stale.~~ — **done** (2026-08-06). The "GPU
    configuration" section used to walk through installing Aliyun's

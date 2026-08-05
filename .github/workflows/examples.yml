@@ -1,0 +1,52 @@
+on:
+  push:
+    paths:
+      - examples/**/*
+      - datasources/**/*
+    branches:
+      - "master"
+      - "main"
+      - "latest"
+      - "dev*"
+  pull_request:
+    paths:
+      - examples/**/*
+      - datasources/**/*
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - EUROSAT_RAW_format
+          - FEDERATED_MNIST_RAW_format
+          - HCOPD_Avro_format
+          - MLGPARK_STREAM_RAW_format
+          - MNIST_RAW_format
+          - NO2SoftSensor_RAW_format
+          - SO2SAT_RAW_format
+          - TCN_NILM_RAW_format
+          - VGG16_CIFAR10_RAW_format
+    defaults:
+      run:
+        working-directory: examples/${{ matrix.example }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.9.x"
+      - name: Create virtual environment
+        run: uv venv --python 3.11 .venv
+      - name: Install example dependencies
+        run: uv pip install --python .venv/bin/python -r requirements.txt
+      # Doesn't run the scripts - they open a live Kafka connection at
+      # import time with no broker available in CI. This proves the
+      # example's requirements.txt still installs cleanly and every module
+      # its scripts actually import still resolves against it.
+      - name: Check example script imports resolve
+        run: .venv/bin/python ../check_imports.py .
