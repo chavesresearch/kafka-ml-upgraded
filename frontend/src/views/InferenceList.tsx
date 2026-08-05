@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Check, Square, Trash2 } from 'lucide-react'
+import { Check, Info, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import DataTable from '@/components/DataTable'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getInferences, stopInference, deleteInference } from '@/api'
 import { useNotify } from '@/notify'
-import { truncate, formatDate } from '@/logic/format'
+import { formatDate } from '@/logic/format'
 import type { Inference } from '@/types'
 
 export default function InferenceList() {
+  const navigate = useNavigate()
   const notify = useNotify()
   const { confirm, dialog } = useConfirm()
   const [inferences, setInferences] = useState<Inference[]>([])
+  const [infoDialogOpen, setInfoDialogOpen] = useState(false)
+  const [infoDialogData, setInfoDialogData] = useState<Inference | null>(null)
 
   const refreshData = useCallback(async () => {
     try {
@@ -43,6 +49,11 @@ export default function InferenceList() {
     })
   }
 
+  function openInfoDialog(inference: Inference) {
+    setInfoDialogData(inference)
+    setInfoDialogOpen(true)
+  }
+
   function confirmDeletion(id: number) {
     confirm({
       header: 'Are you sure?',
@@ -61,20 +72,31 @@ export default function InferenceList() {
 
   const columns: ColumnDef<Inference, unknown>[] = [
     { accessorKey: 'id', header: 'ID' },
-    { accessorKey: 'model_result', header: 'Training ID' },
-    { accessorKey: 'replicas', header: 'Replicas', enableSorting: false },
-    { accessorKey: 'input_format', header: 'Input format', enableSorting: false },
     {
-      id: 'input_config',
-      header: 'Input configuration',
-      enableSorting: false,
-      cell: ({ row }) => <span title={row.original.input_config}>{truncate(row.original.input_config, 10)}</span>,
+      accessorKey: 'model_result',
+      header: 'Training ID',
+      cell: ({ row }) => (
+        <button
+          type="button"
+          className="text-primary hover:underline"
+          title="View training result chart"
+          onClick={() => navigate(`/results/chart/${row.original.model_result}`)}
+        >
+          {row.original.model_result}
+        </button>
+      ),
     },
-    { accessorKey: 'external_host', header: 'Host', enableSorting: false },
-    { accessorKey: 'input_topic', header: 'Kafka input topic', enableSorting: false },
-    { accessorKey: 'output_topic', header: 'Kafka output topic', enableSorting: false },
-    { accessorKey: 'output_upper', header: 'Kafka output to upper model', enableSorting: false },
-    { accessorKey: 'limit', header: 'Prediction limit', enableSorting: false },
+    { accessorKey: 'replicas', header: 'Replicas', enableSorting: false },
+    {
+      id: 'info',
+      header: 'Info',
+      enableSorting: false,
+      cell: ({ row }) => (
+        <Button variant="ghost" size="icon" title="Connection details" onClick={() => openInfoDialog(row.original)}>
+          <Info className="size-4" />
+        </Button>
+      ),
+    },
     {
       accessorKey: 'time',
       header: 'Time',
@@ -115,10 +137,52 @@ export default function InferenceList() {
     },
   ]
 
+  const infoRows = infoDialogData
+    ? [
+        { name: 'Input format', value: infoDialogData.input_format },
+        { name: 'Input configuration', value: infoDialogData.input_config },
+        { name: 'Host', value: infoDialogData.external_host },
+        { name: 'Kafka input topic', value: infoDialogData.input_topic },
+        { name: 'Kafka output topic', value: infoDialogData.output_topic },
+        { name: 'Kafka output to upper model', value: infoDialogData.output_upper },
+        { name: 'Prediction limit', value: infoDialogData.limit },
+      ]
+    : []
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Inference</h1>
       <DataTable columns={columns} data={inferences} getRowId={(i) => String(i.id)} />
+
+      <Dialog open={infoDialogOpen} onOpenChange={setInfoDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Connection details{infoDialogData && ` — Inference ${infoDialogData.id}`}</DialogTitle>
+          </DialogHeader>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Field</TableHead>
+                <TableHead className="text-right">Value</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {infoRows.map((row) => (
+                <TableRow key={row.name}>
+                  <TableCell className="w-36 align-top font-medium whitespace-normal">{row.name}</TableCell>
+                  <TableCell className="text-right align-top whitespace-normal break-all">
+                    {row.value != null && row.value !== '' ? (
+                      String(row.value)
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
       {dialog}
     </div>
   )
