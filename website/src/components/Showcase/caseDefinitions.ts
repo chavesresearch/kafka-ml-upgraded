@@ -8,11 +8,28 @@
 
 export type CaseGroup = 'Single' | 'Distributed' | 'Federated';
 
+// Drives how ResultsPanel renders each case's simulated metrics - kept
+// distinct per case family so the chart itself communicates *how* that
+// mode actually reports results, not just a generic accuracy/loss line:
+//  - 'bounded': one fixed-size training run, x-axis "Epoch".
+//  - 'streaming': never "finishes" - the chart keeps scrolling forward
+//    live, matching incremental training's unbounded stream.
+//  - 'federated': points land at irregular real-time intervals (not a
+//    fixed tick), each annotated with which device it came from -
+//    matching the real async, first-arrival-wins aggregation loop (see
+//    useAsyncFederation's comment for the source).
+export type ChartKind = 'bounded' | 'streaming' | 'federated';
+
 export interface MetricsProfile {
-  metricNames: string[];
+  kind: ChartKind;
+  metricName: string;
   numPoints: number;
   seed: number;
   xLabel: string;
+  /** Render two series (Edge/Cloud submodel) instead of one. */
+  distributed?: boolean;
+  /** Show a per-round ERC-20 reward bar chart beneath the metric chart. */
+  rewards?: boolean;
 }
 
 export interface CaseDefinition {
@@ -60,7 +77,7 @@ export const caseDefinitions: CaseDefinition[] = [
     batch=4,
     tf_kwargs_fit="epochs=1",
 )`,
-    metrics: {metricNames: ['accuracy', 'loss'], numPoints: 10, seed: 1, xLabel: 'Epoch'},
+    metrics: {kind: 'bounded', metricName: 'accuracy', numPoints: 10, seed: 1, xLabel: 'Epoch'},
   },
   {
     id: 2,
@@ -78,7 +95,7 @@ export const caseDefinitions: CaseDefinition[] = [
     incremental=True,
     stream_timeout=60000,
 )`,
-    metrics: {metricNames: ['accuracy', 'loss'], numPoints: 14, seed: 2, xLabel: 'Batch'},
+    metrics: {kind: 'streaming', metricName: 'accuracy', numPoints: 0, seed: 2, xLabel: 'Batch'},
   },
   {
     id: 3,
@@ -98,7 +115,7 @@ deployment_id = client.create_deployment(
     optimizer="adam", learning_rate=0.001,
     loss="sparse_categorical_crossentropy", metrics="accuracy",
 )`,
-    metrics: {metricNames: ['accuracy', 'loss'], numPoints: 10, seed: 3, xLabel: 'Epoch'},
+    metrics: {kind: 'bounded', metricName: 'accuracy', numPoints: 10, seed: 3, xLabel: 'Epoch', distributed: true},
   },
   {
     id: 4,
@@ -114,7 +131,7 @@ deployment_id = client.create_deployment(
     optimizer="adam", loss="sparse_categorical_crossentropy", metrics="accuracy",
     incremental=True, stream_timeout=60000,
 )`,
-    metrics: {metricNames: ['accuracy', 'loss'], numPoints: 14, seed: 4, xLabel: 'Batch'},
+    metrics: {kind: 'streaming', metricName: 'accuracy', numPoints: 0, seed: 4, xLabel: 'Batch', distributed: true},
   },
   {
     id: 5,
@@ -129,7 +146,7 @@ deployment_id = client.create_deployment(
     configuration=config_id, batch=4, tf_kwargs_fit="epochs=1",
     federated=True, agg_rounds=5, min_data=100, agg_strategy="FedAvg",
 )`,
-    metrics: {metricNames: ['accuracy', 'loss'], numPoints: 5, seed: 5, xLabel: 'Round'},
+    metrics: {kind: 'federated', metricName: 'accuracy', numPoints: 8, seed: 5, xLabel: 'Round'},
   },
   {
     id: 6,
@@ -145,7 +162,7 @@ deployment_id = client.create_deployment(
     federated=True, agg_rounds=5, min_data=5, agg_strategy="FedAvg",
     incremental=True, stream_timeout=30000,
 )`,
-    metrics: {metricNames: ['accuracy', 'loss'], numPoints: 5, seed: 6, xLabel: 'Round'},
+    metrics: {kind: 'federated', metricName: 'accuracy', numPoints: 8, seed: 6, xLabel: 'Round'},
   },
   {
     id: 7,
@@ -161,7 +178,7 @@ deployment_id = client.create_deployment(
     optimizer="adam", loss="sparse_categorical_crossentropy", metrics="accuracy",
     federated=True, agg_rounds=5, min_data=100, agg_strategy="FedAvg",
 )`,
-    metrics: {metricNames: ['accuracy', 'loss'], numPoints: 5, seed: 7, xLabel: 'Round'},
+    metrics: {kind: 'federated', metricName: 'accuracy', numPoints: 8, seed: 7, xLabel: 'Round', distributed: true},
   },
   {
     id: 8,
@@ -178,7 +195,7 @@ deployment_id = client.create_deployment(
     federated=True, agg_rounds=5, min_data=5, agg_strategy="FedAvg",
     incremental=True, stream_timeout=30000,
 )`,
-    metrics: {metricNames: ['accuracy', 'loss'], numPoints: 5, seed: 8, xLabel: 'Round'},
+    metrics: {kind: 'federated', metricName: 'accuracy', numPoints: 8, seed: 8, xLabel: 'Round', distributed: true},
   },
   {
     id: 9,
@@ -194,7 +211,7 @@ deployment_id = client.create_deployment(
     federated=True, agg_rounds=3, min_data=10, agg_strategy="FedAvg",
     blockchain=True,
 )`,
-    metrics: {metricNames: ['accuracy', 'loss'], numPoints: 3, seed: 9, xLabel: 'Round'},
+    metrics: {kind: 'federated', metricName: 'accuracy', numPoints: 8, seed: 9, xLabel: 'Round', rewards: true},
   },
 ];
 

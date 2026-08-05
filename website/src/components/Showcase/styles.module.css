@@ -123,7 +123,7 @@
 }
 
 .stepContent {
-  min-height: 360px;
+  min-height: 420px;
 }
 
 /* --- Code panel --- */
@@ -163,24 +163,32 @@
   font-style: italic;
 }
 
-/* --- Diagram stage + shared diagram primitives --- */
+/* ======================================================================
+   Diagram canvas + shared visual language
+   ====================================================================== */
 
 .diagramStage {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
-  border-radius: 12px;
-  background: var(--ifm-color-emphasis-100);
-  min-height: 340px;
+  padding: 2.5rem 1.5rem;
+  border-radius: 16px;
+  background-color: var(--ifm-color-emphasis-100);
+  background-image: radial-gradient(circle, var(--ifm-color-emphasis-300) 1px, transparent 1px);
+  background-size: 24px 24px;
+  min-height: 420px;
+  overflow: hidden;
 }
 
 .diagramRoot {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 1.5rem;
   width: 100%;
+  z-index: 1;
 }
 
 .diagramRow {
@@ -192,85 +200,211 @@
 }
 
 .diagramCaption {
-  font-size: 0.9rem;
-  opacity: 0.75;
+  font-size: 1rem;
+  font-weight: 500;
+  opacity: 0.85;
   min-height: 1.4em;
   text-align: center;
 }
 
+.diagramSubcaption {
+  font-size: 0.82rem;
+  opacity: 0.6;
+  min-height: 1.2em;
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+/* --- Nodes --- */
+
 .node {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  width: 110px;
-  height: 90px;
-  border-radius: 12px;
-  border: 2px solid var(--ifm-color-emphasis-400);
+  gap: 0.4rem;
+  width: 132px;
+  height: 112px;
+  border-radius: 20px;
+  border: 2px solid var(--ifm-color-emphasis-300);
   background: var(--ifm-background-color);
-  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
-  padding: 0.5rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.07);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s ease,
+    border-color 0.35s ease, background 0.35s ease;
+  padding: 0.6rem;
   text-align: center;
+  z-index: 1;
 }
 
 .nodeActive {
   border-color: var(--ifm-color-primary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ifm-color-primary) 20%, transparent);
-  transform: translateY(-2px);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--ifm-color-primary) 14%, var(--ifm-background-color)),
+    var(--ifm-background-color)
+  );
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--ifm-color-primary) 16%, transparent),
+    0 10px 24px -6px color-mix(in srgb, var(--ifm-color-primary) 45%, transparent);
+  transform: translateY(-4px) scale(1.05);
 }
 
 .nodeIcon {
-  font-size: 1.6rem;
+  font-size: 2rem;
   line-height: 1;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.12));
 }
 
 .nodeLabel {
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 700;
   line-height: 1.2;
 }
 
+.nodeSublabel {
+  font-size: 0.68rem;
+  opacity: 0.65;
+  font-weight: 600;
+  min-height: 1em;
+}
+
+.smallNode {
+  width: 106px;
+  height: 96px;
+}
+
+.smallNode .nodeIcon {
+  font-size: 1.6rem;
+}
+
+/* Radial progress ring - wraps the icon, degree set via inline style
+   (--ring-deg custom property, since CSS Modules can't parametrize
+   per-instance conic-gradient angles). */
+.ringWrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(
+    var(--ifm-color-primary) calc(var(--ring-deg, 0) * 1deg),
+    var(--ifm-color-emphasis-300) 0deg
+  );
+  transition: background 0.15s linear;
+}
+
+.smallNode .ringWrap {
+  width: 38px;
+  height: 38px;
+}
+
+.ringInner {
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  border-radius: 999px;
+  background: var(--ifm-background-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ringInner .nodeIcon {
+  font-size: 1.25rem;
+}
+
+.smallNode .ringInner .nodeIcon {
+  font-size: 1.05rem;
+}
+
+/* --- Connectors / flow tracks --- */
+
 .connector {
   position: relative;
-  width: 48px;
-  height: 4px;
+  width: 56px;
+  height: 8px;
+  border-radius: 999px;
   background: var(--ifm-color-emphasis-300);
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .connectorVertical {
   position: relative;
-  width: 4px;
-  height: 40px;
+  width: 8px;
+  height: 48px;
+  border-radius: 999px;
   background: var(--ifm-color-emphasis-300);
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .connectorActive {
-  background: var(--ifm-color-primary);
+  background: color-mix(in srgb, var(--ifm-color-primary) 35%, var(--ifm-color-emphasis-300));
+}
+
+/* Continuous "always flowing" look, for incremental/streaming sources -
+   a marching repeating-gradient instead of a discrete one-shot pulse. */
+.connectorFlowing {
+  background-color: var(--ifm-color-emphasis-300);
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--ifm-color-primary) 0 8px,
+    transparent 8px 18px
+  );
+  background-size: 200% 100%;
+  animation: flowMarqueeH 0.9s linear infinite;
+}
+
+.connectorVertical.connectorFlowing {
+  background-image: repeating-linear-gradient(
+    180deg,
+    var(--ifm-color-primary) 0 8px,
+    transparent 8px 18px
+  );
+  background-size: 100% 200%;
+  animation: flowMarqueeV 0.9s linear infinite;
+}
+
+@keyframes flowMarqueeH {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -36px 0;
+  }
+}
+
+@keyframes flowMarqueeV {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 -36px;
+  }
 }
 
 .pulseDot {
   position: absolute;
   top: 50%;
-  left: 0;
-  width: 10px;
-  height: 10px;
+  left: 0%;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
   background: var(--ifm-color-primary);
+  box-shadow: 0 0 12px 3px color-mix(in srgb, var(--ifm-color-primary) 65%, transparent);
   transform: translate(-50%, -50%);
   opacity: 0;
 }
 
 .pulseDotActive {
   opacity: 1;
-  animation: pulseAcross 1.4s ease-in-out;
+  animation: pulseAcross 1.3s ease-in-out;
 }
 
 .pulseDotActiveReverse {
   opacity: 1;
-  animation: pulseAcrossReverse 1.4s ease-in-out;
+  animation: pulseAcrossReverse 1.3s ease-in-out;
 }
 
 @keyframes pulseAcross {
@@ -307,6 +441,27 @@
   }
 }
 
+/* A particle whose position is driven directly from JS (inline `left`
+   style, 0-100%) rather than a fixed-duration CSS keyframe - used for
+   the async federation diagrams, where each device's send timing is
+   independent and can't be expressed as one shared keyframe. */
+.livePulse {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: var(--ifm-color-primary);
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--ifm-color-primary) 60%, transparent);
+  transform: translate(-50%, -50%);
+  transition: left 0.1s linear;
+  opacity: 0;
+}
+
+.livePulseVisible {
+  opacity: 1;
+}
+
 .progressBar {
   width: 100%;
   height: 6px;
@@ -328,22 +483,19 @@
 
 .edgeRow {
   display: flex;
-  gap: 1.25rem;
+  gap: 1.5rem;
   justify-content: center;
   flex-wrap: wrap;
-}
-
-.smallNode {
-  width: 92px;
-  height: 78px;
+  position: relative;
 }
 
 .coinIcon {
   position: absolute;
   top: 50%;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   transform: translate(-50%, -50%);
   opacity: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
 }
 
 .coinIconActive {
@@ -370,8 +522,172 @@
 
 .roundBadge {
   font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.15rem 0.6rem;
+  font-weight: 700;
+  padding: 0.3rem 0.8rem;
   border-radius: 999px;
   background: var(--ifm-color-emphasis-200);
+  font-variant-numeric: tabular-nums;
+}
+
+.versionBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  background: var(--ifm-color-emphasis-200);
+  font-variant-numeric: tabular-nums;
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.versionBadgePulse {
+  background: color-mix(in srgb, var(--ifm-color-primary) 25%, var(--ifm-color-emphasis-200));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ifm-color-primary) 20%, transparent);
+  transform: scale(1.08);
+}
+
+/* --- Distributed model chain grouping --- */
+
+.chainGroup {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 1.1rem 1rem 0.6rem;
+  border: 2px dashed var(--ifm-color-emphasis-400);
+  border-radius: 24px;
+}
+
+.chainGroupLabel {
+  position: absolute;
+  top: -0.7rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ifm-color-emphasis-100);
+  padding: 0 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.dataBadge {
+  position: absolute;
+  top: -1.9rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  background: var(--ifm-color-emphasis-200);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  opacity: 0;
+  z-index: 3;
+  transition: opacity 0.3s ease;
+}
+
+.dataBadgeActive {
+  opacity: 1;
+}
+
+/* --- Async federation bus + device stubs --- */
+
+.bus {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ifm-color-emphasis-300);
+  width: 100%;
+  max-width: 460px;
+}
+
+.deviceStubRow {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 460px;
+}
+
+.deviceStub {
+  position: relative;
+  width: 4px;
+  height: 34px;
+  background: var(--ifm-color-emphasis-300);
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.deviceStubActive {
+  background: color-mix(in srgb, var(--ifm-color-primary) 45%, var(--ifm-color-emphasis-300));
+}
+
+.livePulseVertical {
+  position: absolute;
+  left: 50%;
+  bottom: 0%;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: var(--ifm-color-primary);
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--ifm-color-primary) 60%, transparent);
+  transform: translate(-50%, 50%);
+  transition: bottom 0.1s linear;
+  opacity: 0;
+}
+
+.livePulseVisible {
+  opacity: 1;
+}
+
+.deviceColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.rewardToast {
+  position: absolute;
+  top: -1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #b8860b;
+  white-space: nowrap;
+  animation: floatUp 0.9s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes floatUp {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 4px);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -14px);
+  }
+}
+
+/* --- Async legend chip --- */
+
+.asyncNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: var(--ifm-color-emphasis-200);
+  opacity: 0.85;
 }

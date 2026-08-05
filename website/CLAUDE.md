@@ -43,28 +43,63 @@ code panel (real model code + real `kafkaml-client` deployment snippet),
 and a simulated-metrics results panel.
 
 - `caseDefinitions.ts` is the single source of truth for all 9 cases'
-  metadata (model code, SDK snippet, chart config). Semi-supervised
-  learning is a deployment flag (`unsupervised`), not a 10th case - it
-  gets its own docs page instead of a switcher entry, matching the real
-  dispatch table exactly.
-- Diagrams share two patterns rather than being 9 fully independent
-  implementations: `DistributedBaseDiagram` (CASE 3/4, parameterized by
-  `incremental`) and `FederatedBaseDiagram` (CASE 5/6/7/8, parameterized
-  by `incremental`/`distributed`) - CASE 1, 2, and 9 are standalone since
-  each is visually distinct enough not to share a base profitably.
-- `useReplayAnimation(active, numSteps, stepMs)` is the shared animation
-  driver - cycles a step index while `active`, resets to 0 whenever
-  `active` toggles. `DiagramStage.tsx` forces a full remount on every
-  case switch (`key={caseId}`) specifically so this reset actually fires
-  - without the remount, a diagram component that stays mounted across
-  case switches would need its own explicit reset logic instead.
-- `useTicker` drives the small incrementing "batch N" counter the
-  incremental-mode diagrams show next to a loop icon, replacing the
-  one-shot progress bar the classic (bounded) modes use.
-- Results panel uses `mulberry32` (seeded PRNG) so each case's simulated
-  curve is deterministic per page load, not fresh random noise every
-  render - looks like real training output without claiming to be one
-  (an explicit "simulated" caption is always shown).
+  metadata (model code, SDK snippet, chart config via `MetricsProfile`).
+  Semi-supervised learning is a deployment flag (`unsupervised`), not a
+  10th case - it gets its own docs page instead of a switcher entry,
+  matching the real dispatch table exactly.
+- Bounded/classic diagrams (CASE 1, 3) use `useReplayAnimation(active,
+  numSteps, stepMs)` - cycles a discrete step index while `active`,
+  resets to 0 whenever `active` toggles. `DiagramStage.tsx` forces a full
+  remount on every case switch (`key={caseId}`) specifically so this
+  reset actually fires.
+- Incremental diagrams (CASE 2, 4, and the `incremental` half of 6/8) are
+  **not** step-based at all - `useTicker` drives a continuously
+  incrementing "batch N" counter with a perpetual flowing-marquee
+  connector (`.connectorFlowing`), because incremental training genuinely
+  never reaches a "done" state (see `docs/usage/incremental-training.md`)
+  and a discrete loop would misrepresent that.
+- **Federated diagrams (CASE 5/6/7/8/9) are driven by
+  `useAsyncFederation`, not `useReplayAnimation`.** This was a real
+  correctness fix, not just a visual one: the first version modeled
+  federated rounds as a *synchronized* "all devices train together, all
+  report together" cycle, which is wrong. Kafka-ML's actual aggregation
+  loop (`model_training/tensorflow/edgeBasedTraining.py` -
+  `EdgeBasedTraining`, shared verbatim by CASE 5-8; the near-identical
+  `edgeBlockchainBasedTraining.py` for CASE=9) sends the current global
+  model, then blocks on `consumer.poll()` (or, for CASE=9,
+  `elements_to_aggregate() < 1`) until **the first** device response
+  shows up, merges just that one in via pairwise FedAvg, and immediately
+  starts the next round - it never waits for the others. Confirmed by
+  reading that loop directly, not assumed. `useAsyncFederation` models
+  this with each device on its own independent, staggered clock (see its
+  own doc comment) - devices visibly finish at different real times, and
+  the cloud's "model vN" badge bumps irregularly, only when *some* device
+  happens to land, exactly matching the real behavior. `FederatedBaseDiagram`
+  covers CASE 5/6/7/8 (parameterized by `incremental`/`distributed`);
+  `FederatedBlockchainDiagram` (CASE 9) adds the smart-contract node and
+  a per-device ERC-20 reward toast, both driven off the same hook.
+- Distributed diagrams (CASE 3/4/7/8) render the father/child pair inside
+  a dashed `.chainGroup` container with a `.dataBadge` ("4-dim features")
+  that appears on the edge→cloud connector during the handoff - makes
+  the hierarchy legible instead of just two boxes in a row. These use two
+  explicit stacked `.diagramRow`s (Data Source→chain on row 1, Storage→
+  Inference on row 2), not one row left to `flex-wrap` on its own - the
+  chain group's padding/border pushes a single row past the panel's
+  width at normal viewport sizes, and an unplanned wrap previously
+  orphaned the Inference node on its own line.
+- `ResultsPanel.tsx`'s chart shape is driven by `MetricsProfile.kind`
+  (`'bounded' | 'streaming' | 'federated'`), not one generic
+  accuracy/loss line reused everywhere - bounded is a fixed-size reveal
+  ("Epoch" x-axis), streaming never stops (scrolling "Batch" window, 🔴
+  Live badge), federated points land at *irregular* intervals with a
+  "Round N: merged from Device X" caption (matching the same async
+  reality `useAsyncFederation` models for the diagrams).
+  `distributed: true` renders two side-by-side mini-charts (Edge/Cloud
+  submodel) instead of a single chart; `rewards: true` (CASE=9 only)
+  adds a per-device cumulative ERC-20 bar chart underneath. `mulberry32`
+  (seeded PRNG) keeps each case's curve deterministic per page load, not
+  fresh random noise every render - it's illustrative, not a real
+  training run, and says so on-screen.
 
 ## Gotchas learned the hard way (keep these)
 

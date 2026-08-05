@@ -70,7 +70,6 @@ export default function ShowcaseApp(): ReactNode {
             <ResultsPanel
               key={caseDef.id}
               metrics={caseDef.metrics}
-              xLabel={caseDef.metrics.xLabel}
               active={tab === 'results'}
             />
           )}

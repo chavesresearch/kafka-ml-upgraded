@@ -1,21 +1,19 @@
-import type {ReactNode} from 'react';
+import type {CSSProperties, ReactNode} from 'react';
 import clsx from 'clsx';
-import {useReplayAnimation} from '../useReplayAnimation';
-import {useTicker} from '../useTicker';
+import {useAsyncFederation} from '../useAsyncFederation';
 import styles from '../styles.module.css';
 
 const EDGE_COUNT = 4;
 
 // Shared by FederatedDiagram, FederatedIncrementalDiagram,
 // FederatedDistributedDiagram, and FederatedDistributedIncrementalDiagram
-// (CASE 5/6/7/8) - same cloud + edge-device layout as
-// FederatedBlockchainDiagram (CASE 9), minus the smart-contract node.
-// `incremental` swaps the one-shot training icon for a loop+ticker
-// (same treatment as SingleIncrementalDiagram/DistributedBaseDiagram);
-// `distributed` marks each device as training a linked submodel chain
-// rather than one model (same "father/child pair" concept as
-// DistributedBaseDiagram, condensed into a chain icon here to keep the
-// multi-device layout readable).
+// (CASE 5/6/7/8). Models Kafka-ML's *real* aggregation behavior
+// (edgeBasedTraining.py: send the global model, block until the FIRST
+// device response arrives, merge just that one in, start the next round
+// immediately) rather than a synchronized "wait for everyone" round -
+// each device below runs on its own independent clock (useAsyncFederation),
+// so they visibly finish at different times, and the cloud's model
+// version bumps irregularly, only when *some* device happens to land.
 export default function FederatedBaseDiagram({
   active,
   incremental,
@@ -25,51 +23,67 @@ export default function FederatedBaseDiagram({
   incremental: boolean;
   distributed: boolean;
 }): ReactNode {
-  const step = useReplayAnimation(active, 4, 1500);
-  const batch = useTicker(active && incremental, 700);
+  const {devices, cloudVersion, cloudPulse} = useAsyncFederation(active, EDGE_COUNT);
 
-  const cloudActive = step === 0 || step === 3;
-  const edgesActive = step === 1 || step === 2;
-
-  const downPulse = step === 0 ? styles.pulseDotActive : '';
-  const upPulse = step === 2 ? styles.pulseDotActiveReverse : '';
-
+  const anyTraining = devices.some((d) => d.phase === 'training');
   const modelWord = distributed ? 'submodel chain' : 'model';
-  const captions = [
-    `Cloud sends the global ${modelWord} to devices...`,
-    incremental
-      ? 'Devices train locally on their own streaming data...'
-      : 'Devices train locally on their own data...',
-    'Devices send their updates back to the cloud...',
-    'Cloud aggregates every update (FedAvg)...',
-  ];
+
+  let caption: string;
+  if (cloudVersion === 0 && anyTraining) {
+    caption = `Cloud broadcasts the initial global ${modelWord} - devices start training whenever they're ready...`;
+  } else {
+    caption = `Devices train independently and report back on their own schedule - the cloud merges each update the moment it arrives, without waiting for the others.`;
+  }
 
   return (
     <div className={styles.diagramRoot}>
-      <div className={clsx(styles.node, cloudActive && styles.nodeActive)}>
+      <span className={styles.asyncNote}>⏱️ Asynchronous - no device waits for another</span>
+
+      <div className={clsx(styles.node, cloudPulse && styles.nodeActive)}>
         <span className={styles.nodeIcon}>☁️</span>
         <span className={styles.nodeLabel}>Cloud / Backend</span>
+        <span className={clsx(styles.versionBadge, cloudPulse && styles.versionBadgePulse)}>
+          model v{cloudVersion}
+        </span>
       </div>
 
-      <div className={clsx(styles.connectorVertical, (step === 0 || step === 2) && styles.connectorActive)}>
-        <span className={clsx(styles.pulseDot, downPulse, upPulse)} />
-      </div>
+      <div className={styles.bus} />
 
-      <div className={styles.edgeRow}>
-        {Array.from({length: EDGE_COUNT}).map((_, i) => (
-          <div key={i} className={clsx(styles.node, styles.smallNode, edgesActive && styles.nodeActive)}>
-            <span className={styles.nodeIcon}>
-              {step === 1 ? (incremental ? '🔁' : '⚙️') : distributed ? '🔗' : '📱'}
-            </span>
-            <span className={styles.nodeLabel}>Device {i + 1}</span>
-            {incremental && step === 1 && (
-              <span style={{fontSize: '0.65rem', opacity: 0.7}}>batch {batch}</span>
-            )}
+      <div className={styles.deviceStubRow}>
+        {devices.map((d, i) => (
+          <div key={i} className={clsx(styles.deviceStub, d.phase === 'sending' && styles.deviceStubActive)}>
+            <span
+              className={clsx(styles.livePulseVertical, d.phase === 'sending' && styles.livePulseVisible)}
+              style={{bottom: d.phase === 'sending' ? `${d.progress * 100}%` : '0%'}}
+            />
           </div>
         ))}
       </div>
 
-      <p className={styles.diagramCaption}>{captions[step]}</p>
+      <div className={styles.edgeRow}>
+        {devices.map((d, i) => {
+          const deg = d.phase === 'training' ? Math.round(d.progress * 360) : 360;
+          return (
+            <div key={i} className={styles.deviceColumn}>
+              <div className={clsx(styles.node, styles.smallNode, d.phase === 'sending' && styles.nodeActive)}>
+                <div className={styles.ringWrap} style={{'--ring-deg': deg} as CSSProperties}>
+                  <div className={styles.ringInner}>
+                    <span className={styles.nodeIcon}>
+                      {d.phase === 'sending' ? '📤' : distributed ? '🔗' : incremental ? '🔁' : '⚙️'}
+                    </span>
+                  </div>
+                </div>
+                <span className={styles.nodeLabel}>Device {i + 1}</span>
+                <span className={styles.nodeSublabel}>
+                  {d.phase === 'training' ? `training ${Math.round(d.progress * 100)}%` : 'sending update'}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className={styles.diagramCaption}>{caption}</p>
     </div>
   );
 }

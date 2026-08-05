@@ -15,6 +15,7 @@ export default function SingleClassicDiagram({active}: {active: boolean}): React
 
   return (
     <div className={styles.diagramRoot}>
+      <span className={styles.asyncNote}>🔒 Bounded - trains once per deployment, on a fixed dataset</span>
       <div className={styles.diagramRow}>
         <div className={clsx(styles.node, step === 0 && styles.nodeActive)}>
           <span className={styles.nodeIcon}>🌊</span>
