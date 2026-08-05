@@ -1,0 +1,55 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Security vulnerabilities
+        should go through this repository's `SECURITY.md` (Security tab ->
+        "Report a vulnerability") instead of a public issue.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      description: Which service/subproject is this about?
+      options:
+        - backend
+        - frontend
+        - model_training (TensorFlow)
+        - model_training (PyTorch)
+        - model_inference (TensorFlow)
+        - model_inference (PyTorch)
+        - mlcode_executor (tfexecutor/pthexecutor)
+        - federated-module (federated_backend, control loggers, federated training)
+        - datasources / kafkaml-client (SDK)
+        - kustomize / deployment
+        - website / docs
+        - other / not sure
+    validations:
+      required: true
+  - type: input
+    id: case
+    attributes:
+      label: Training CASE (if applicable)
+      description: If this is about a training run, which of the 9 modes (single/distributed x classic/incremental, federated variants, blockchain)?
+      placeholder: "e.g. CASE=6 (federated-incremental)"
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Deployment settings, data sent, and what you observed. Include relevant pod logs (`kubectl logs`) if you have them.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Kafka-ML version
+      description: Which kustomize version/tag are you deployed on? (e.g. v1.3, master, a commit SHA)

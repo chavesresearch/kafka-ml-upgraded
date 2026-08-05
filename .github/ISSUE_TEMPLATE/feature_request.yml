@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an idea or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For anything non-trivial, it helps to open this before starting a
+        PR - see this repository's `CONTRIBUTING.md`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do that's currently hard or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen? Alternatives you've considered are welcome too.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      options:
+        - backend
+        - frontend
+        - model_training / model_inference
+        - federated-module
+        - datasources / kafkaml-client (SDK)
+        - kustomize / deployment
+        - website / docs
+        - other / not sure

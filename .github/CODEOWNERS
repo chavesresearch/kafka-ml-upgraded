@@ -1,0 +1,21 @@
+# Code owners for this repository.
+#
+# This file is a template, not a filled-in ownership map: the actual
+# maintainer GitHub usernames/teams aren't known from within the
+# repository itself, so nothing below is uncommented yet. A repo admin
+# should fill in real @usernames or @org/team-name per area (GitHub
+# silently ignores CODEOWNERS lines referencing a user/team that isn't a
+# collaborator, so an unfilled line is inert, not broken - but it also
+# means review requests won't actually be auto-assigned until this is
+# done).
+#
+# Later matches take precedence over earlier ones, same as .gitignore.
+
+# Example (uncomment and replace with real owners):
+# *                                          @ertis-research/maintainers
+# /backend/                                  @some-backend-owner
+# /frontend/                                 @some-frontend-owner
+# /model_training/ /model_inference/         @some-ml-owner
+# /federated-module/                         @some-federated-owner
+# /kustomize/ /federated-module/kustomize/   @some-devops-owner
+# /.github/                                  @some-devops-owner

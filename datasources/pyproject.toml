@@ -8,6 +8,20 @@ dependencies = [
     "kafka-python==3.0.10",
 ]
 
+[dependency-groups]
+# pytest==9.x dropped Python 3.9 support - this package's own
+# requires-python floor (>=3.9) is a real compatibility promise to
+# whatever Python version a client script installing this SDK happens to
+# run, unlike the single-controlled-Docker-environment service projects
+# elsewhere in this repo that already moved to pytest 9. Pinned to the
+# latest 8.x release that still supports 3.9.
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["tests"]
+
 [build-system]
 requires = ["uv_build>=0.9.22,<0.10.0"]
 build-backend = "uv_build"

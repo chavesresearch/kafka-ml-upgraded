@@ -95,6 +95,32 @@ nice-to-have polish.
    with a real `docker build` before fixing, then confirmed the fix
    builds clean) - these workflows had apparently never actually been
    triggered, or this would have failed every time.
+   **Correction, 2026-08-06**: that last sentence was more right than
+   realized at the time - these workflows really had never actually
+   succeeded on GitHub Actions itself (this "done" write-up was based on
+   `uv run pytest`/`docker build` working locally, never on watching a
+   real triggered run go green). `gh run list` showed a **100%
+   `startup_failure` rate across every workflow in this repo except
+   `website.yml`**, the entire time - the repo's default `GITHUB_TOKEN`
+   permissions are read-only, and every workflow calling the reusable
+   `build.yml` (which needs `packages: write` to push images) never
+   declared its own `permissions:` block, so the call was rejected before
+   any job even started. Fixed by adding an explicit `permissions:
+   {contents: read, packages: write}` to all 13 affected workflows, plus
+   `workflow_dispatch` triggers so they can be re-run on demand for
+   verification. Confirmed via real `gh workflow run` + `gh run watch`
+   calls, not assumed: `test` jobs now pass end-to-end (found and fixed
+   two more real bugs *this* surfaced - `astral-sh/setup-uv@v9` doesn't
+   resolve as a floating tag past v8's move to immutable releases, pinned
+   to the exact `v9.0.0` instead; and `frontend/src/lib/utils.ts` -
+   imported by nearly every shadcn/ui component - had never actually been
+   committed to git at all, silently masked by an overly broad unanchored
+   `lib/` entry in the root `.gitignore`, gitignore.io Python-packaging
+   boilerplate that was never meant to reach into `frontend/src/`). The
+   `build-*` jobs now correctly progress all the way to `docker/login-action`
+   and stop there with "Password required" - this fork has no
+   `DOCKERHUB_KEY` secret configured, correctly so, since it isn't meant
+   to publish to `ertis`'s Docker Hub namespace itself.
 
 ## High
 
@@ -340,9 +366,17 @@ nice-to-have polish.
    indicate the project moved to the NVIDIA official device plugin
    (see `kustomize/master-gpu`). Update the docs to match.
 
-4. **No CONTRIBUTING.md, issue templates, or PR template.** For a
-   research-originated project that already takes outside contributions
-   (per the publications list in the README), this is easy friction to remove.
+4. ~~No CONTRIBUTING.md, issue templates, or PR template.~~ — **done**
+   (2026-08-06): `CONTRIBUTING.md`, `SECURITY.md`,
+   `.github/ISSUE_TEMPLATE/{bug_report,feature_request}.yml` +
+   `config.yml`, `.github/pull_request_template.md` added.
+   `.github/CODEOWNERS` also added, but as an inert template (commented
+   out) - real GitHub usernames/teams for each area aren't knowable from
+   inside the repo, and fabricating ownership assignments would be worse
+   than leaving it unfilled (GitHub just ignores CODEOWNERS lines whose
+   user/team isn't a real collaborator, so an unfilled file breaks
+   nothing - it just doesn't auto-assign reviewers yet). A repo admin
+   needs to fill in real owners for it to actually do anything.
 
 5. ~~`web3==5.28.0` (backend, model_training/tensorflow,
    federated_model_training/tensorflow) is 3 major versions behind, and
@@ -412,6 +446,33 @@ nice-to-have polish.
    fixable from this repo (can't edit a third-party package's own
    tsconfig). Revisit once a `@docusaurus/tsconfig` release drops
    `baseUrl` for `paths`.
+
+9. ~~`datasources` and `kafkaml-client` (the two pip-installable Python
+   libraries in this repo) had zero test coverage and no CI job.~~ —
+   **done** (2026-08-06). `datasources` (43 tests): `KafkaConsumer`/
+   `KafkaProducer` faked via a `patch_kafka` fixture (constructing any
+   `Sink` talks to Kafka immediately, so there's no way to unit-test the
+   pure encoding/control-message-shape logic without replacing them
+   first) - covers the deployment-id-above-255 encoding fix, every
+   Sink subclass's auto-detect-format-on-first-send behavior (and the two
+   that deliberately *don't* auto-detect -
+   `OnlineFederatedRawSink`/explicitly-pre-configured `OnlineRawSink`),
+   and a real `fastavro` encode/decode round trip for `AvroSink`/
+   `AvroInference` (not mocked - the whole point of those classes is the
+   schema-bound serialization). `kafkaml-client` (23 tests): a small
+   in-memory fake backend wired in via `httpx.MockTransport` (httpx's own
+   supported way to test client code) - covers the id-lookup-after-create
+   logic every create method needs (the backend's own create endpoints
+   return no body), the before/after id-diffing `create_deployment`/
+   `deploy_inference` use instead, error wrapping into `KafkaMLError`, and
+   `wait_for_results`' polling/timeout behavior. Both pinned
+   `pytest==8.4.2`, not the `9.x` every service project in this repo
+   already uses - `9.x` dropped Python 3.9 support, and unlike a
+   single-Docker-environment service, these two packages' own
+   `requires-python = ">=3.9"` is a real compatibility promise to
+   whatever Python version installs them. New `.github/workflows/
+   {datasources,kafkaml-client}.yml` (test-only, no Docker image to
+   build/push for either).
 
 ## Low
 

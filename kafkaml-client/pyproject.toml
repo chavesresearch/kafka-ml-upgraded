@@ -8,6 +8,17 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[dependency-groups]
+# pytest==9.x dropped Python 3.9 support - see datasources/pyproject.toml's
+# identical comment for why this package stays on the latest 8.x instead
+# of the pytest 9 bump every service project in this repo already made.
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["tests"]
+
 [build-system]
 requires = ["uv_build>=0.9.22,<0.10.0"]
 build-backend = "uv_build"

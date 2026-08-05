@@ -71,6 +71,24 @@ loop) for the finding that started this.
    they serve different consumers with different expectations.
 4. **`kafka-python` bumped `2.0.2` → `3.0.9`.**
 
+## Automated test suite (2026-08-06)
+
+`tests/` (43 tests, `uv run pytest -v`, CI via `.github/workflows/
+datasources.yml`) - didn't exist before this date, only the one-off
+manual real-broker verification below. `KafkaConsumer`/`KafkaProducer`
+are faked (`tests/conftest.py`'s `patch_kafka` fixture) since every Sink
+talks to Kafka the moment it's constructed - covers the deployment-id
+encoding fix, every Sink subclass's auto-detect-format-on-first-send
+behavior (including the two that deliberately don't:
+`OnlineFederatedRawSink`, and `OnlineRawSink` when pre-configured), and a
+real (not mocked) `fastavro` encode/decode round trip for
+`AvroSink`/`AvroInference`. Pinned `pytest==8.4.2`, not the `9.x` used
+elsewhere in this repo - `9.x` dropped Python 3.9 support, and this
+package's own `requires-python = ">=3.9"` is a real compatibility promise
+to callers, not an internal implementation detail to bump freely. This
+suite is a fast, broker-free *regression* check for routine changes - it
+deliberately doesn't try to replace the real-broker verification below.
+
 ## Verified with a real broker - not just inspection
 
 A single-broker Kafka (Docker, KRaft mode, `apache/kafka:latest`) was

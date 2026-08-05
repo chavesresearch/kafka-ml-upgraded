@@ -35,6 +35,25 @@ inference results, went through this client's code, not a bypassed path.
 See `integration-tests/README.md` for what that suite actually exercises
 (and doesn't).
 
+## Automated test suite (2026-08-06)
+
+`tests/` (23 tests, `uv run pytest -v`, CI via `.github/workflows/
+kafkaml-client.yml`) - didn't exist before this date, only the
+integration-tests dogfooding above. Uses a small in-memory fake backend
+wired in via `httpx.MockTransport` (httpx's own supported way to test
+client code) - `KafkaMLClient.__init__` builds its own `httpx.Client`
+with no injection point, so tests construct a real client normally then
+swap its `_http` attribute for one backed by the mock transport
+(reaching into a "private" attribute deliberately - this SDK is a
+documented draft/PoC, not worth adding DI machinery to yet just for one
+fixture). Covers the id-lookup-after-create logic every create method
+needs, the before/after id-diffing `create_deployment`/`deploy_inference`
+use instead, `KafkaMLError` wrapping, and `wait_for_results`' polling/
+timeout/`min_results` behavior - the client's own logic, not the real
+backend's behavior (that's `backend/tests`' job). Same Python-3.9-safe
+`pytest==8.4.2` pin as `datasources` - see that package's `CLAUDE.md` for
+why.
+
 ## Design notes worth keeping if this is extended
 
 - `create_model`/`create_configuration`/`create_deployment`/
