@@ -457,34 +457,61 @@ class MainTraining(object):
     def train_incremental_model(self, kafka_dataset, decoder, validation_rate, callback, start):
         """Trains incremental model"""
 
-        for mini_ds in kafka_dataset:
-            if len(mini_ds) > 0:
-                mini_ds = mini_ds.map(lambda x, y: decoder.decode(x, y))
-                splits = self.split_online_dataset(validation_rate, mini_ds)
-                splits['train_dataset'] = splits['train_dataset'].batch(self.batch)
-                if splits['validation_dataset'] is not None:
-                    splits['validation_dataset'] = splits['validation_dataset'].batch(self.batch)
+        while 'model_trained' not in locals() and 'model_trained' not in globals():
+            received_data = False
+            for mini_ds in kafka_dataset:
+                if len(mini_ds) > 0:
+                    received_data = True
+                    mini_ds = mini_ds.map(lambda x, y: decoder.decode(x, y))
+                    splits = self.split_online_dataset(validation_rate, mini_ds)
+                    splits['train_dataset'] = splits['train_dataset'].batch(self.batch)
+                    if splits['validation_dataset'] is not None:
+                        splits['validation_dataset'] = splits['validation_dataset'].batch(self.batch)
 
-                train_dataset = splits['train_dataset']
-                validation_dataset = splits['validation_dataset']
-                if hasattr(self, 'N'):
-                    """Same Keras 3 y_true/y_pred structure fix as
-                    `train_classic_model` - see the comment there."""
-                    train_dataset = train_dataset.map(lambda x, y: (x, tuple(y for _ in range(self.N))))
-                    if validation_dataset is not None:
-                        validation_dataset = validation_dataset.map(lambda x, y: (x, tuple(y for _ in range(self.N))))
+                    train_dataset = splits['train_dataset']
+                    validation_dataset = splits['validation_dataset']
+                    if hasattr(self, 'N'):
+                        """Same Keras 3 y_true/y_pred structure fix as
+                        `train_classic_model` - see the comment there."""
+                        train_dataset = train_dataset.map(lambda x, y: (x, tuple(y for _ in range(self.N))))
+                        if validation_dataset is not None:
+                            validation_dataset = validation_dataset.map(lambda x, y: (x, tuple(y for _ in range(self.N))))
 
-                model_trained = self.model.fit(train_dataset, validation_data=validation_dataset, **self.kwargs_fit, callbacks=[callback])
-                if self.stream_timeout == -1:
-                    if 'reference' not in locals() and 'reference' not in globals():
-                        reference = model_trained.history['val_'+self.monitoring_metric][-1]
-                    last = model_trained.history['val_'+self.monitoring_metric][-1]
-                    if reference != last:
-                        if (self.change == 'up' and last - reference >= self.improvement) or (self.change == 'down' and reference - last >= self.improvement):
-                            dtime = time.time() - start
-                            reference = last
-                            epoch_training_metrics, epoch_validation_metrics, test_metrics = self.saveMetrics(model_trained)
-                            self.sendMetrics(None, epoch_training_metrics, epoch_validation_metrics, test_metrics, dtime, None)
+                    model_trained = self.model.fit(train_dataset, validation_data=validation_dataset, **self.kwargs_fit, callbacks=[callback])
+                    if self.stream_timeout == -1:
+                        if 'reference' not in locals() and 'reference' not in globals():
+                            reference = model_trained.history['val_'+self.monitoring_metric][-1]
+                        last = model_trained.history['val_'+self.monitoring_metric][-1]
+                        if reference != last:
+                            if (self.change == 'up' and last - reference >= self.improvement) or (self.change == 'down' and reference - last >= self.improvement):
+                                dtime = time.time() - start
+                                reference = last
+                                epoch_training_metrics, epoch_validation_metrics, test_metrics = self.saveMetrics(model_trained)
+                                self.sendMetrics(None, epoch_training_metrics, epoch_validation_metrics, test_metrics, dtime, None)
+
+            if not received_data and 'model_trained' not in locals():
+                """Sibling deadlock/crash to federated_mainTraining.py's
+                train_incremental_model (see that file's comment for the
+                full root-cause account, found first via CASE=6/8) -
+                FUTURE.md High #7. `kafka_dataset` here is likewise a
+                one-shot get_streaming_kafka_batches generator that
+                permanently exhausts after stream_timeout ms with no
+                messages, if this streaming consumer group happens to
+                join after the datasource already finished sending (a
+                real race under real network timing, confirmed
+                reproducible 3/3 times, not a contrived edge case). This
+                non-federated version doesn't deadlock silently the way
+                the federated one did (no retry loop existed here at
+                all) - it fell through to `training_results = {
+                'model_trained': model_trained}` below with
+                model_trained never bound, raising UnboundLocalError,
+                which the outer exception handler in CloudBasedTraining
+                caught and treated as "keep polling the control topic",
+                leaving the TrainingResult stuck 'deployed' forever
+                instead of crashing loudly. Fix: get a fresh generator
+                instead of falling through to the crash.
+                """
+                kafka_dataset = self.get_data(self.kafka_topic, decoder)
 
         training_results = {
             'model_trained': model_trained

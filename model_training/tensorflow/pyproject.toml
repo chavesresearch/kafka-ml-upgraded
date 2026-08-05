@@ -11,16 +11,20 @@ dependencies = [
     "requests==2.34.2",
     "scikit-learn==1.9.0",
     "seaborn==0.13.2",
-    # web3==5.28.0 (2022-era) does a bare `import pkg_resources` at import
-    # time; setuptools removed pkg_resources as of 81.0.0. Without this pin,
-    # whatever setuptools the base image/resolver picks breaks the blockchain
-    # feature's import with `ModuleNotFoundError: No module named
-    # 'pkg_resources'` - confirmed against real setuptools releases (80.9.0
-    # still has it, 83.0.0 doesn't), not assumed from changelogs.
-    "setuptools<81",
     "tensorflow==2.21.0",
     "tf-kafka-dataset",
-    "web3==5.28.0",
+    # web3==7.16.0 (bumped 2026-08-05 from 5.28.0 - see
+    # ../../backend/pyproject.toml's comment and FUTURE.md Medium item 5
+    # for the full reasoning). Dropped the setuptools<81/protobuf-override/
+    # prerelease-allow/pytest_ethereum workarounds this pin used to need -
+    # confirmed empirically that a plain `uv lock` resolves protobuf to the
+    # same 7.35.1 tensorflow==2.21.0 already needs, with zero override.
+    # Camel-case Eth JSON-RPC method renames (v6) applied in
+    # blockchain_utils.py/blockchainSingleFederatedTraining.py - contract
+    # ABI function names (`contract.functions.saveTrainingSettings(...)`
+    # etc.) are unaffected, those come from the deployed Solidity contract,
+    # not web3.py's own API.
+    "web3==7.16.0",
 ]
 
 [tool.uv.sources]
@@ -32,31 +36,10 @@ dependencies = [
 # being duplicated in both places.
 tf-kafka-dataset = { path = "../../tf-kafka-dataset" }
 
-[tool.uv]
-# web3 (blockchain federated learning feature) depends on a pre-release
-# build of ipfshttpclient, matching backend's same pin/reason.
-prerelease = "allow"
-
-# web3==5.28.0 directly pins protobuf<4,>=3.10.0; tensorflow==2.21.0 needs
-# protobuf>=6.31.1,<8.0.0 - disjoint ranges, unresolvable by normal
-# resolution. Overridden here to force a modern, *stable* protobuf release
-# (pinned exactly - "prerelease = allow" above, needed for ipfshttpclient,
-# would otherwise happily land this on a protobuf release candidate) - web3
-# 5.x doesn't actually touch protobuf at runtime in anything this trainer
-# exercises (the pin looks like leftover packaging conservatism, not a real
-# runtime need) - verified empirically (see CLAUDE.md), not assumed.
-override-dependencies = [
-    "protobuf==7.35.1",
-]
-
 [dependency-groups]
 dev = [
     "pytest==9.1.1",
 ]
 
 [tool.pytest.ini_options]
-# Same web3==5.28.0 pytest11-autoload issue documented in
-# ../../backend/pyproject.toml - its pytest_ethereum plugin's import chain
-# hits Python 3.11's removed inspect.getargspec before pytest even starts.
-addopts = "-p no:pytest_ethereum"
 pythonpath = ["."]

@@ -32,17 +32,20 @@ nice-to-have polish.
    implementation is preserved for reference at `../kafka-ml/backend` if
    this history is ever needed.
 
-2. **`DEBUG` and `ALLOWED_HOSTS` still default to insecure values.**
-   `backend/app/config.py:22,24-28` — `DEBUG` defaults to `True` and
-   `ALLOWED_HOSTS` defaults to `["*"]` when the env vars are omitted (the
-   kustomize manifests do set them, but a manual `kubectl apply` of a
-   trimmed-down Deployment wouldn't). This carried over from the original
-   Django settings' fail-open defaults rather than being newly introduced,
-   but it's still live in the Litestar port. Unlike the old Django
-   version, there's no hardcoded `SECRET_KEY` fallback to worry about
-   (Litestar's session model here doesn't need one) - just these two.
-   Should fail closed: refuse to start in production without both
-   explicitly set, rather than defaulting to the insecure option.
+2. ~~`DEBUG` and `ALLOWED_HOSTS` still default to insecure values.~~ —
+   **done** (2026-08-04, commit `de307eb`): this entry itself lagged the
+   actual fix by a doc-update gap, caught while triaging the backlog
+   again on 2026-08-05. `app/config.py`'s `_validate_production_safety`
+   refuses to boot when `ENVIRONMENT=production` and either `DEBUG` is
+   still `True` or `ALLOWED_HOSTS` is still `["*"]` - covered by
+   `backend/tests/test_config.py` (5 cases). `kustomize/base` now sets
+   `debug=0`/`environment=production` explicitly in its ConfigMap rather
+   than relying on the fail-open default, so a bare `kubectl apply` of
+   these manifests is already covered; a hand-trimmed Deployment that
+   dropped `ENVIRONMENT` entirely would still boot insecure (fails open
+   only if that one var is also missing) - a real but much narrower gap
+   than the original framing, not worth closing further for an
+   operator-error case this niche.
 
 3. ~~User-submitted model code is `exec()`'d with no sandboxing.~~ —
    **partially done** (2026-08-04). This is core to how Kafka-ML works
@@ -191,48 +194,53 @@ nice-to-have polish.
    directory. (Counts as of the React cutover - was 2 npm/14 docker
    entries before `frontend-react`'s entries merged into `frontend`'s.)
 
-7. **CASE=2 (`SingleIncrementalTraining`) can crash and get stuck
+7. ~~CASE=2 (`SingleIncrementalTraining`) can crash and get stuck
    "deployed" forever if zero streaming data batches arrive before its
-   stream timeout.** Found 2026-08-04 while re-running `integration-tests/`
-   as a final check after this session's security/CI hardening pass -
-   reproduced 3/3 times, confirmed unrelated to any of that work
-   (`mainTraining.py` wasn't touched this session; `git log` on the file
-   shows nothing since the repo-wide cutover). `model_training/tensorflow/
-   mainTraining.py`'s `train_incremental_model` (~line 435) only assigns
-   `model_trained = self.model.fit(...)` inside `if len(mini_ds) > 0:` -
-   if the streaming Kafka consumer's `get_streaming_kafka_batches`
-   generator times out having yielded zero non-empty batches, the
-   function falls through to `training_results = {'model_trained':
-   model_trained}` with `model_trained` never assigned, raising
-   `UnboundLocalError`. The trainer's outer exception handler catches
-   this, logs it, and loops back to polling `KAFKA_ML_CONTROL_TOPIC`
-   indefinitely instead of exiting - the `TrainingResult` stays
-   `"deployed"` forever, and the pod/Job never completes (same symptom as
-   the already-known leftover stuck Jobs from earlier manual testing -
-   see `project_kafkaml_backend_modernization`-adjacent session memory).
+   stream timeout.~~ — **done** (2026-08-05). Found 2026-08-04 while
+   re-running `integration-tests/` as a final check after that session's
+   security/CI hardening pass - reproduced 3/3 times.
+   `model_training/tensorflow/mainTraining.py`'s `train_incremental_model`
+   only assigned `model_trained = self.model.fit(...)` inside `if
+   len(mini_ds) > 0:` - if the streaming Kafka consumer's
+   `get_streaming_kafka_batches` generator timed out having yielded zero
+   non-empty batches, the function fell through to `training_results =
+   {'model_trained': model_trained}` with `model_trained` never assigned,
+   raising `UnboundLocalError`. The trainer's outer exception handler
+   caught this and looped back to polling `KAFKA_ML_CONTROL_TOPIC`
+   indefinitely instead of exiting - the `TrainingResult` stayed
+   `"deployed"` forever, and the pod/Job never completed. Same failure
+   family as item 8 below (`federated_mainTraining.py`'s CASE=6/8
+   deadlock) - this non-federated version had no retry loop at all, so it
+   crashed instead of looping forever, but the underlying gap was
+   identical: no recovery path when a streaming window legitimately sees
+   zero messages. **Fixed** the same way as item 8: `train_incremental_model`
+   now wraps the per-window loop in a retry `while`, tracking whether any
+   data was received, and re-fetches a fresh generator
+   (`self.get_data(self.kafka_topic, decoder)`) on an empty pass instead
+   of falling through to the crash.
    Root cause of the empty-batches condition itself: a real race between
    `OnlineRawSink`'s first `.send()` call (which fires the online control
    message *and* the first data message essentially back to back) and
    the trainer's Kafka consumer-group join - `integration-tests/
    test_case2_single_incremental.py`'s fixed `time.sleep(15)` before
-   creating the sink doesn't actually protect against this, since the
+   creating the sink didn't actually protect against this, since the
    trainer can't start joining the *data* topic's consumer group until
    *after* it receives the control message, which only fires once the
-   test starts sending - by which point the tight, delay-free 10-message
-   burst loop in `_send_burst` typically finishes before the consumer's
-   join-group round trip completes. `test_case4_distributed_incremental.py`
-   hit the identical symptom independently and already bumped its own
-   sleep from 15s to 35s (see its own inline comment) but nobody
-   went back and applied the same fix to `test_case2`. Not fixed here -
-   both the `UnboundLocalError` (a real, pre-existing gap in
-   `mainTraining.py`, predates the TF/Keras upgrade entirely - it's a bare
-   Python scoping bug, nothing a library version could have caused) and
-   the test's timing assumption are out of scope for this session's
-   backlog; flagging per this project's "flag pre-existing bugs found
-   incidentally, don't silently fix" precedent. `test_case1`/`test_case3`/
-   `test_inference`/`test_pytorch_classic` (the non-streaming tests) all
-   passed cleanly, confirming the hardening changes themselves introduced
-   no regression.
+   test starts sending. **Also fixed**: the test itself now pre-configures
+   the sink's format and calls the public `send_online_control_msg()`
+   explicitly before sending any real data (the gotcha
+   `model_training/tensorflow/CLAUDE.md`'s CASE=2 section already
+   documented but the committed test never applied), instead of relying
+   on a guessed "long enough" sleep. Verified two ways: an adversarial
+   repro (burst sent immediately, guaranteed to race ahead of the
+   consumer join, followed by a second burst after the first generator
+   fully exhausted - passed, proving the retry recovers where the old
+   code would have already crashed) and the fixed committed test passing
+   3/3 consecutive real runs against the live cluster (it failed with the
+   pre-existing timing bug on the first real re-run this session,
+   confirming the test fix was itself necessary, not just theoretical).
+   `test_case1`/`test_case3`/`test_inference`/`test_pytorch_classic` (the
+   non-streaming tests) all still pass, confirming no regression.
 
 8. ~~`federated_mainTraining.py`'s `train_incremental_model` (CASE=6/8,
    federated-incremental) could deadlock permanently~~ — **done**
@@ -248,9 +256,9 @@ nice-to-have polish.
    enough round-trip window to expose it). Fixed by re-fetching a fresh
    generator/consumer on an empty pass instead of reusing the dead one -
    see `federated-module/CLAUDE.md`'s "Real-MNIST multi-epoch pass"
-   section. Item 7's plain-`mainTraining.py` sibling is still open -
-   worth fixing both together if either comes up again, same root design
-   flaw in two files.
+   section. Item 7's plain-`mainTraining.py` sibling was fixed the
+   following day (2026-08-05, see item 7 above) - both files now share
+   the same fix for this root design flaw.
 
 9. ~~`federated_backend` never marks a matched `Datasource`/`ModelSource`
    row consumed, and restarting either control-logger service replayed
@@ -311,22 +319,37 @@ nice-to-have polish.
    research-originated project that already takes outside contributions
    (per the publications list in the README), this is easy friction to remove.
 
-5. **`web3==5.28.0` (backend, model_training/tensorflow,
+5. ~~`web3==5.28.0` (backend, model_training/tensorflow,
    federated_model_training/tensorflow) is 3 major versions behind, and
    is the root cause of several existing workarounds, not just its own
-   staleness.** Deliberately left untouched during the 2026-08-05
-   dependency-audit pass (too much real API-breaking-change risk to
-   bundle into a routine bump, given it's exactly what CASE=9's
-   blockchain path depends on, freshly re-verified that same session).
-   Upgrading to a current stable major would let all of these go away
-   together: `backend`'s `protobuf` pin stuck at `3.20.3` (2022-era, web3
-   hard-pins `protobuf<4` - `model_training/tensorflow` already needed an
-   explicit override to coexist with TensorFlow, `backend` never got one
-   since it doesn't need TF); the `setuptools<81` pin (web3 does a bare
-   `import pkg_resources`); the `inspect.getargspec = inspect.getfullargspec`
-   shim in three files (old `eth-abi` → old `parsimonious` calls the
-   Python-3.11-removed `getargspec`). Do this as its own dedicated pass
-   with full CASE=9 re-verification afterward, not a drive-by version bump.
+   staleness.~~ — **done** (2026-08-05), bumped to `web3==7.16.0` as its
+   own dedicated pass with full CASE=9 re-verification, exactly as this
+   item called for. All three flagged workarounds are gone: the
+   `protobuf` override (`uv lock` now resolves `protobuf` to the same
+   version `tensorflow==2.21.0` already needs, confirmed empirically,
+   zero override needed anywhere); the `setuptools<81` pin (7.x has no
+   `pkg_resources` import); the `inspect.getargspec = inspect.getfullargspec`
+   shim in all three files (7.x's `eth-abi`/`parsimonious` don't touch
+   `inspect.getargspec` at all). The real cost of the bump was v6's
+   camelCase->snake_case rename of nearly every Eth JSON-RPC method
+   (`toChecksumAddress`, `getTransactionCount`, `defaultAccount`,
+   `buildTransaction`, `signTransaction`, `sendRawTransaction`,
+   `waitForTransactionReceipt`, `Web3.toWei`,
+   `SignedTransaction.rawTransaction`) - updated everywhere they're
+   called (`backend/app/blockchain.py`,
+   `model_training/tensorflow/blockchain_utils.py` and
+   `blockchainSingleFederatedTraining.py`,
+   `federated-module/federated_model_training/tensorflow/federated_blockchainSingleClassicTraining.py`).
+   `TxReceipt.contractAddress` and every contract *ABI* function name
+   (`contract.functions.saveTrainingSettings(...)` etc.) were correctly
+   left alone - neither is web3.py API, both come from the raw Ethereum
+   JSON-RPC response / the deployed Solidity contract itself. Verified
+   with a full CASE=9 MNIST run (5 real on-chain federated rounds against
+   the local Anvil devnet, real ERC20 token + `FederatedLearning.sol`
+   deployment, real reward transfer), reaching `accuracy: 1.0` with zero
+   duplicate Jobs. See `backend/CLAUDE.md` bug #12 and
+   `model_training/tensorflow/CLAUDE.md`'s "web3 5.28.0 -> 7.16.0"
+   section for the full record.
 
 6. **`backend` is stuck on Python 3.12 while 7 sibling `python:3.12-slim`
    services successfully moved to 3.14** (2026-08-05 dependency-audit

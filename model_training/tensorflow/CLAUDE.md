@@ -95,7 +95,10 @@ not a nice-to-have.
    `parsimonious==0.8.1` (pinned `<0.9.0` by eth_abi, can't just bump it)
    does `from inspect import getargspec`, removed in Python 3.11. Shim is
    safe: parsimonious only ever reads `.args` off the result, which
-   `getfullargspec` still provides identically.
+   `getfullargspec` still provides identically. **Superseded 2026-08-05**:
+   `web3` bumped to `7.16.0` (see "web3 5.28.0 -> 7.16.0" under Packaging
+   below) - `eth_abi` no longer pins an old `parsimonious`, so this shim
+   was removed. Kept this paragraph as the historical record.
 7. **`training.py`** - the `BlockchainSingleFederatedTraining` import moved
    from module level to *inside* the `elif case ==
    BLOCKCHAIN_FEDERATED_LEARNING:` branch (lazy). Without this, **all 9**
@@ -131,6 +134,42 @@ not a nice-to-have.
     exact stable release (not a range) because `prerelease = "allow"`
     (needed for `ipfshttpclient==0.8.0a2`, itself a `web3` dependency) would
     otherwise happily resolve protobuf to an rc.
+  - **All three of `setuptools<81`, the `protobuf` override, and
+    `prerelease = "allow"` above are gone as of 2026-08-05** (kept the
+    paragraphs above as historical record of why they existed). See
+    "web3 5.28.0 -> 7.16.0" immediately below.
+
+**web3 `5.28.0` -> `7.16.0` (2026-08-05, FUTURE.md Medium item 5)** - 3
+majors behind, flagged as the single highest-value dependency upgrade in
+the whole repo (it was the root cause of every workaround in this
+section). Confirmed empirically that a plain `uv lock` now resolves
+`protobuf` to the exact same `7.35.1` `tensorflow==2.21.0` already needs,
+with **zero** override, and that `setuptools`/`prerelease = "allow"`
+aren't needed either - `web3==7.16.0` has no `pkg_resources` import and no
+`ipfshttpclient` dependency at all (confirmed via `pip index`/PyPI
+metadata inspection, not assumed). Also dropped the `pytest_ethereum`
+`addopts` workaround in `[tool.pytest.ini_options]` - that plugin doesn't
+exist in this web3 version. **v6 renamed nearly every camelCase Eth
+JSON-RPC method to snake_case** - `toChecksumAddress` ->
+`to_checksum_address`, `getTransactionCount` -> `get_transaction_count`,
+`defaultAccount` -> `default_account`, `Web3.toWei` -> `Web3.to_wei`,
+`buildTransaction` -> `build_transaction`, `signTransaction` ->
+`sign_transaction`, `sendRawTransaction` -> `send_raw_transaction`,
+`waitForTransactionReceipt` -> `wait_for_transaction_receipt`,
+`SignedTransaction.rawTransaction` -> `.raw_transaction` - all updated in
+`blockchain_utils.py` and `blockchainSingleFederatedTraining.py`.
+**`TxReceipt.contractAddress` is deliberately left camelCase** in both
+files - it's a raw pass-through of the actual Ethereum JSON-RPC response
+field name, not a web3.py API convention, and was never renamed by any
+web3.py version (confirmed via `typing.get_type_hints(TxReceipt)` on the
+installed package). Contract *ABI* function names
+(`contract.functions.saveTrainingSettings(...)` etc.) are likewise
+unaffected - those come from the deployed `FederatedLearning.sol`
+contract, not web3.py's own API. **Verified for real**: a full CASE=9
+MNIST run (5 real on-chain federated rounds, real `Web3`/contract calls
+through every renamed method above, real ERC20 reward transfer) against
+the local Anvil devnet, reaching `accuracy: 1.0` with zero duplicate
+Jobs - see "CASE 6-9" below.
 - `Dockerfile`/`start.sh`: uv-based pattern matching the other services
   (`uv sync --locked --no-install-project` then `uv sync --locked` in
   separate layers, `CMD ["./start.sh"]` -> `uv run training.py`). `TFTAG`
@@ -303,6 +342,46 @@ pre-set `sink.data_type`/`label_type`/`data_reshape`/`label_reshape`/
 `sink.send_online_control_msg()` directly, sleep a few seconds so the
 trainer's consumer has time to actually join the group and start polling,
 *then* send the real data bursts.
+
+**Follow-up, 2026-08-05 (FUTURE.md High #7 - now done)**: the gotcha
+above turned out to matter more than "worth keeping in mind" - the
+committed `integration-tests/test_case2_single_incremental.py` never
+actually applied it (it just did a fixed `time.sleep(15)` *before*
+creating the sink, which doesn't help at all, since the control message
+that tells the trainer to start joining its consumer group only fires on
+the sink's own first `.send()`), and `mainTraining.py`'s
+`train_incremental_model` had no retry logic at all: if the streaming
+generator exhausted having received zero messages (exactly what happens
+when a tight, delay-free burst loses this race), it fell straight through
+to `training_results = {'model_trained': model_trained}` with
+`model_trained` never bound - `UnboundLocalError`, caught by
+`CloudBasedTraining`'s outer handler and silently retried as "keep
+polling the control topic", leaving the `TrainingResult` stuck
+`"deployed"` forever instead of crashing loudly. Same failure family as
+`federated_mainTraining.py`'s CASE=6/8 deadlock (see "Real-MNIST
+multi-epoch pass" below) - different manifestation (a crash instead of a
+true infinite loop, since this version never had a retry `while` in the
+first place), same root cause. **Fixed** the same way as the federated
+version: `train_incremental_model` now wraps the per-window `for mini_ds
+in kafka_dataset:` loop in a `while 'model_trained' not in locals()...`
+loop, tracking `received_data`, and calls `self.get_data(self.kafka_topic,
+decoder)` for a fresh generator on an empty pass instead of falling
+through to the crash (`self.kafka_topic` is now stashed by
+`SingleIncrementalTraining.get_data`/`DistributedIncrementalTraining.get_data`
+for exactly this re-fetch). Verified two ways: (1) an adversarial repro -
+send a burst immediately (guaranteed to race ahead of the consumer join),
+wait past `stream_timeout` so the first generator instance fully
+exhausts (the exact moment the old code would have crashed), then send a
+second burst - passed, real `train_metrics` came back, proving the
+retry recovered where the old code could not have. (2) The committed test
+itself was fixed properly (not just given a longer guess-timeout) by
+finally applying the gotcha above - pre-configure the sink's format and
+call `send_online_control_msg()` explicitly before sending any real data,
+so the control message is guaranteed to fire before the burst loop
+starts; passed 3/3 consecutive real runs against the live cluster after
+the fix (it had failed with the pre-existing timing bug on the first
+real re-run this session, confirming the test fix was itself necessary,
+not just theoretical).
 
 ## CASE=4 (DistributedIncrementalTraining) - CONFIRMED PASSED
 
@@ -501,25 +580,16 @@ deployments, not just a one-off test-script bug.
    from the original yet - the copied one still describes the old
    Flask-era... actually the old one never mentioned Flask, but it still
    references `requirements.txt` and doesn't mention any of the above).
-3. **`federated_backend` never marks a `ModelSource`/`Datasource` row as
-   consumed after a successful match** (pre-existing, confirmed identical
-   in `../../../kafka-ml` - not introduced by this port). Every new
-   registration re-scans and re-matches against the *entire* unbounded
-   history of every past registration, forever. Ran into this directly:
-   running CASE 1-9's integration tests back-to-back in one `pytest`
-   session (no `federated-backend` restart between the federated ones)
-   caused **8 duplicate edge worker Jobs** to spin up for stale
-   registrations left over from earlier tests in the same run, which
-   briefly overloaded Docker Desktop's Kubernetes node (`kafka`,
-   `kafka-control-logger`, `tfexecutor`, both control-loggers all
-   restarted). Each case passes cleanly in isolation (confirmed - this is
-   what's shipped and documented above); this is a resource-exhaustion
-   risk for **repeated real-world use of the federated feature**, not
-   just a test artifact. Worth fixing properly at some point (mark
-   matched rows consumed/delete them), but out of scope for this pass -
-   flag if asked, and if extending `integration-tests/`'s CASE 5-9 further,
-   restart `federated-backend` (`kubectl rollout restart
-   deployment/federated-backend -n kafkaml`) between runs until it's fixed.
+3. ~~`federated_backend` never marks a `ModelSource`/`Datasource` row as
+   consumed after a successful match~~ - **done** (2026-08-05, as part of
+   the `federated_backend` Django->Litestar rewrite - see
+   `../../federated-module/CLAUDE.md`'s "federated_backend/ ->
+   Django->Litestar rewrite" section for the full record, including a
+   second, more precise bug found the same day: `federated_model_control_logger.py`'s
+   `auto_offset_reset='earliest'` was the actual cause of a worse
+   "replay entire history on restart" variant). Kept this paragraph as
+   the historical record of the resource-exhaustion incident that
+   surfaced it.
 4. **PyTorch port** (`../../../kafka-ml/model_training/pytorch`) - explicitly deferred
    to a separate pass (user's own decision: "TensorFlow first, PyTorch
    after"). Nothing done yet. Known issues already spotted during the

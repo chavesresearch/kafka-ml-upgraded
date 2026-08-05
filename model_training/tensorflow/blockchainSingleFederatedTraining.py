@@ -1,18 +1,4 @@
-import inspect
 import logging
-
-# web3==5.28.0 (kept: see pyproject.toml's setuptools<81 comment for why
-# this whole dependency chain is old) pulls in eth_abi==2.2.0 -> a
-# parsimonious version whose grammar module does `from inspect import
-# getargspec`, removed in Python 3.11. Shimmed here, before the first
-# `import web3` anywhere in the process (this module is the only entry
-# point into the web3/blockchain_utils import chain - see training.py's
-# lazy import of this class), rather than pinning a newer parsimonious:
-# eth_abi==2.2.0 constrains it to <0.9.0, and it's not worth the risk of
-# a parsimonious API break for a shim this narrow (`getargspec(x).args`
-# is a strict subset of what `getfullargspec` already returns).
-if not hasattr(inspect, "getargspec"):
-    inspect.getargspec = inspect.getfullargspec
 
 from mainTraining import *
 from callbacks import *
@@ -105,7 +91,7 @@ class BlockchainSingleFederatedTraining(MainTraining):
 
         self.web3_connection = Web3(Web3.HTTPProvider(self.eth_rpc_url))
 
-        self.eth_wallet_address = self.web3_connection.toChecksumAddress(
+        self.eth_wallet_address = self.web3_connection.to_checksum_address(
             self.eth_wallet_address
         )
 
@@ -123,7 +109,7 @@ class BlockchainSingleFederatedTraining(MainTraining):
             self.contract_address
         )
 
-        self.web3_connection.eth.defaultAccount = self.eth_wallet_address
+        self.web3_connection.eth.default_account = self.eth_wallet_address
         self.contract = self.web3_connection.eth.contract(
             address=self.contract_address, abi=self.contract_abi
         )
@@ -247,7 +233,7 @@ class BlockchainSingleFederatedTraining(MainTraining):
     ):
         """Saves the model architecture to the blockchain"""
 
-        nonce = self.web3_connection.eth.getTransactionCount(self.eth_wallet_address)
+        nonce = self.web3_connection.eth.get_transaction_count(self.eth_wallet_address)
         tx_hash = self.contract.functions.saveTrainingSettings(
             training_settings, model_architecture, model_compile_args
         ).transact({"from": self.eth_wallet_address, "nonce": nonce})
@@ -263,7 +249,7 @@ class BlockchainSingleFederatedTraining(MainTraining):
     def write_control_message_into_blockchain(self, control_message, n_round):
         """Writes the control message to the blockchain"""
 
-        nonce = self.web3_connection.eth.getTransactionCount(self.eth_wallet_address)
+        nonce = self.web3_connection.eth.get_transaction_count(self.eth_wallet_address)
         tx_hash = self.contract.functions.saveGlobalModel(
             control_message, n_round
         ).transact({"from": self.eth_wallet_address, "nonce": nonce})
@@ -277,7 +263,7 @@ class BlockchainSingleFederatedTraining(MainTraining):
     def save_update_along_with_global_model(self, update_control_msg, global_control_msg):
         """Saves the update along with the global model"""
 
-        nonce = self.web3_connection.eth.getTransactionCount(self.eth_wallet_address)
+        nonce = self.web3_connection.eth.get_transaction_count(self.eth_wallet_address)
         tx_hash = self.contract.functions.saveGlobalModelToUpdate(
             update_control_msg, global_control_msg
         ).transact({"from": self.eth_wallet_address, "nonce": nonce})
@@ -301,7 +287,7 @@ class BlockchainSingleFederatedTraining(MainTraining):
 
         last_model = self.contract.functions.getQueueFirstElement().call()
 
-        nonce = self.web3_connection.eth.getTransactionCount(self.eth_wallet_address)
+        nonce = self.web3_connection.eth.get_transaction_count(self.eth_wallet_address)
         tx_hash = self.contract.functions.dequeueModel().transact(
             {"from": self.eth_wallet_address, "nonce": nonce}
         )
@@ -321,7 +307,7 @@ class BlockchainSingleFederatedTraining(MainTraining):
     def send_stopTraining(self):
         """Sends the stop training message to the blockchain"""
 
-        nonce = self.web3_connection.eth.getTransactionCount(self.eth_wallet_address)
+        nonce = self.web3_connection.eth.get_transaction_count(self.eth_wallet_address)
         tx_hash = self.contract.functions.stopTraining().transact(
             {"from": self.eth_wallet_address, "nonce": nonce}
         )
@@ -380,8 +366,8 @@ class BlockchainSingleFederatedTraining(MainTraining):
             rounds,
         )
 
-        nonce = self.web3_connection.eth.getTransactionCount(self.eth_wallet_address)
-        tx_hash = self.contract.functions.setTokens(control_msg['topic'], Web3.toWei(int(reward), 'ether')).transact(
+        nonce = self.web3_connection.eth.get_transaction_count(self.eth_wallet_address)
+        tx_hash = self.contract.functions.setTokens(control_msg['topic'], Web3.to_wei(int(reward), 'ether')).transact(
             {"from": self.eth_wallet_address, "nonce": nonce}
         )
 
@@ -416,7 +402,7 @@ class BlockchainSingleFederatedTraining(MainTraining):
         
         # send the reward to the participant
         for participant, reward in rewards.items():
-            nonce = self.web3_connection.eth.getTransactionCount(
+            nonce = self.web3_connection.eth.get_transaction_count(
                 self.eth_wallet_address
             )
             tx_hash = self.token_contract.functions.transfer(participant, reward).transact(

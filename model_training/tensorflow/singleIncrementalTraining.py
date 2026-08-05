@@ -37,6 +37,7 @@ class SingleIncrementalTraining(MainTraining):
     def get_data(self, kafka_topic, decoder):
         """Gets the incremental data from Kafka"""
 
+        self.kafka_topic = kafka_topic
         return super().get_online_train_data(kafka_topic)
     
     def get_splits(self, data, kafka_dataset):

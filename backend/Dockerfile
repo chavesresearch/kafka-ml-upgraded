@@ -17,8 +17,6 @@ RUN pip install uv
 # install dependencies (separate layer from the source copy below, so
 # dependency installs are cached across code-only changes)
 COPY pyproject.toml uv.lock ./
-# --prerelease allow is set in pyproject.toml's [tool.uv] table: web3
-# (blockchain feature) depends on a pre-release build of ipfshttpclient.
 RUN uv sync --locked --no-install-project
 
 # copy project

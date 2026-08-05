@@ -25,25 +25,24 @@ dependencies = [
     "paho-mqtt==2.1.0",
     "python-multipart==0.0.32",
     "sqlalchemy==2.0.36",
-    # web3==5.28.0 does a bare `import pkg_resources` at import time (both
-    # its own top-level `__init__.py` and, found while adding this test
-    # suite, its `web3.tools.pytest_ethereum` plugin - which pytest
-    # auto-loads via the `pytest11` entry point it registers, regardless
-    # of whether any test actually touches web3/blockchain features, so
-    # `pytest` itself couldn't even start without this pin) - setuptools
-    # removed pkg_resources as of 81.0.0. Same pin/reason as
-    # model_training/tensorflow/pyproject.toml.
-    "setuptools<81",
     "uvicorn==0.52.1",
-    "web3==5.28.0",
+    # web3==7.16.0 (bumped 2026-08-05 from 5.28.0, 3 majors behind - see
+    # FUTURE.md Medium item 5). This dropped the whole
+    # protobuf<4/setuptools<81/ipfshttpclient-prerelease/pytest_ethereum
+    # dependency chain that used to force the workarounds this file and
+    # model_training/tensorflow/pyproject.toml carried - confirmed
+    # empirically (a real `uv sync` + `uv run pytest`, not assumed from
+    # web3's changelog) that none of the old pins are needed with 7.x.
+    # v6 renamed nearly every camelCase Eth JSON-RPC method to snake_case
+    # (`toChecksumAddress`->`to_checksum_address`,
+    # `getTransactionCount`->`get_transaction_count`, etc.) - updated in
+    # app/blockchain.py. Contract *ABI* function names
+    # (`contract.functions.saveTrainingSettings(...)` etc.) are unaffected -
+    # those are Solidity function names from the deployed contract, not
+    # web3.py API, and were never camelCase-normalized by web3.py itself.
+    "web3==7.16.0",
     "wsproto==1.3.2",
 ]
-
-[tool.uv]
-# web3 (blockchain feature) depends on a pre-release build of
-# ipfshttpclient - matches the --prerelease=allow flag the pip-based
-# install used before.
-prerelease = "allow"
 
 [dependency-groups]
 dev = [
@@ -51,13 +50,4 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-# web3==5.28.0 registers a `pytest11` entry point
-# (web3.tools.pytest_ethereum.plugins) that pytest auto-loads for every
-# test run in this venv, regardless of whether any test touches web3 -
-# and that plugin's own import chain (eth_abi -> parsimonious) does
-# `from inspect import getargspec`, removed in Python 3.11, so pytest
-# couldn't even start without this. Disabling only this one plugin (not
-# all autoloading - anyio's and faker's pytest11 plugins are harmless and
-# still load normally).
-addopts = "-p no:pytest_ethereum"
 pythonpath = ["."]

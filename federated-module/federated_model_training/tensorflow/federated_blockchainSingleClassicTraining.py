@@ -1,13 +1,3 @@
-import inspect
-
-if not hasattr(inspect, "getargspec"):
-    # web3==5.28.0 -> eth_abi==2.2.0 -> parsimonious==0.8.1 does
-    # `from inspect import getargspec`, removed in Python 3.11. Safe shim:
-    # parsimonious only ever reads `.args` off the result, which
-    # `getfullargspec` still provides identically. Same fix already
-    # applied in model_training/tensorflow/blockchainSingleFederatedTraining.py.
-    inspect.getargspec = inspect.getfullargspec
-
 from web3 import Web3
 import json
 
@@ -44,10 +34,10 @@ class BlockchainSingleClassicTraining(MainTraining):
         
         self.web3_connection = Web3(Web3.HTTPProvider(self.eth_rpc_url))
 
-        self.eth_wallet_address = self.web3_connection.toChecksumAddress(self.eth_wallet_address)
-        self.eth_contract_address = self.web3_connection.toChecksumAddress(self.eth_contract_address)
+        self.eth_wallet_address = self.web3_connection.to_checksum_address(self.eth_wallet_address)
+        self.eth_contract_address = self.web3_connection.to_checksum_address(self.eth_contract_address)
 
-        self.web3_connection.eth.defaultAccount = self.eth_wallet_address
+        self.web3_connection.eth.default_account = self.eth_wallet_address
         self.contract = self.web3_connection.eth.contract(address=self.eth_contract_address, abi=self.eth_contract_abi)    
 
     def get_current_round(self):
@@ -96,8 +86,8 @@ class BlockchainSingleClassicTraining(MainTraining):
     
     def send_updated_model(self, model, metrics, total_msg):
         """Sends the updated model to the blockchain"""
-        nonce = self.web3_connection.eth.getTransactionCount(self.eth_wallet_address)
+        nonce = self.web3_connection.eth.get_transaction_count(self.eth_wallet_address)
         tx_hash = self.contract.functions.sendClientContribution(model['topic'], json.dumps(metrics), total_msg).transact({'from': self.eth_wallet_address, 'nonce': nonce})
-        self.web3_connection.eth.waitForTransactionReceipt(tx_hash)
+        self.web3_connection.eth.wait_for_transaction_receipt(tx_hash)
         
         return tx_hash

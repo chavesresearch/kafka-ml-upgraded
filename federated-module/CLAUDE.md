@@ -123,7 +123,14 @@ its already-verified fixes directly rather than re-deriving them:
   (identical root cause: web3 -> eth_abi -> parsimonious -> Python 3.11
   removed `inspect.getargspec`). `federated_training.py`'s import of this
   class moved to lazy (inside the `CASE` branch), same reasoning as the
-  main trainer's `training.py`.
+  main trainer's `training.py`. **Superseded 2026-08-05**: `web3` bumped
+  5.28.0 -> 7.16.0 (see the Packaging bullet below) removed this whole
+  dependency chain - shim deleted, camelCase Eth JSON-RPC calls
+  (`toChecksumAddress`, `getTransactionCount`, `defaultAccount`,
+  `waitForTransactionReceipt`) renamed to snake_case to match the new
+  API. Contract ABI function names (`getCurrentRound`, `getGlobalModel`,
+  etc.) are untouched - those come from the deployed contract, not
+  web3.py.
 - **Dropped from dependencies, confirmed unused**: `scikit-learn`,
   `seaborn`, `matplotlib` were in the original `requirements.txt` but
   never imported anywhere in this directory (grepped to confirm) - looks
@@ -135,8 +142,13 @@ its already-verified fixes directly rather than re-deriving them:
   `import`ed once, so there's no exec-namespace argument for keeping them.
 - Packaging: `pyproject.toml`/`uv.lock`, same pins as
   `model_training/tensorflow` for the shared dependencies
-  (`tensorflow==2.21.0`, `web3==5.28.0`, `setuptools<81`,
-  `protobuf==7.35.1` override, `prerelease = "allow"` for `ipfshttpclient`).
+  (`tensorflow==2.21.0`, `web3==7.16.0` as of 2026-08-05, bumped from
+  5.28.0 - see `model_training/tensorflow/CLAUDE.md`'s "web3 5.28.0 ->
+  7.16.0" writeup for the full reasoning. That bump dropped
+  `setuptools<81`, the `protobuf==7.35.1` override, and
+  `prerelease = "allow"` (needed for `ipfshttpclient`, which 7.x doesn't
+  even depend on) - confirmed empirically that a plain `uv lock` resolves
+  everything, including `protobuf`, with zero overrides).
   Docker base image bumped `tensorflow/tensorflow:2.7.0` -> `2.21.0`.
 
 ## federated_data_control_logger/ and federated_model_control_logger/
@@ -419,7 +431,12 @@ Rosetta emulation on an Apple Silicon host. See
 explanation and `kustomize/local/resources/blockchain-devnet.yaml` for
 the local Anvil devnet this was verified against - real contract
 deployment, real on-chain round coordination, real ERC20 reward transfer,
-all exercised for real, not mocked.
+all exercised for real, not mocked. **Re-verified 2026-08-05** after the
+`web3` 5.28.0 -> 7.16.0 bump (see `model_training/tensorflow/CLAUDE.md`'s
+"web3 5.28.0 -> 7.16.0" section) - a fresh CASE=9 MNIST run against the
+same Anvil devnet, 5 real on-chain rounds, `accuracy: 1.0`, confirming
+the camelCase->snake_case Eth JSON-RPC renames in
+`federated_blockchainSingleClassicTraining.py` didn't break anything.
 
 ## Real-MNIST multi-epoch pass (`epochs=5`/`agg_rounds=5`) - CONFIRMED PASSED, one real deadlock found+fixed
 

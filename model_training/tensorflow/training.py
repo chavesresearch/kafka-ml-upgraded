@@ -48,10 +48,9 @@ if __name__ == '__main__':
       EdgeBasedTraining(DistributedFederatedIncrementalTraining())
     elif case == BLOCKCHAIN_FEDERATED_LEARNING:
       # Imported lazily, here rather than at module level: this class (and
-      # only this one) drags in web3/eth_abi/parsimonious, a dependency
-      # chain with its own Python-3.11 compatibility shims (see that
-      # module's top). Importing it unconditionally would mean every one
-      # of the other 8 training modes pays for/risks that chain too - the
+      # only this one) drags in the web3/eth_abi/parsimonious dependency
+      # chain. Importing it unconditionally would mean every one of the
+      # other 8 training modes pays for/risks that chain too - the
       # same reasoning backend's `_maybe_create_blockchain_token`
       # already applies to this identical optional feature.
       from blockchainSingleFederatedTraining import BlockchainSingleFederatedTraining

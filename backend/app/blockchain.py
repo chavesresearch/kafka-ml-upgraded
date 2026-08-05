@@ -1,15 +1,3 @@
-import inspect
-
-# web3 -> eth_abi -> parsimonious does `from inspect import getargspec`,
-# removed in Python 3.11 (kept as `getfullargspec`) - same root cause
-# already shimmed in model_training/tensorflow/blockchainSingleFederatedTraining.py.
-# Without this, importing web3 here crashes the whole app's Litestar
-# lifespan on startup whenever ENABLE_FEDML_BLOCKCHAIN=1 - found by
-# actually booting the backend against a real Ethereum devnet, not by
-# reading the diff between Python versions.
-if not hasattr(inspect, "getargspec"):
-    inspect.getargspec = inspect.getfullargspec
-
 from web3 import Web3
 import json
 import os
@@ -44,10 +32,10 @@ def create_transaction(w3: Web3, chain_id: int, token_name: str, token_symbol: s
     artifact = _load_token_artifact()
 
     # create a transaction
-    checksum_address = w3.toChecksumAddress(wallet_address)
+    checksum_address = w3.to_checksum_address(wallet_address)
     contract = w3.eth.contract(abi=artifact["abi"], bytecode=artifact["bytecode"])
-    nonce = w3.eth.getTransactionCount(checksum_address)
-    tx = contract.constructor(token_name, token_symbol).buildTransaction(
+    nonce = w3.eth.get_transaction_count(checksum_address)
+    tx = contract.constructor(token_name, token_symbol).build_transaction(
         {
         "gasPrice": w3.eth.gas_price,
         "from": checksum_address,
@@ -60,14 +48,14 @@ def create_transaction(w3: Web3, chain_id: int, token_name: str, token_symbol: s
 
 def sign_and_send_transaction(w3: Web3, tx: dict, wallet_key: str):
     # Sign the transaction
-    sign_transaction = w3.eth.account.signTransaction(tx, private_key=wallet_key)
+    sign_transaction = w3.eth.account.sign_transaction(tx, private_key=wallet_key)
     print("Deploying Contract!")
     # Send the transaction
-    transaction_hash = w3.eth.sendRawTransaction(sign_transaction.rawTransaction)
+    transaction_hash = w3.eth.send_raw_transaction(sign_transaction.raw_transaction)
 
     # Wait for the transaction to be mined, and get the transaction receipt
     print("Waiting for transaction to finish...")
-    transaction_receipt = w3.eth.waitForTransactionReceipt(transaction_hash)
+    transaction_receipt = w3.eth.wait_for_transaction_receipt(transaction_hash)
     print(f"Done! Contract deployed to {transaction_receipt.contractAddress}")
 
     return transaction_receipt.contractAddress

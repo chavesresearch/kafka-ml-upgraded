@@ -60,17 +60,23 @@ backend-deployment.yaml`, which points at this port's image.
    parameter` `ValidationException` — no error about the mismatched body
    annotation at all. Hit this once in `training_results.py`'s multipart
    upload handler; caught it via the smoke test, not by inspection.
-2. **`web3==5.28.0` (kept for the blockchain feature) pins `websockets<10`;
-   `uvicorn[standard]` pins `websockets>=10.4`.** These directly conflict.
-   Fix: don't install `uvicorn[standard]`; install plain `uvicorn` +
-   `wsproto` + `httptools` and run with `--ws wsproto` (see `start.sh`).
-   Litestar itself doesn't need the `websockets` package — it implements
-   WebSocket over raw ASGI messages.
-3. **`web3`'s `ipfshttpclient==0.8.0a2` dependency is a pre-release** —
-   installs need `prerelease = "allow"`, set once in `pyproject.toml`'s
-   `[tool.uv]` table rather than a flag you have to remember to pass every
-   time (matches the `--prerelease=allow` flag the original `backend/
-   Dockerfile` used).
+2. **`uvicorn[standard]` is still not installed, though the reason
+   changed.** `web3==5.28.0` used to pin `websockets<10`, directly
+   conflicting with `uvicorn[standard]`'s `websockets>=10.4` - that
+   conflict is gone now that `web3` is `7.16.0` (pins
+   `websockets<16.0.0,>=10.0.0`, no clash). Kept plain `uvicorn` +
+   `wsproto` + `httptools` + `--ws wsproto` anyway (see `start.sh`) since
+   it already works and Litestar doesn't need the `websockets` package
+   itself (WebSocket is implemented over raw ASGI messages) - not worth
+   churning a working setup for this alone, but this is no longer a
+   forced choice if `uvicorn[standard]` is ever wanted for another
+   reason.
+3. **~~`web3`'s `ipfshttpclient==0.8.0a2` dependency is a pre-release~~ -
+   gone.** That was a `web3==5.28.0`-era transitive dependency;
+   `web3==7.16.0` (bumped 2026-08-05, see bug #10/#11 below) doesn't
+   depend on `ipfshttpclient` at all, so `prerelease = "allow"` was
+   removed from `pyproject.toml`'s `[tool.uv]` table entirely - installs
+   are fully on stable releases now.
 4. **`msgspec==0.18.6` has no prebuilt wheel for Python 3.13** and fails to
    *compile* from source against it (3.13 removed/changed private C API
    symbols like `_PyLong_AsByteArray`'s signature) — `uv add`/`uv lock` will
@@ -217,7 +223,12 @@ history (`../../kafka-ml/backend`) or cross-checking behavior:
     the feature enabled against a real Ethereum devnet, not by reading
     the diff between Python versions - fixed with the identical
     `inspect.getargspec = inspect.getfullargspec` shim, added before the
-    `web3` import.
+    `web3` import. **Superseded 2026-08-05**: `web3` bumped 5.28.0 ->
+    7.16.0 (see item 12 below) dropped this whole dependency chain -
+    `eth_abi` no longer pins an old `parsimonious`, and modern
+    `parsimonious` doesn't touch `inspect.getargspec` at all. The shim
+    was removed from both this file and the model_training copy; kept
+    this paragraph as the historical record of why it existed.
 11. **`py-solc-x==2.0.2` hardcodes the now-dead `solc-bin.ethereum.org`
     download host** (DNS doesn't resolve at all - confirmed empirically,
     not a transient outage; the library moved to
@@ -246,6 +257,41 @@ history (`../../kafka-ml/backend`) or cross-checking behavior:
     the same pin - see `model_training/tensorflow/CLAUDE.md`'s CASE 6-9
     section for the equivalent `FederatedLearning.sol` fix and the local
     Anvil devnet this was verified against).
+12. **`web3` bumped `5.28.0` -> `7.16.0`** (2026-08-05, FUTURE.md Medium
+    item 5 - 3 majors behind, flagged as the single highest-value
+    dependency upgrade in the whole repo). This dropped the entire
+    `setuptools<81`/`protobuf==7.35.1` override/`prerelease = "allow"`/
+    `pytest_ethereum`-autoload workaround chain across all three services
+    that depend on `web3` (this one, `model_training/tensorflow`,
+    `federated-module/federated_model_training/tensorflow`) - confirmed
+    empirically (`uv lock`/`uv sync`/`uv run pytest`, not assumed from a
+    changelog) that a plain `uv lock` resolves protobuf to the same
+    `7.35.1` `tensorflow==2.21.0` already needs, with zero override
+    needed anywhere. **v6 renamed nearly every camelCase Eth JSON-RPC
+    method to snake_case** (`toChecksumAddress` ->
+    `to_checksum_address`, `getTransactionCount` ->
+    `get_transaction_count`, `defaultAccount` -> `default_account`,
+    `Web3.toWei` -> `Web3.to_wei`, `buildTransaction` ->
+    `build_transaction`, `signTransaction` -> `sign_transaction`,
+    `sendRawTransaction` -> `send_raw_transaction`,
+    `waitForTransactionReceipt` -> `wait_for_transaction_receipt`,
+    `SignedTransaction.rawTransaction` -> `.raw_transaction`) - updated
+    in `app/blockchain.py`. **`TxReceipt.contractAddress` is deliberately
+    left camelCase** - unlike the methods above, this is a raw pass-
+    through of the actual Ethereum JSON-RPC response field name, not a
+    web3.py Python API convention, and was never renamed by any web3.py
+    version (confirmed via `typing.get_type_hints(TxReceipt)` on the
+    installed 7.16.0 package, not assumed). Contract *ABI* function
+    names (`contract.functions.saveTrainingSettings(...)` etc., in
+    `model_training/tensorflow/blockchainSingleFederatedTraining.py` and
+    `federated-module`'s copy) are likewise unaffected - those are
+    Solidity function names from the deployed contract itself. Verified
+    for real: a full CASE=9 MNIST run (5 real on-chain federated rounds,
+    real ERC20 token deployment via this file, real
+    `FederatedLearning.sol` contract deployment/coordination, real
+    reward transfer) against the local Anvil devnet, reaching
+    `accuracy: 1.0` with zero duplicate Jobs - see
+    `model_training/tensorflow/CLAUDE.md`'s CASE 6-9 section.
 
 ## Things that look like bugs but are intentionally preserved for parity
 

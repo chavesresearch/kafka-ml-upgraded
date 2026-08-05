@@ -50,31 +50,31 @@ def create_federated_learning_smart_contract(
     # Connect to the blockchain
     contract = eth_web3_connection.eth.contract(abi=abi, bytecode=bytecode)
 
-    nonce = eth_web3_connection.eth.getTransactionCount(eth_wallet_address)
+    nonce = eth_web3_connection.eth.get_transaction_count(eth_wallet_address)
 
     # build transaction
-    transaction = contract.constructor().buildTransaction(
+    transaction = contract.constructor().build_transaction(
         {
             "gasPrice": eth_web3_connection.eth.gas_price,
-            "from": eth_web3_connection.toChecksumAddress(eth_wallet_address),
+            "from": eth_web3_connection.to_checksum_address(eth_wallet_address),
             "nonce": nonce,
         }
     )
 
     # Sign the transaction
-    sign_transaction = eth_web3_connection.eth.account.signTransaction(
+    sign_transaction = eth_web3_connection.eth.account.sign_transaction(
         transaction, private_key=eth_wallet_key
     )
     logging.info("Deploying Contract!")
 
     # Send the transaction
-    transaction_hash = eth_web3_connection.eth.sendRawTransaction(
-        sign_transaction.rawTransaction
+    transaction_hash = eth_web3_connection.eth.send_raw_transaction(
+        sign_transaction.raw_transaction
     )
 
     # Wait for the transaction to be mined, and get the transaction receipt
     logging.info("Waiting for transaction to finish...")
-    transaction_receipt = eth_web3_connection.eth.waitForTransactionReceipt(
+    transaction_receipt = eth_web3_connection.eth.wait_for_transaction_receipt(
         transaction_hash
     )
     logging.info(f"Done! Contract deployed to {transaction_receipt.contractAddress}")
