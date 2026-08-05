@@ -9,6 +9,37 @@ over a real Kafka broker and polls until a real training/inference result
 comes back. Nothing here is mocked: if the backend can't actually deploy a
 working training container, these tests fail.
 
+## `mnist_case*.py` - real MNIST, `epochs=5`/`agg_rounds=5`, real inference
+
+`test_case*.py` (below) use tiny synthetic scalar data and `epochs=1` -
+enough to prove the platform's plumbing works, not enough to prove
+*multi-epoch* training actually happens. `mnist_case1_single_classic.py`
+through `mnist_case9_blockchain.py` (plus shared `mnist_common.py` and
+`mnist_inference_common.py`) instead train on real MNIST digit images
+(cached once at `.mnist-cache/mnist.npz`, gitignored) with real
+`tf_kwargs_fit="epochs=5"` (federated cases also `agg_rounds=5`), verified
+two ways: `train_metrics`' per-metric list length, **and** grepping the
+real training pod's logs for actual `Epoch N/5` lines - the second is
+what actually proves 5 real epochs ran, not just that training reached
+`finished`. Each case is also deployed for real-time inference afterward
+(`mnist_inference_common.py`'s `deploy_and_test_inference` - explicitly
+confirms via `kubectl` that a real pod matching the `ReplicationController`'s
+selector reached `Running` before sending data, not just that the deploy
+API call returned 2xx) and sent one real held-out MNIST test image (never
+used in training) to confirm a real, correctly-classified prediction
+comes back. See `model_training/tensorflow/CLAUDE.md`'s "Real-MNIST
+multi-epoch pass" section for the full run record, including a real
+deadlock bug this pass found in CASE=6/8's streaming retry logic.
+
+Run any one directly, e.g. `uv run python3 mnist_case1_single_classic.py`
+(not wired into `pytest` - each one takes real minutes, not seconds, and
+prints its own progress/results as it goes). CASE 6/8 (federated-
+incremental) need a **continuous** stream of data spanning every
+aggregation round, not a one-shot burst - see
+`mnist_case6_federated_incremental.py`'s docstring, it explains two wrong
+approaches that were tried before landing on "discrete round-sized bursts
+with a silence gap longer than `stream_timeout` between them."
+
 ## What this caught
 
 Building this suite found a genuinely critical bug that had never been
