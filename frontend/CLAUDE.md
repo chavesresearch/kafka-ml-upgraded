@@ -263,3 +263,17 @@ Monaco rendering, correct dark-mode repaints.
    dependency; every view still hand-rolls its own fetch effect, exactly
    as before. `pnpm test:run` (83 tests), `pnpm typecheck`, and `pnpm
    build` all still pass clean.
+5. ~~No accessibility pass on the sidebar/theme-toggle shell or Monaco
+   fields.~~ — **done** (2026-08-06, `FUTURE.md` frontend-follow-ups #6):
+   skip-to-main-content link (found and fixed a real bug while verifying
+   it live - `<main>` needs `tabIndex={-1}` or the link only scrolls, it
+   never moves keyboard focus), labeled nav landmark, `aria-expanded`/
+   `aria-controls` on the mobile menu trigger, `aria-pressed` on both
+   theme-toggle buttons, and an `ariaLabel` prop on `CodeEditor` wired into
+   Monaco's own accessibility option (previously every instance on a page
+   announced identically to a screen reader - `ModelView` has two).
+   Surfaced a wider, explicitly out-of-scope-for-this-pass finding: ~19
+   icon-only buttons across the list views rely on a bare `title` for
+   their accessible name (verified this still resolves correctly via the
+   HTML spec's title-fallback, just not keyboard-focus-visible the way
+   hover tooltips are) - see `FUTURE.md`'s entry for the file list.

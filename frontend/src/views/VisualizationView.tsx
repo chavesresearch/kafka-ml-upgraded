@@ -166,6 +166,7 @@ export default function VisualizationView() {
           language="plaintext"
           height="140px"
           placeholder={'{\n  "type": "classification",\n  "labels": [...]\n}'}
+          ariaLabel="Label config"
         />
         <div className="pt-1">
           <Button variant="outline" onClick={setConfigHandler}>

@@ -624,7 +624,44 @@ policy.
    pipeline-topology view or complex loading/error/refetch logic
    eventually justifies it - nothing else depends on them having been
    here.
-6. **No accessibility pass on the sidebar/theme-toggle shell or on
-   Monaco fields** — keyboard navigation and screen-reader behavior haven't
-   been specifically verified (Monaco in particular is known to need extra
-   ARIA wiring for full accessibility).
+6. ~~No accessibility pass on the sidebar/theme-toggle shell or on
+   Monaco fields~~ — **done** (2026-08-06), verified with a real running
+   dev server and Playwright driving actual keyboard `Tab`/`Enter` presses
+   (not just static markup review). `Layout.tsx`: added a "Skip to main
+   content" link as the first focusable element - **found a real bug
+   while verifying it**: a plain `<a href="#main-content">` alone doesn't
+   move keyboard focus, only scrolls the viewport, because `<main>` isn't
+   natively focusable - confirmed live (`document.activeElement` stayed
+   `<body>` after activating it) before fixing with the standard
+   `tabIndex={-1}` + `focus:outline-none` technique, then re-confirmed
+   focus lands on `<main>` and the next `Tab` correctly continues into the
+   page's own content instead of restarting at the top. Also: `aria-label`
+   on the nav landmark (`NavLinks`'s `<nav>`, shared by the desktop sidebar
+   and the mobile `Sheet`), `aria-expanded`/`aria-controls` wired from the
+   mobile hamburger button to the `Sheet`'s real content id, and
+   `aria-pressed` on both theme-toggle buttons (icon-only header version
+   and the sidebar's text+icon version) - all confirmed via a live DOM
+   query, not assumed from the JSX. `CodeEditor.tsx`: added an `ariaLabel`
+   prop wired into Monaco's own `ariaLabel` editor option (its hidden
+   screen-reader textarea otherwise gets a generic, indistinguishable
+   name - confirmed live that `ModelView`'s two instances, "Imports" and
+   "Model code", were previously unlabeled and now announce distinctly),
+   wired at all 4 real call sites (`ModelView` x2, `InferenceIoTView`,
+   `VisualizationView`). `pnpm typecheck`/`test:run` (83 tests)/`build`/
+   `test:e2e` (3 tests) all still pass.
+   **Found and scoped, not fixed here**: tabbing past the new skip link
+   into `ModelList`'s icon-only "Add a model" button surfaced a wider
+   pattern - ~19 icon-only `<Button>`s across `ConfigurationList`,
+   `DatasourceList`, `InferenceList`, `IoTDeviceList`, `ModelList`,
+   `PlotView`, `ResultList`, `VisualizationView` rely on a bare `title`
+   attribute alone for their accessible name, no explicit `aria-label`.
+   Verified this isn't actually broken (`getByRole('link'/'button', {
+   name: <title text> })` resolves correctly per the HTML accessible-name
+   spec's title fallback, confirmed live) - but `title` tooltips don't
+   reliably show on keyboard focus the way they do on mouse hover across
+   browsers, so a sighted keyboard-only user gets no visible affordance
+   even though a screen reader announces the name correctly. Out of this
+   item's stated scope (sidebar/theme-toggle shell + Monaco specifically)
+   and too wide (9 files) to fold in as a drive-by - a mechanical
+   `title="X"` → `title="X" aria-label="X"` pass across all ~19 is real
+   follow-up work of its own.

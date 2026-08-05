@@ -224,6 +224,7 @@ export default function ModelView() {
                 language="python"
                 height="90px"
                 placeholder="import ..."
+                ariaLabel="Imports"
               />
             </div>
 
@@ -235,6 +236,7 @@ export default function ModelView() {
                 language="python"
                 height="360px"
                 placeholder={placeholder}
+                ariaLabel="Model code"
               />
             </div>
 

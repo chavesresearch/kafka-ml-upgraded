@@ -23,6 +23,11 @@ interface CodeEditorProps {
   placeholder?: string
   readOnly?: boolean
   className?: string
+  /** Accessible name for Monaco's hidden screen-reader input - the visible
+   * <Label> above this field isn't associated via htmlFor/id (Monaco has no
+   * plain <input> to point it at), so without this every instance is
+   * announced identically as a generic, unlabeled editor. */
+  ariaLabel?: string
 }
 
 function monacoTheme(isDark: boolean): string {
@@ -37,12 +42,15 @@ export default function CodeEditor({
   placeholder = '',
   readOnly = false,
   className,
+  ariaLabel = 'Code editor',
 }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const monacoApiRef = useRef<typeof Monaco | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  const ariaLabelRef = useRef(ariaLabel)
+  ariaLabelRef.current = ariaLabel
   // The last value the editor itself produced (echoed up via onChange).
   // Lets the [value]-sync effect below tell "value changed because the
   // editor just reported it" apart from a genuinely external change (e.g.
@@ -69,6 +77,7 @@ export default function CodeEditor({
           language,
           theme: monacoTheme(isDark),
           readOnly,
+          ariaLabel: ariaLabelRef.current,
           minimap: { enabled: false },
           fontSize: 13,
           fontFamily: "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace",
@@ -137,6 +146,10 @@ export default function CodeEditor({
     }
     setIsEmpty(value.length === 0)
   }, [value])
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ ariaLabel })
+  }, [ariaLabel])
 
   useEffect(() => {
     const model = editorRef.current?.getModel()

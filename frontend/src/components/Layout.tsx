@@ -68,7 +68,7 @@ function sectionLabelFor(pathname: string): string {
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <nav className="flex flex-1 flex-col gap-0.5 p-3">
+    <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-0.5 p-3">
       {navItems.map((item) => (
         <NavLink
           key={item.to}
@@ -99,6 +99,7 @@ function ThemeToggleButton({ className }: { className?: string }) {
       className={className}
       onClick={toggle}
       aria-label="Toggle theme"
+      aria-pressed={isDark}
       title={isDark ? 'Switch to light' : 'Switch to dark'}
     >
       {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
@@ -115,6 +116,12 @@ export default function Layout() {
 
   return (
     <div className="grid min-h-svh md:grid-cols-[240px_1fr]">
+      <a
+        href="#main-content"
+        className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-50 focus-visible:rounded-md focus-visible:bg-primary focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-primary-foreground"
+      >
+        Skip to main content
+      </a>
       <aside className="sticky top-0 hidden h-svh flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
         <div className="flex items-center gap-2.5 px-5 py-4">
           <img src="/favicon.svg" alt="" className="size-7 shrink-0" />
@@ -126,6 +133,7 @@ export default function Layout() {
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground"
             onClick={toggle}
+            aria-pressed={isDark}
           >
             {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
             {isDark ? 'Light mode' : 'Dark mode'}
@@ -140,6 +148,8 @@ export default function Layout() {
             size="icon"
             className="md:hidden"
             aria-label="Menu"
+            aria-expanded={mobileNavOpen}
+            aria-controls="mobile-nav"
             onClick={() => setMobileNavOpen(true)}
           >
             <Menu className="size-4" />
@@ -149,7 +159,10 @@ export default function Layout() {
           <ThemeToggleButton className="md:hidden" />
         </header>
 
-        <main className="p-5">
+        {/* tabIndex=-1: <main> isn't natively focusable, so without it the skip
+            link above only scrolls the viewport here - keyboard focus stays on
+            <body> and the very next Tab restarts from the top of the page. */}
+        <main id="main-content" tabIndex={-1} className="p-5 focus:outline-none">
           <Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
             <Outlet />
           </Suspense>
@@ -157,7 +170,7 @@ export default function Layout() {
       </div>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-64 p-0">
+        <SheetContent id="mobile-nav" side="left" className="w-64 p-0">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2.5">
               <img src="/favicon.svg" alt="" className="size-6 shrink-0" />
