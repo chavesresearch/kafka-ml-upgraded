@@ -47,7 +47,7 @@ def download_model(model_url, filename, retries, sleep_time):
     retry = 0
     while not finished and retry < retries:
         try:
-            filedata = urllib.request.urlopen(model_url)
+            filedata = urllib.request.urlopen(model_url, timeout=30)
             datatowrite = filedata.read()
             with open(filename, "wb") as f:
                 f.write(datatowrite)
