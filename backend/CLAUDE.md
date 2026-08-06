@@ -110,6 +110,25 @@ backend-deployment.yaml`, which points at this port's image.
    don't collide because `"distributed"` fails `int` conversion and
    Litestar backtracks to the static route. No special ordering needed in
    `Router(route_handlers=[...])`.
+9. **`tests/conftest.py`'s schema-creation fixture only works if
+   `app.models` has been imported somewhere first.** `Base.metadata` only
+   knows about a table once the class defining it has actually been
+   imported (class bodies register themselves as an import-time side
+   effect) - `conftest.py` now imports `app.models` explicitly at its own
+   top level specifically to guarantee this regardless of which test
+   files happen to be selected. Found for real: running a subset of the
+   suite that never imports model classes directly (only goes through the
+   REST API - `test_configurations.py`/`test_deployments.py`) reliably
+   collected an empty `Base.metadata`, so `create_all` silently created
+   zero tables and every DB-touching call failed with
+   `sqlite3.OperationalError: no such table`. The full suite always
+   happened to include a file (`test_training_results.py`) that imports
+   `app.models` at module level early enough to mask this - it looked
+   like a flaky, timing-dependent bug until reproduced with a smaller,
+   deliberately-chosen file selection. If you add a new test file that
+   never imports `app.models`/`app.main` itself, this is still safe *only
+   because* of the explicit import already in `conftest.py` - don't remove
+   it as apparently-unused.
 
 ## Bugs found in the Django backend and fixed here
 

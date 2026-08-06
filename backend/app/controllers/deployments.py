@@ -120,6 +120,11 @@ async def create_deployment(
     if configuration is None:
         raise HTTPException(status_code=400, detail="Configuration not found")
 
+    # Real Kubernetes Jobs created for a root model earlier in the loop
+    # below, tracked so a later model's failure can clean them up - see the
+    # except block, this list is read there.
+    created_job_names: list[str] = []
+
     try:
         tf_kwargs_fit = tf_kwargs_val = pth_kwargs_fit = pth_kwargs_val = None
 
@@ -268,10 +273,42 @@ async def create_deployment(
                 resp = await batch_api.create_namespaced_job(
                     body=job_manifest, namespace=settings.KUBE_NAMESPACE
                 )
+                created_job_names.append(job_manifest["metadata"]["name"])
                 logger.info("Job created. status='%s'", resp.status)
     except (ValueError, HTTPException):
         raise
     except Exception as e:
+        # This request's DB transaction is about to roll back (Deployment/
+        # TrainingResult rows disappear), but that can't undo a Job for an
+        # earlier model in the loop above that was *already* submitted to
+        # the real cluster before this one failed - left alone, it keeps
+        # running and posts results against a result id that no longer
+        # exists. Clean those up too, so a partial failure here doesn't
+        # leave orphaned Jobs behind. Best-effort: a cleanup failure is
+        # logged, not re-raised - the original error is still what the
+        # caller sees, and an operator can still find/remove a leaked Job
+        # manually via the logged name if this second call also fails.
+        if created_job_names:
+            try:
+                cleanup_client = kubernetes_api_client(
+                    token=os.environ.get("KUBE_TOKEN"), external_host=os.environ.get("KUBE_HOST")
+                )
+                async with cleanup_client:
+                    cleanup_batch_api = k8s_client.BatchV1Api(cleanup_client)
+                    for job_name in created_job_names:
+                        try:
+                            await cleanup_batch_api.delete_namespaced_job(
+                                name=job_name,
+                                namespace=settings.KUBE_NAMESPACE,
+                                body=k8s_client.V1DeleteOptions(propagation_policy="Foreground"),
+                            )
+                        except Exception as cleanup_err:
+                            logger.error("Failed to clean up orphaned Job %s: %s", job_name, cleanup_err)
+            except Exception as cleanup_err:
+                logger.error(
+                    "Failed to clean up orphaned Jobs %s after a partial deployment failure: %s",
+                    created_job_names, cleanup_err,
+                )
         logger.error(str(e))
         raise HTTPException(status_code=400, detail=str(e)) from e
 
