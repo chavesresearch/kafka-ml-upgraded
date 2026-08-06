@@ -633,6 +633,139 @@ nice-to-have polish.
    {datasources,kafkaml-client}.yml` (test-only, no Docker image to
    build/push for either).
 
+10. ~~`stop_inference` swallows Kubernetes errors and marks the row
+    "stopped" regardless.~~ — **done** (2026-08-06, fresh-eyes rescan -
+    see Critical items 5-6/High items 10-12 above for the rest of this
+    pass). A bare `except Exception: pass` around the RC-delete call in
+    `backend/app/controllers/inferences.py` was followed unconditionally
+    by `inference.status = "stopped"` - a transient K8s error left the
+    real workload running forever, now unreachable via the API (`stop`/
+    `delete` key off a status this call already overwrote). Fixed: only a
+    404 (`ApiException.status == 404`, meaning the RC is already gone) is
+    treated as success; every other `ApiException` now raises a 502
+    instead of lying about the outcome. New `tests/test_inferences.py`
+    (2 tests: 404 → marked stopped, 500 → stays "deployed" and the caller
+    gets a real error) - `uv run pytest` 32/32.
+11. ~~A partial Kubernetes failure orphans already-created training Jobs
+    outside the DB transaction.~~ — **done** (2026-08-06), same rescan.
+    `create_deployment` wraps one DB transaction around a loop that
+    creates one real Job per root model - if job N+1 failed, the
+    transaction rolled back (Deployment/TrainingResult rows deleted) but
+    job N was already running for real against a `RESULT_URL` that no
+    longer existed. Fixed by tracking `created_job_names` and, on a later
+    failure, best-effort deleting every already-created Job via a fresh
+    Kubernetes client before re-raising the original error (a cleanup
+    failure is logged, not re-raised - the caller still sees the real
+    error, not a masked one). New `tests/test_deployments.py` (seeds a
+    real 2-model configuration, mocks the second `create_namespaced_job`
+    call to fail, asserts `delete_namespaced_job` was called exactly once
+    for the first model's Job) - `uv run pytest` 33/33. **Also found and
+    fixed a real, unrelated, genuinely intermittent bug in
+    `tests/conftest.py` while adding this test**: `Base.metadata` only
+    gets populated with table definitions once `app.models` has actually
+    been imported somewhere, and the schema-creation fixture could
+    previously run before anything had done that, depending on which
+    subset of test files pytest happened to collect - `test_configurations.py`/
+    the new `test_deployments.py` never import model classes directly
+    (they only ever go through the REST API), so a selection of just
+    those collected an empty `Base.metadata` and every DB-touching call
+    failed with `no such table`. Fixed by importing `app.models`
+    explicitly in `conftest.py` itself. Confirmed fixed by stress-testing
+    the previously-failing file combination 5 times in a row (previously
+    reproduced 100% of the time) plus 5 full-suite runs, all clean.
+12. ~~Model-download HTTP calls have no timeout - can hang forever on the
+    very first attempt.~~ — **done** (2026-08-06), same rescan.
+    `urllib.request.urlopen(model_url)` (`model_training/tensorflow`,
+    `model_inference/tensorflow`) and `requests.get(model_url)`
+    (`model_training/pytorch`, `model_inference/pytorch`) had no
+    `timeout=` - if the backend accepted the connection but stalled
+    mid-response, the call blocked indefinitely and the existing
+    `RETRIES`/`SLEEP_BETWEEN_REQUESTS` retry loop never even engaged.
+    Fixed with `timeout=30` on all 4 call sites (`socket.timeout` is a
+    subclass of `OSError`/`Exception`, already caught by each function's
+    existing retry handler, so no other change was needed).
+13. ~~Every retried result upload leaks a file handle.~~ — **done**
+    (2026-08-06), same rescan. `mainTraining.py`'s `sendSingleMetrics`/
+    `sendDistributedMetrics` opened the trained-model (and, for the
+    distributed case, one file per submodel) with a bare `open(...)`
+    inside their retry loop and never closed any of them - up to
+    `RETRIES` (10) leaked file descriptors per pod per result on a flaky
+    backend connection. Fixed with a `with open(...) as ...:` block for
+    the single-model case and `contextlib.ExitStack` for the
+    variable-length distributed case (closes every file it opened
+    regardless of how many submodels there are). Verified for real, not
+    just via existing tests (none covered this code path): ran real
+    CASE=1 and CASE=3 end-to-end deployments against the live cluster
+    after rebuilding the image, both reached `status: "finished"` with
+    real metrics posted back correctly.
+14. ~~Labels above 255 still crash the data sink.~~ — **done**
+    (2026-08-06), same rescan, fixed by widening as requested rather than
+    just documenting the ceiling. `KafkaMLSink.__object_to_bytes`'s `int`
+    branch did `bytes([value])` - a single byte, raising `ValueError` for
+    any value outside 0-255 and unable to represent a negative value at
+    all. This is reachable in practice only via the base `KafkaMLSink`
+    class used directly (every real `RawSink`/`OnlineRawSink`/
+    `FederatedRawSink`/`OnlineFederatedRawSink` already converts labels to
+    `bytes` via numpy's own `.tobytes()` before this method ever sees
+    them, which already correctly handles any dtype width - confirmed by
+    reading every subclass's `send()`, not assumed). Widened `int`
+    specifically (kept `bool` as its own single-byte case - it was never
+    broken) to a fixed 4-byte **little-endian** encoding - deliberately
+    the opposite endianness from the neighboring
+    `__deployment_id_to_bytes` (that one's bytes are decoded by a plain
+    Python `int.from_bytes(..., "big")` consumer; these bytes are decoded
+    via `tf.io.decode_raw`, which defaults to little-endian and nothing in
+    this codebase overrides that - confirmed with a real round-trip
+    through the actual `model_training/tensorflow/utils.py:decode_raw`
+    function before trusting the choice, not assumed from symmetry with
+    the deployment-id fix). Existing parametrized test updated for the
+    new 4-byte output; new test cases added for values >255, >65535, and
+    negative values, each confirmed to actually reach `sink.send()`
+    successfully now. `uv run pytest` 46/46 in `datasources`.
+15. ~~The `-gpu` PyTorch images build and push successfully while silently
+    shipping CPU-only torch on a CUDA base.~~ — **done** (2026-08-06),
+    same rescan, across all three affected services
+    (`model_training/pytorch`, `mlcode_executor/pthexecutor`,
+    `model_inference/pytorch`). `uv sync --locked` always installs the
+    *lockfile's* torch/torchvision - CPU-only, since `uv.lock` is resolved
+    against the `pytorch-cpu` index pinned in `pyproject.toml`'s
+    `[tool.uv.sources]` regardless of `BASEIMG` - so every published
+    `-gpu` image quietly never used the GPU. Fixed with a new
+    `TORCH_VARIANT` build arg: when set to `gpu`, the Dockerfile
+    reinstalls both packages from the plain PyPI index after `uv sync`
+    (confirmed via PyPI's own JSON API that its Linux `torch==2.13.0`
+    wheel is 526MB, consistent with a CUDA-bundled build, not the ~200MB a
+    CPU-only wheel would be), and all three `-gpu` CI matrix entries now
+    pass `TORCH_VARIANT=gpu` alongside `BASEIMG`. Verified with a real
+    local build + run, not just reading the Dockerfile: the build log
+    itself showed `- torch==2.13.0+cpu` / `+ torch==2.13.0` /
+    `+ triton==3.7.1` (Triton is CUDA-only, never a CPU-build dependency),
+    and running the resulting image showed `torch.__version__ ==
+    '2.13.0+cu130'` / `torch.version.cuda == '13.0'` versus the untouched
+    default build's `'2.13.0+cpu'` - confirming this is a genuine
+    CUDA-enabled build, not just a relabeled CPU one. The default
+    (non-GPU) build path is unaffected - confirmed the conditional
+    correctly no-ops in ~0.2s when `TORCH_VARIANT` isn't set to `gpu`.
+16. ~~Three services get zero CI feedback on a pull request.~~ — **done**
+    (2026-08-06), same rescan. `kafka_control_logger.yml`/
+    `federated_data_control_logger.yml`/`federated_model_control_logger.yml`
+    had no `pull_request:` trigger at all, unlike every other
+    Dockerfile-building workflow. Adding the trigger alone wasn't enough,
+    though - none of these three has a `test` job either (all three
+    services are small scripts with everything inline under
+    `if __name__ == '__main__':`, nothing factored out to unit-test, per
+    Critical item 4's note above), and their `build-*` job had no PR
+    gate, so a naive fix would have made a PR try to build *and push* an
+    image. Fixed properly: added `pull_request:` triggers, gated the
+    existing `build-*` job behind `if: github.event_name !=
+    'pull_request'` (matching every sibling workflow), and added a new
+    PR-only `test-build` job that does a real `docker build` with
+    `push: false` - a genuine, meaningful check (catches a broken
+    Dockerfile or an unresolvable dependency) without needing registry
+    credentials. Verified all three Dockerfiles actually build clean
+    locally (proving the new job would give real, not just theoretical,
+    feedback) and that the YAML itself parses correctly.
+
 ## Low
 
 1. ~~`backend/devices/__init__.py` is an empty stub app sitting alongside
