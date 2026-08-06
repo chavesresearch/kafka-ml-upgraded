@@ -17,10 +17,19 @@ spec:
         app: federated-data-control-logger
       name: federated-data-control-logger
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - image: federated-kafka-ml-data_control_logger
         name: federated-data-control-logger
         imagePullPolicy: Always
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         env:
           - name: BOOTSTRAP_SERVERS
             valueFrom:

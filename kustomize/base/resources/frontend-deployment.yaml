@@ -15,12 +15,26 @@ spec:
         name: pod-frontend
       name: frontend
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - image: kafka-ml-frontend
           name: frontend
           ports:
             - containerPort: 80
           imagePullPolicy: Always
+          # nginx binds port 80 (a privileged port) as non-root, unlike the
+          # other services here on ports >1024 - NET_BIND_SERVICE is the
+          # minimal capability that allows that without allowPrivilegeEscalation
+          # or running as root.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["NET_BIND_SERVICE"]
           env:
             - name: BACKEND_PROXY_URL
               valueFrom:

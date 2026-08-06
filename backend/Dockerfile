@@ -26,4 +26,7 @@ RUN uv sync --locked
 EXPOSE 8000
 
 RUN chmod +x ./start.sh
+RUN useradd --create-home --uid 1000 kafkaml && chown -R kafkaml:kafkaml /usr/src/app
+USER kafkaml
+
 CMD ["./start.sh"]

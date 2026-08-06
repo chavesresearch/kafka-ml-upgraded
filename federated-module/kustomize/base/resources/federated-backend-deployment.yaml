@@ -17,12 +17,21 @@ spec:
     spec:
       serviceAccountName: federated-kafkaml
       automountServiceAccountToken: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - image: federated-kafka-ml-backend
           name: federated-backend
           ports:
             - containerPort: 8085
           imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: KML_CLOUD_BOOTSTRAP_SERVERS
               valueFrom:

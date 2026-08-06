@@ -17,12 +17,21 @@ spec:
     spec:
       serviceAccountName: kafkaml
       automountServiceAccountToken: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - image: kafka-ml-backend
           name: backend
           ports:
             - containerPort: 8000
           imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: BOOTSTRAP_SERVERS
               valueFrom:

@@ -24,4 +24,7 @@ COPY . /usr/src/app/
 RUN uv sync --locked
 
 RUN chmod +x ./federated_data_control_logger.sh
+RUN useradd --create-home --uid 1000 kafkaml && chown -R kafkaml:kafkaml /usr/src/app
+USER kafkaml
+
 CMD ["./federated_data_control_logger.sh"]

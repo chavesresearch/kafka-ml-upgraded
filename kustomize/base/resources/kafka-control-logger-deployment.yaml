@@ -17,10 +17,19 @@ spec:
         app: kafka-control-logger
       name: kafka-control-logger
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - image: kafka-ml-kafka_control_logger
           name: kafka-control-logger
           imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: BOOTSTRAP_SERVERS
               valueFrom:

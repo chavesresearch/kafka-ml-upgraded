@@ -17,10 +17,19 @@ spec:
         app: federated-model-control-logger
       name: federated-model-control-logger
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - image: federated-kafka-ml-model_control_logger
         name: federated-model-control-logger
         imagePullPolicy: Always
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         env:
           - name: BOOTSTRAP_SERVERS
             valueFrom:
