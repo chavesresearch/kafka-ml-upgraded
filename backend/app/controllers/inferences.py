@@ -13,6 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.job_manifest_generator import (
+    _HARDENED_CONTAINER_SECURITY_CONTEXT,
+    _HARDENED_POD_SECURITY_CONTEXT,
+)
 from app.models import Datasource, Inference, MLModel, TrainingResult
 from app.schemas import inference_dict
 from app.utils import is_blank, kubernetes_api_client
@@ -253,10 +257,12 @@ def _single_inference_manifest(inference, result, image, input_kafka_broker, out
             "template": {
                 "metadata": {"labels": {"app": f"inference{inference.id}"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": image,
                             "name": "inference",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {"name": "INPUT_BOOTSTRAP_SERVERS", "value": input_kafka_broker},
                                 {"name": "OUTPUT_BOOTSTRAP_SERVERS", "value": output_kafka_broker},
@@ -299,10 +305,12 @@ def _distributed_inference_manifest(
             "template": {
                 "metadata": {"labels": {"app": f"inference{inference.id}"}},
                 "spec": {
+                    "securityContext": _HARDENED_POD_SECURITY_CONTEXT,
                     "containers": [
                         {
                             "image": settings.TENSORFLOW_INFERENCE_MODEL_IMAGE,
                             "name": "inference",
+                            "securityContext": _HARDENED_CONTAINER_SECURITY_CONTEXT,
                             "env": [
                                 {"name": "INPUT_BOOTSTRAP_SERVERS", "value": input_kafka_broker},
                                 {"name": "OUTPUT_BOOTSTRAP_SERVERS", "value": output_kafka_broker},
