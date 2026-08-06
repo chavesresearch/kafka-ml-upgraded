@@ -46,7 +46,14 @@ jobs:
         include:
           - name: kafka-ml-pytorch_model_inference
           - name: kafka-ml-pytorch_model_inference-gpu
-            build-args: "BASEIMG=pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime"
+            # TORCH_VARIANT=gpu makes the Dockerfile reinstall torch/
+            # torchvision from a CUDA-bundled build after uv sync - without
+            # it, uv.lock's own pytorch-cpu-index resolution wins regardless
+            # of BASEIMG, and this image silently ships CPU-only torch on a
+            # CUDA base (see the Dockerfile's own comment on this step).
+            build-args: |
+              BASEIMG=pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime
+              TORCH_VARIANT=gpu
     uses: ./.github/workflows/build.yml
     with:
       context: model_inference/pytorch
