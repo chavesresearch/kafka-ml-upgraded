@@ -363,6 +363,69 @@ nice-to-have polish.
    service restarts: zero duplicate Jobs both times. See
    `federated-module/CLAUDE.md`'s rewrite section for the full record.
 
+10. ~~Inference pods run as root with every capability - training Jobs are
+    hardened, inference isn't.~~ — **done** (2026-08-06), same fresh-eyes
+    rescan as Critical items 5-6 above. `backend/app/controllers/
+    inferences.py`'s `_single_inference_manifest`/
+    `_distributed_inference_manifest` set no `securityContext` at all -
+    since `model_inference/pytorch` also `exec()`s submitted model code,
+    a PyTorch inference deployment ran untrusted code as root with full
+    capabilities, contradicting the README's own claim that this
+    hardening covers "every dynamically-created training/inference Job."
+    Fixed by importing and reusing `job_manifest_generator.py`'s existing
+    `_HARDENED_POD_SECURITY_CONTEXT`/`_HARDENED_CONTAINER_SECURITY_CONTEXT`
+    constants in both manifest functions - confirmed both inference
+    images already run a `useradd --uid 1000`/`USER kafkaml` non-root
+    setup before assuming `runAsUser: 1000` was safe. `uv run pytest`
+    still 30/30 (33/33 after the additions below).
+11. ~~Most static Deployments have no `securityContext`, and backend's own
+    Dockerfile runs as root.~~ — **done** (2026-08-06), same rescan. Only
+    `tf-executor`/`pth-executor` had the hardening block; `backend`,
+    `frontend`, `kafka-control-logger`, and all 3 federated-module
+    services (`federated-backend`, `federated-data-control-logger`,
+    `federated-model-control-logger`) had none, and `backend/Dockerfile`
+    had no `USER` directive at all - unlike its own sibling
+    `federated_backend/Dockerfile`, which already added a non-root user
+    for the identical kind of service. Fixed: the same `useradd
+    --create-home --uid 1000 kafkaml && chown -R kafkaml:kafkaml
+    /usr/src/app` + `USER kafkaml` pattern added to all 5 Dockerfiles
+    that were missing it (`frontend`'s Alpine-based nginx image needed
+    `adduser`, not `useradd` - Alpine's busybox has no shadow-utils - plus
+    `chown`-ing `/etc/nginx/conf.d`/`/var/cache/nginx`/`/run`, since
+    `start.sh` templates a config file and nginx itself needs to create
+    its own runtime dirs; kept on port 80 via `NET_BIND_SERVICE` rather
+    than moving to an unprivileged port, since nothing else needed to
+    change). Same `securityContext` block added to the 5 corresponding
+    Deployment manifests. Verified live: rebuilt all 5 images, redeployed,
+    confirmed every pod `Running`/`Ready` with `kubectl exec ... id`
+    showing `uid=1000` in each, confirmed `curl` through the frontend's
+    nginx (still binding port 80 correctly as non-root) and the backend
+    API both still return real data, and reran a full CASE=1/CASE=3
+    end-to-end deployment afterward with zero regressions.
+12. ~~`exec()`'d model code has no CPU or wall-clock limit - a few bad
+    submissions can DoS the executor for everyone.~~ — **done**
+    (2026-08-06), same rescan. `mlcode_executor/{tfexecutor,pthexecutor}`'s
+    `exec_model()` ran directly in the request-handling thread
+    (`sync_to_thread=True` only gets it a worker *thread*, and Python has
+    no supported way to forcibly stop a thread stuck in an infinite loop)
+    - a handful of concurrent bad submissions could exhaust the whole
+    worker pool. Fixed by moving the actual `exec()` + all model-dependent
+    work into a `multiprocessing.get_context("spawn")` child process
+    (`spawn`, not `fork` - a forked child would inherit this process's
+    already-initialized GPU/CUDA context, which TF/CUDA doesn't support
+    safely across `fork()`) with a 60s wall-clock cap; on timeout the
+    process is `.terminate()`'d then `.kill()`'d if it doesn't exit within
+    5s - a real OS process can be forcibly reclaimed, unlike a thread.
+    Accepted tradeoff: the child re-imports the whole module (including
+    TensorFlow itself) from scratch, adding real per-call latency versus
+    the old in-process call - worth it since correctness (a hung
+    submission can no longer outlive its timeout) matters more here than
+    shaving that off. Verified for real, not just via the existing
+    valid-code tests (`uv run pytest`: 8/8 tfexecutor, 7/7 pthexecutor,
+    unchanged): submitted a genuine `while True: pass` model to a live
+    `TestClient`-backed `/exec_tf/` and confirmed it was killed and
+    returned a clean 400 at exactly the 60s timeout, not hung forever.
+
 ## Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated
