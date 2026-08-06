@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 from kubernetes_asyncio import client as k8s_client, config as k8s_config
+from kubernetes_asyncio.client.exceptions import ApiException
 from litestar import Router, get, post, delete
 from litestar.exceptions import HTTPException
 from sqlalchemy import select
@@ -66,8 +67,20 @@ async def stop_inference(inference_id: int, db_session: AsyncSession) -> None:
                     propagation_policy="Foreground", grace_period_seconds=5
                 ),
             )
-    except Exception:
-        pass
+    except ApiException as e:
+        if e.status != 404:
+            # A real failure (RBAC denial, bad external-cluster creds, a
+            # transient API error) - the workload is very likely still
+            # running. Don't mark it "stopped" anyway: stop_inference
+            # requires status=="deployed" and delete_inference requires
+            # "stopped", so a wrongly-marked row becomes unreachable via
+            # this API forever with the real workload still up.
+            raise HTTPException(
+                status_code=502, detail=f"Could not stop inference on Kubernetes: {e.reason}"
+            ) from e
+        # 404 = the ReplicationController is already gone (e.g. deleted
+        # out-of-band) - stopping an already-stopped workload isn't an
+        # error, fall through to mark it stopped below.
 
     inference.status = "stopped"
 
