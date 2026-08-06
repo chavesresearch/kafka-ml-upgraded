@@ -1,0 +1,56 @@
+# Repo-wide dependency vulnerability scanning. Before this workflow,
+# nothing in .github/workflows/ ever checked pinned dependencies against
+# known CVEs - Dependabot (see dependabot.yml) only opens version-bump
+# PRs, it doesn't scan what's *currently* pinned.
+#
+# OSV-Scanner (https://google.github.io/osv-scanner/), not a per-ecosystem
+# tool like `pip-audit`/`npm audit` - this repo has 16 independent
+# `uv.lock` files (backend, datasources, kafkaml-client, every
+# model_training/model_inference/mlcode_executor service,
+# federated-module's services, integration-tests) plus 2 `pnpm-lock.yaml`
+# files (frontend, website). OSV-Scanner reads both lockfile formats
+# directly with `--recursive`, in one pass, against the same OSV.dev
+# database npm audit/pip-audit each only cover their own ecosystem
+# against - one tool, one workflow, instead of wiring up two separate
+# scanners for the two package managers already in use here.
+on:
+  push:
+    branches:
+      - "master"
+      - "main"
+      - "latest"
+      - "dev*"
+  pull_request:
+  schedule:
+    # Weekly, independent of any push - catches a CVE disclosed *after*
+    # a dependency was already pinned, which no push/PR would trigger.
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan-scheduled:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.2.1"
+    with:
+      scan-args: |-
+        --recursive
+        --skip-git
+        ./
+
+  scan-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.2.1"
+    with:
+      scan-args: |-
+        --recursive
+        --skip-git
+        ./
