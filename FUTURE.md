@@ -122,6 +122,44 @@ nice-to-have polish.
    `DOCKERHUB_KEY` secret configured, correctly so, since it isn't meant
    to publish to `ertis`'s Docker Hub namespace itself.
 
+5. ~~Blockchain wallet private key shipped in plaintext to pods that
+   `exec()` untrusted model code.~~ — **done** (2026-08-06). Found by a
+   4-agent fresh-eyes rescan (see Medium items 10-16 below for the rest of
+   that pass). `job_manifest_generator.py`/`federated_backend/app/
+   kubernetes_deploy.py` both re-injected `FEDML_BLOCKCHAIN_WALLET_KEY` as
+   a literal `value:` env var into every CASE=9 training Job - a straight
+   line from "submit a blockchain-enabled model" (the platform's own
+   documented exec() threat model) to stealing the key that pays on-chain
+   rewards. Fixed at the root: the key is no longer in the
+   `kafkaml-configmap`/`federated-kafkaml-configmap` ConfigMaps at all
+   (plaintext, readable to anyone with basic `get` access); backend's own
+   copy now comes from a `secretKeyRef` against a new
+   `kafkaml-blockchain-credentials` Secret (`optional: true`, same
+   pattern as the existing `KUBE_TOKEN`/`KUBE_HOST`), and the training
+   Job/federated worker manifests now point their own `ETH_WALLET_KEY` at
+   that *same* Secret via `secretKeyRef` too, instead of copying the
+   resolved value out of the backend process's own memory. Local dev
+   overlay creates the Secret from a literal `kustomize/local/resources/
+   blockchain-wallet-secret.yaml` (Anvil's well-known dev key, not a real
+   secret - see that file's own comment). Verified live: rebuilt and
+   redeployed `backend`/`federated-backend`, confirmed both pods resolve
+   the real key correctly (`kubectl exec ... printenv`), confirmed the
+   literal key value appears nowhere in any Deployment/Job spec except the
+   Secret's own `stringData`, and ran a real CASE=1 deployment end-to-end
+   afterward to confirm nothing broke.
+6. ~~A spoofable `Origin` header becomes a URL real IoT hardware fetches
+   and auto-executes.~~ — **done** (2026-08-06), same rescan.
+   `backend/app/controllers/iot_devices.py`'s `deploy_to_iot_devices`
+   used `request.headers.get("Origin", settings.FRONTEND_URL)` to build
+   the URL embedded in a Tasmota Berry script pushed to a real device over
+   MQTT - a forged `Origin` on `POST /results/inference-iot/{id}`
+   redirects a real device into downloading and running attacker-supplied
+   firmware. Fixed by using `settings.FRONTEND_URL` unconditionally - the
+   `request: Request` parameter (and its now-unused import) were removed
+   entirely, not just the one line, since nothing else in the handler
+   used it. `uv run pytest -v` (30/30, then 33/33 after the Medium-items
+   test additions below) still passes.
+
 ## High
 
 1. ~~Two frontends now coexist (`frontend/` Angular + `frontend-vue/`
