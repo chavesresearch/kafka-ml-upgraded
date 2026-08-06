@@ -66,18 +66,26 @@ class KafkaModelEngine():
         data = []
         for kafkaControl in self.__splitPartitionsIntoControlMsgs__(controlMessage):
             consumer, end_offset = self.__createconsumer__(kafkaControl)
-            for message in consumer:
-                # print(message.offset)
-                decoded_data = self.__decodedata__(message)
-                data.insert(decoded_data[1], decoded_data[0])
-                if message.offset >= end_offset-1:
-                    consumer.unsubscribe()
-                    logging.info("Finished reading model weights from Kafka")
-                    break
+            # A new consumer is created per round (this is called once per
+            # aggregation round in EdgeBasedTraining's loop) - unsubscribe()
+            # alone leaves the underlying socket/threads open, leaking one
+            # of each per round over a long federated run. close() releases
+            # them; wrapped in finally so an exception mid-read (or the
+            # weight-loop simply never hitting end_offset) still cleans up.
+            try:
+                for message in consumer:
+                    # print(message.offset)
+                    decoded_data = self.__decodedata__(message)
+                    data.insert(decoded_data[1], decoded_data[0])
+                    if message.offset >= end_offset-1:
+                        logging.info("Finished reading model weights from Kafka")
+                        break
+            finally:
+                consumer.close()
 
         # print("Data received: ", len(data))
-            
-        return data        
+
+        return data
 
       def __splitPartitionsIntoControlMsgs__(self, controlMessage):
         res = []

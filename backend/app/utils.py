@@ -1,3 +1,4 @@
+import ast
 import json
 
 from kubernetes_asyncio import client
@@ -55,7 +56,15 @@ def parse_kwargs_fit(kwargs_fit: str | None) -> str:
         kwargs_fit = kwargs_fit.replace(" ", "")
         for param in kwargs_fit.split(","):
             pair = param.split("=")
-            dic[pair[0]] = eval(pair[1])
+            # ast.literal_eval, not eval() - this runs in the backend API
+            # pod itself (unlike model code, which is always exec()'d in an
+            # isolated, non-root mlcode_executor subprocess), on a
+            # user-submitted string, so it must not be able to execute
+            # arbitrary code. literal_eval only ever produces a literal
+            # (int/float/str/bool/None/list/tuple/dict) - every real
+            # kwargs_fit value (epochs=5, verbose=True, ...) is exactly
+            # that, never an expression that needs full eval().
+            dic[pair[0]] = ast.literal_eval(pair[1])
 
     return json.dumps(dic)
 

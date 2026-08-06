@@ -101,7 +101,12 @@ def _exec_tf_worker(imports_code, model_code, distributed, request_type, result_
             model.summary()
             result_queue.put(("ok", b""))
         elif request_type == "load_model":
-            filename = "model.h5"
+            # Unique per-process, not a fixed "model.h5" - two /exec_tf/
+            # requests running concurrently each get their own subprocess
+            # (see tensorflow_executor below) but share the same cwd on
+            # disk, so a fixed relative filename lets one request's save()
+            # truncate/replace the file mid-read by another.
+            filename = f"model_{os.getpid()}.h5"
             model.save(filename)
             with open(filename, "rb") as f:
                 file_data = f.read()
@@ -287,8 +292,14 @@ def _convert_model_to_tflite(model_bytes: bytes, filename: str, quantization_par
     """Blocking TFLite conversion; run via `anyio.to_thread.run_sync` by the
     `convert_to_tflite` handler so it doesn't block the event loop.
     """
+    # filename comes straight from the multipart field name (the .h5-as-
+    # field-name contract - see the module docstring above) and is
+    # attacker-controlled: os.path.join discards './tmp' entirely if
+    # filename is absolute (e.g. "/etc/passwd"), and a relative
+    # "../../x" walks out of it either way. basename() strips any
+    # directory component so the write is always confined to ./tmp.
     os.makedirs('./tmp', exist_ok=True)
-    model_path = os.path.join('./tmp', filename)
+    model_path = os.path.join('./tmp', os.path.basename(filename))
     with open(model_path, 'wb') as f:
         f.write(model_bytes)
 

@@ -240,11 +240,15 @@ async def deploy_to_iot_devices(
         raise HTTPException(status_code=404, detail="Model file not found.")
 
     try:
+        # No per-call timeout override here on purpose - int8 quantization
+        # polls a live Kafka topic for up to 60s (tfexecutor's own
+        # consumer_timeout_ms) before conversion even starts, so this needs
+        # the shared client's full timeout (see app/main.py's lifespan), not
+        # a shorter one that guarantees a timeout on a real deployment.
         resp = await http_client.post(
             settings.TENSORFLOW_EXECUTOR_URL + "convert_to_tflite/",
             files={f"{result_id}.h5": model_path.read_bytes()},
             data=tflite_parser_config,
-            timeout=30,
         )
     except httpx.HTTPError as e:
         logger.error(f"TensorFlow executor error: {e}")
