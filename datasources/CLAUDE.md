@@ -64,11 +64,30 @@ loop) for the finding that started this.
    `__send_control_msg`/`__send_online_control_msg`. The original
    `__object_to_bytes(self.deployment_id)` produced `bytes([deployment_id])`
    - a single byte, raising `ValueError` for any id ≥ 256.
-   `__object_to_bytes` itself is unchanged and still used for *labels* on
-   data messages (a completely different wire contract - int/bool as 1
-   byte, float via `struct.pack("f", ...)`, str as utf-8 - decoded by
-   `mlcode_executor`/training containers) - don't merge these two encoders,
-   they serve different consumers with different expectations.
+   `__object_to_bytes` is a *separate* encoder used for *labels* on data
+   messages (a different wire contract - float via `struct.pack("f",
+   ...)`, str as utf-8, bool as 1 byte, decoded by `mlcode_executor`/
+   training containers) - don't merge these two encoders, they serve
+   different consumers with different expectations. **`int` labels
+   widened too (2026-08-06)**, same underlying bug: `bytes([value])`
+   raised `ValueError` for any value outside 0-255 and could never
+   represent a negative one at all. Now a fixed 4-byte **little-endian**
+   encoding - deliberately the opposite endianness from
+   `__deployment_id_to_bytes` above, since these bytes are decoded by
+   `tf.io.decode_raw` (`model_training/tensorflow/utils.py`'s
+   `decode_raw` doesn't pass `little_endian=False`, so it uses that
+   function's own little-endian default), not by a plain Python
+   `int.from_bytes(..., "big")` consumer - confirmed with a real
+   `decode_raw()` round-trip before trusting it, not assumed from
+   symmetry with the deployment-id fix. Also matches what numpy's own
+   `.tobytes()` already produces on every real little-endian platform
+   this runs on - the wire format `RawSink`/friends already use
+   successfully for wide-dtype labels today (they convert via
+   `label.tobytes()` before `__object_to_bytes` ever sees the value, so
+   this was already a real, working path for labels >255 as long as the
+   caller passed a sufficiently-wide numpy dtype - this fix brings a
+   plain Python `int` passed directly to the base `KafkaMLSink` class in
+   line with that same format instead of inventing a second one).
 4. **`kafka-python` bumped `2.0.2` → `3.0.9`.**
 
 ## Automated test suite (2026-08-06)

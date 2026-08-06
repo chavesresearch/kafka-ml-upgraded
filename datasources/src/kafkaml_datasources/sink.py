@@ -90,8 +90,28 @@ class KafkaMLSink(object):
             return None
         elif value.__class__.__name__ == 'bytes':
             return value
-        elif value.__class__.__name__ in ['int', 'bool']:
+        elif value.__class__.__name__ == 'bool':
             return bytes([value])
+        elif value.__class__.__name__ == 'int':
+            # Widened from a single byte (`bytes([value])`) to a fixed
+            # 4-byte encoding - the old form raised ValueError for any
+            # value outside 0-255 and could never represent a negative one
+            # at all. Little-endian specifically, not big-endian like
+            # __deployment_id_to_bytes below: that method's bytes become a
+            # Kafka *control-topic* key, decoded by plain-Python
+            # `int.from_bytes(..., "big")` consumers - these bytes instead
+            # become a *training-data* key/label, decoded via
+            # `tf.io.decode_raw` (model_training/tensorflow/utils.py's
+            # decode_raw doesn't pass `little_endian=False`, so it uses
+            # that function's own little-endian default). Little-endian
+            # also matches what numpy's own `.tobytes()` already produces
+            # on every real (little-endian) platform this runs on - the
+            # same wire format `RawSink`/friends already use successfully
+            # for wide-dtype labels today, via `label.tobytes()` before
+            # this method ever sees the value - this brings a plain Python
+            # int passed directly to the base class in line with that
+            # already-working format instead of inventing a second one.
+            return value.to_bytes(4, byteorder='little', signed=True)
         elif value.__class__.__name__ == 'float':
             return struct.pack("f", value)
         elif value.__class__.__name__ == 'str':

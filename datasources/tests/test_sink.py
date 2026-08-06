@@ -43,7 +43,10 @@ def test_empty_string_unsupervised_topic_is_treated_as_none(patch_kafka):
 @pytest.mark.parametrize(
     "label,expected",
     [
-        (1, b"\x01"),
+        # int is 4 bytes little-endian (see __object_to_bytes's own
+        # comment for why little-endian specifically) - not the single
+        # byte a plain `bytes([value])` used to produce.
+        (1, b"\x01\x00\x00\x00"),
         (True, b"\x01"),
         (False, b"\x00"),
         ("x", b"x"),
@@ -56,6 +59,25 @@ def test_send_encodes_supported_label_types(patch_kafka, label, expected):
     producer = sink._KafkaMLSink__producer
     assert producer.sent[-1]["key"] == expected
     assert producer.sent[-1]["value"] == b"data"
+
+
+@pytest.mark.parametrize(
+    "label,expected",
+    [
+        # The old bytes([value]) encoding raised ValueError for either of
+        # these - too large, and negative at all.
+        (300, (300).to_bytes(4, byteorder="little", signed=True)),
+        (100_000, (100_000).to_bytes(4, byteorder="little", signed=True)),
+        (-1, (-1).to_bytes(4, byteorder="little", signed=True)),
+    ],
+)
+def test_send_int_label_survives_values_the_old_single_byte_encoding_could_not(
+    patch_kafka, label, expected
+):
+    sink = _make_sink()
+    sink.send(b"data", label)
+    producer = sink._KafkaMLSink__producer
+    assert producer.sent[-1]["key"] == expected
 
 
 def test_send_with_none_label_sends_value_only_no_key(patch_kafka):
