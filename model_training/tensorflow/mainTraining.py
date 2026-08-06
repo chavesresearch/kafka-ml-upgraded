@@ -1,4 +1,5 @@
 from utils import *
+import contextlib
 import json
 from tf_kafka_dataset import get_bounded_kafka_dataset, get_streaming_kafka_batches
 from sklearn.metrics import confusion_matrix
@@ -785,28 +786,38 @@ class MainTraining(object):
         try:
           self.model.save(TRAINED_MODEL_PATH)
           """Saves the trained model in the filesystem"""
-                      
-          files = {'trained_model': open(TRAINED_MODEL_PATH, 'rb'),
-                  'confussion_matrix': open(CONFUSSION_MODEL_IMAGE, 'rb') if cf_generated else None}              
 
-          if self.stream_timeout == -1:
-            indefinite = True
-          else:
-            indefinite = False
+          # Real fix, not a style change: this used to be a bare
+          # open(...)/open(...) with nothing ever closing either handle -
+          # every retry through this loop (up to RETRIES=10) leaked two
+          # more file descriptors. `with` guarantees both are closed after
+          # this attempt, success or failure. nullcontext() stands in for
+          # "no confusion matrix file" - entering it yields None, same as
+          # the plain `None` this dict value used to hold.
+          with open(TRAINED_MODEL_PATH, 'rb') as trained_model_file, (
+              open(CONFUSSION_MODEL_IMAGE, 'rb') if cf_generated else contextlib.nullcontext()
+          ) as confussion_matrix_file:
+            files = {'trained_model': trained_model_file,
+                    'confussion_matrix': confussion_matrix_file}
 
-          results = {
-                  'train_metrics': epoch_training_metrics,
-                  'val_metrics': epoch_validation_metrics,
-                  'test_metrics': test_metrics,
-                  'training_time': round(dtime, 4),
-                  'confusion_matrix': cf_matrix.tolist() if cf_generated else None,
-                  'indefinite': indefinite
-          }
+            if self.stream_timeout == -1:
+              indefinite = True
+            else:
+              indefinite = False
 
-          data = {'data' : json.dumps(results)}
-          logging.info("Sending result data to backend")
-          r = requests.post(self.result_url, files=files, data=data)
-          """Sends the training results to the backend"""
+            results = {
+                    'train_metrics': epoch_training_metrics,
+                    'val_metrics': epoch_validation_metrics,
+                    'test_metrics': test_metrics,
+                    'training_time': round(dtime, 4),
+                    'confusion_matrix': cf_matrix.tolist() if cf_generated else None,
+                    'indefinite': indefinite
+            }
+
+            data = {'data' : json.dumps(results)}
+            logging.info("Sending result data to backend")
+            r = requests.post(self.result_url, files=files, data=data)
+            """Sends the training results to the backend"""
 
           if r.status_code == 200:
             finished = True
@@ -846,12 +857,6 @@ class MainTraining(object):
             m.save(p)
           """Saves the trained models in the filesystem"""
 
-          files = []
-          for p in TRAINED_MODEL_PATHS:
-            files_dic = {'trained_model': open(p, 'rb'),
-                        'confussion_matrix': None} # open(CONFUSSION_MODEL_IMAGE, 'rb') if cf_generated else None}
-            files.append(files_dic)
-
           if self.stream_timeout == -1:
             indefinite = True
           else:
@@ -869,12 +874,25 @@ class MainTraining(object):
             }
             results_list.append(results)
 
-          responses = []
-          for (result, url, f) in zip(results_list, self.result_url, files):
-            data = {'data' : json.dumps(result)}
-            logging.info("Sending result data to backend")
-            r = requests.post(url, files=f, data=data)
-            responses.append(r.status_code)
+          # Real fix, not a style change: this used to open one file per
+          # submodel with a bare open(...) and never close any of them -
+          # every retry through this loop (up to RETRIES=10) leaked one
+          # more file descriptor per submodel. ExitStack closes every file
+          # it opened when this `with` exits, success or failure, and
+          # handles the variable-length (one per submodel) list naturally.
+          with contextlib.ExitStack() as file_stack:
+            files = []
+            for p in TRAINED_MODEL_PATHS:
+              files_dic = {'trained_model': file_stack.enter_context(open(p, 'rb')),
+                          'confussion_matrix': None} # open(CONFUSSION_MODEL_IMAGE, 'rb') if cf_generated else None}
+              files.append(files_dic)
+
+            responses = []
+            for (result, url, f) in zip(results_list, self.result_url, files):
+              data = {'data' : json.dumps(result)}
+              logging.info("Sending result data to backend")
+              r = requests.post(url, files=f, data=data)
+              responses.append(r.status_code)
           """Sends the training results to the backend"""
 
           if responses[0] == 200 and len(set(responses)) == 1:
