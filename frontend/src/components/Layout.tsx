@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/theme'
 
@@ -164,9 +165,13 @@ export default function Layout() {
             link above only scrolls the viewport here - keyboard focus stays on
             <body> and the very next Tab restarts from the top of the page. */}
         <main id="main-content" tabIndex={-1} className="p-5 focus:outline-none">
-          <Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
-            <Outlet />
-          </Suspense>
+          {/* Keyed by pathname so navigating away from a crashed view resets
+              the boundary instead of staying stuck on the fallback UI. */}
+          <ErrorBoundary key={location.pathname}>
+            <Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
 
