@@ -9,7 +9,7 @@ import anyio
 import httpx
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
-from litestar import Request, Router, get, post, put, delete
+from litestar import Router, get, post, put, delete
 from litestar.exceptions import HTTPException
 from litestar.response import File
 from sqlalchemy import select
@@ -207,7 +207,6 @@ async def deploy_to_iot_devices(
     data: dict[str, Any],
     db_session: AsyncSession,
     http_client: httpx.AsyncClient,
-    request: Request,
 ) -> None:
     berry_script: str | None = data.get("code")
     device_tokens: list[str] = data.get("device_token", [])
@@ -258,7 +257,11 @@ async def deploy_to_iot_devices(
     tflite_dir.mkdir(parents=True, exist_ok=True)
     (tflite_dir / f"{result_id}.tflite").write_bytes(resp.content)
 
-    frontend_url = request.headers.get("Origin", settings.FRONTEND_URL)
+    # Never a client-supplied header here - this URL is embedded in a Berry
+    # script real IoT hardware fetches and auto-executes over MQTT. A
+    # spoofed Origin would redirect a real device into downloading and
+    # running attacker-supplied firmware/scripts.
+    frontend_url = settings.FRONTEND_URL
 
     for device in devices:
         device_path = settings.DEVICES_ROOT / device.token
