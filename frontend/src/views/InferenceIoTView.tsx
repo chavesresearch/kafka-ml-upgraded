@@ -63,7 +63,7 @@ export default function InferenceIoTView() {
 
             <div className="space-y-1.5">
               <Label>Berry Script for Tasmota *</Label>
-              <CodeEditor value={code} onChange={setCode} language="lua" height="320px" ariaLabel="Berry script for Tasmota" />
+              <CodeEditor value={code} onChange={setCode} language="berry" height="320px" ariaLabel="Berry script for Tasmota" />
             </div>
 
             <label className="flex items-center gap-2 text-sm font-normal">

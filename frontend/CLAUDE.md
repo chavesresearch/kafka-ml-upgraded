@@ -288,6 +288,44 @@ resolved hex strings - a bar `PlotView` itself doesn't clear), and a
 malformed `?ids=999,abc` shows a friendly "not found" message instead of
 crashing.
 
+## Berry language support for IoT device scripts (2026-08-06)
+
+`InferenceIoTView.tsx`'s "Berry Script for Tasmota" field used to render
+with `language="lua"` — the closest built-in Monaco grammar, but wrong:
+Tasmota's scripting engine is [Berry](https://github.com/berry-lang/berry),
+not Lua, and the two differ in real ways a "close enough" grammar gets
+wrong (comments are `#`/`#- -#`, not `--`/`--[[ ]]`; blocks close with a
+single `end` keyword, not Lua's `then`/`do`/`function`-specific
+terminators; no `local`, no `function` keyword, `var`/`def` instead).
+Monaco has no built-in Berry grammar, so `src/berryLanguage.ts` hand-writes
+one, sourced directly from Berry's own authoritative references (fetched
+from `berry-lang/berry`'s `tools/` directory, not guessed): the official
+Pygments lexer (`tools/highlighters/Pygments/berry.py`) for the
+keyword/builtin/string/comment token classes, and the EBNF grammar
+(`tools/grammar/berry.ebnf`) for the full operator set (walrus `:=`, range
+`..`, lambda arrow `->`, compound assignment). Registered directly against
+Monaco's public `monaco.languages.register`/`setLanguageConfiguration`/
+`setMonarchTokensProvider` API in `monacoEnvironment.ts`, since — unlike
+Python/Lua — there's no bundled `basic-languages/berry/*.contribution`
+module to lazily import (Monaco ships no Berry grammar at all).
+
+Gotcha: an untyped Monarch tokenizer object literal gets its rule arrays
+widened by TypeScript to `(string | RegExp)[]` instead of the fixed-length
+tuples `IMonarchLanguageRule` actually requires, failing `pnpm typecheck`
+with `Type '(string | RegExp)[]' is not assignable to type
+'IShortMonarchLanguageRule2'`. Fixed by adding an explicit
+`: Monaco.languages.IMonarchLanguage` type annotation on the
+`berryLanguageDefinition` export so each rule gets checked in the right
+contextual type from the start.
+
+Verified live: typed a real Berry sample (keywords, an `f"..."` f-string, a
+`#- -#` block comment, a `#` line comment, the `..` range operator) into
+the field via Playwright against the real dev server, confirmed Monaco
+actually assigned distinct token classes per construct (not all falling
+back to one plain-text class) and that the editor's own language indicator
+reads "berry", not "lua" — screenshot-verified keyword/comment/string/number
+coloring is genuinely differentiated, zero console errors.
+
 ## Remaining work
 
 1. **Feature-parity audit vs. the old Vue app hasn't been done by a human
