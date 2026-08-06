@@ -60,7 +60,14 @@ async def lifespan(app: Litestar) -> AsyncIterator[None]:
 
     _maybe_create_blockchain_token()
 
-    app.state.http_client = httpx.AsyncClient()
+    # httpx's 5s default was fine while tfexecutor/pthexecutor ran exec()'d
+    # model code in-process, but both now spawn a subprocess (see their own
+    # EXEC_TIMEOUT_S=60 comment) that re-imports TensorFlow/PyTorch from
+    # scratch on every call - measured ~8-10s even for a trivial model,
+    # already past the old default. 180s comfortably exceeds their own 60s
+    # cap plus subprocess-spawn overhead, so a legitimate (if slow) exec()
+    # never surfaces here as an opaque unhandled httpx.ReadTimeout -> 500.
+    app.state.http_client = httpx.AsyncClient(timeout=180.0)
 
     try:
         yield

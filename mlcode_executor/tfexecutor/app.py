@@ -2,6 +2,7 @@ import json
 import logging
 import multiprocessing
 import os
+from queue import Empty
 from typing import Any, Optional
 
 import anyio
@@ -139,22 +140,39 @@ def tensorflow_executor(data: dict[str, Any]) -> Response:
         args=(data['imports_code'], data['model_code'], data['distributed'], data['request_type'], result_queue),
     )
     process.start()
-    process.join(EXEC_TIMEOUT_S)
 
-    if process.is_alive():
-        process.terminate()
+    # Must read from the queue *before* join()ing - a child that put() a
+    # payload larger than the pipe's OS buffer (e.g. a real .h5 model file,
+    # easily >64KB) blocks inside put() until someone reads it. join()ing
+    # first waits for the child to exit, but the child is blocked waiting
+    # for a reader that will never come until after join() returns - a
+    # textbook multiprocessing.Queue deadlock (documented in the stdlib
+    # docs' "Programming guidelines" section). This looked exactly like a
+    # real timeout (process.is_alive() still True after EXEC_TIMEOUT_S) even
+    # though exec_model() had already finished successfully - reproduced
+    # with a real MNIST Sequential model's load_model request, which is
+    # nowhere near an infinite loop, timing out 100% of the time before
+    # this fix.
+    try:
+        status, payload = result_queue.get(timeout=EXEC_TIMEOUT_S)
+    except Empty:
+        status, payload = None, None
+    finally:
         process.join(5)
         if process.is_alive():
-            process.kill()
-            process.join()
-        logger.error("exec_tf timed out after %ss - submitted code likely never returns", EXEC_TIMEOUT_S)
+            process.terminate()
+            process.join(5)
+            if process.is_alive():
+                process.kill()
+                process.join()
+
+    if status is None:
+        logger.error(
+            "exec_tf timed out after %ss or exited without a result (exitcode %s)",
+            EXEC_TIMEOUT_S, process.exitcode,
+        )
         return Response(content=b"", status_code=400)
 
-    if result_queue.empty():
-        logger.error("exec_tf worker exited without a result (exit code %s)", process.exitcode)
-        return Response(content=b"", status_code=400)
-
-    status, payload = result_queue.get()
     if status == "ok":
         if data['request_type'] == 'load_model':
             return Response(content=payload, media_type="application/octet-stream", status_code=200)

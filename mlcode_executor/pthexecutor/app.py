@@ -1,6 +1,7 @@
 import json
 import logging
 import multiprocessing
+from queue import Empty
 from typing import Any
 
 import numpy as np
@@ -97,22 +98,34 @@ def pytorch_executor(data: dict[str, Any]) -> Response:
         args=(data['imports_code'], data['model_code'], data['distributed'], data['request_type'], result_queue),
     )
     process.start()
-    process.join(EXEC_TIMEOUT_S)
 
-    if process.is_alive():
-        process.terminate()
+    # Must read from the queue *before* join()ing - see tfexecutor/app.py's
+    # tensorflow_executor for the full explanation of the deadlock this
+    # avoids (a child blocked inside put() on a full pipe buffer will never
+    # exit while join() is waiting for it to exit first). Today's payloads
+    # here are small (b"" or a short shape string), so this exact deadlock
+    # is latent rather than reproducing yet - fixed anyway for the same
+    # correctness reason and to stay identical to the sibling service.
+    try:
+        status, payload = result_queue.get(timeout=EXEC_TIMEOUT_S)
+    except Empty:
+        status, payload = None, None
+    finally:
         process.join(5)
         if process.is_alive():
-            process.kill()
-            process.join()
-        logger.error("exec_pth timed out after %ss - submitted code likely never returns", EXEC_TIMEOUT_S)
+            process.terminate()
+            process.join(5)
+            if process.is_alive():
+                process.kill()
+                process.join()
+
+    if status is None:
+        logger.error(
+            "exec_pth timed out after %ss or exited without a result (exitcode %s)",
+            EXEC_TIMEOUT_S, process.exitcode,
+        )
         return Response(content=b"", status_code=400)
 
-    if result_queue.empty():
-        logger.error("exec_pth worker exited without a result (exit code %s)", process.exitcode)
-        return Response(content=b"", status_code=400)
-
-    status, payload = result_queue.get()
     if status == "ok":
         if data['request_type'] == 'input_shape':
             return Response(content=payload, media_type="text/plain", status_code=200)
