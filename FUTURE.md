@@ -796,6 +796,18 @@ nice-to-have polish.
    two-separate-stylesheets approach) - see `frontend/CLAUDE.md`'s
    "Gotchas" item 2 equivalent in its Layout table (`src/theme.ts`).
 
+5. ~~`frontend`'s Docker build sends its entire 486MB `node_modules` to the
+   daemon every time.~~ — **done** (2026-08-06, fresh-eyes rescan - see
+   Critical items 5-6/High items 10-12/Medium items 10-16 above for the
+   rest of this pass). Unlike all 12 other Dockerfile directories in the
+   repo, `frontend/` had no `.dockerignore` - its build context is
+   `frontend` itself (`frontend.yml`'s `context: frontend`), so the root
+   `.dockerignore` never reached it. Added one excluding
+   `node_modules`/`dist`/`dist-ssr`/`.git`/the Playwright artifact
+   directories. Verified with a real rebuild: reported build-context
+   transfer dropped from what a 486MB `node_modules` alone would cost to
+   582KB.
+
 ## `frontend`-specific follow-ups
 
 These are scoped to the current frontend itself (React 19 + shadcn/ui,

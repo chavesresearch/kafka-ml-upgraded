@@ -1,0 +1,12 @@
+# Without this, every build sends the full node_modules/ (486MB measured)
+# to the Docker daemon - unlike every other Dockerfile directory in this
+# repo, frontend's build context is `frontend` itself (frontend.yml's
+# `context: frontend`), so the root .dockerignore never reaches it.
+node_modules/
+dist/
+dist-ssr/
+.git/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
