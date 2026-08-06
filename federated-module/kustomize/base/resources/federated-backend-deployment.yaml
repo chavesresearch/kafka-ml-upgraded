@@ -80,9 +80,14 @@ spec:
                   name: federated-kafkaml-configmap
                   key: fedml.blockchain.wallet-address
                   optional: true
+            # A private key, not config - see the ConfigMap's own comment.
+            # Shared with the main module's backend-deployment.yaml: same
+            # Secret, same namespace, create out-of-band, e.g.
+            #   kubectl create secret generic kafkaml-blockchain-credentials \
+            #     -n kafkaml --from-literal=wallet-key=...
             - name: FEDML_BLOCKCHAIN_WALLET_KEY
               valueFrom:
-                configMapKeyRef:
-                  name: federated-kafkaml-configmap
-                  key: fedml.blockchain.wallet-key
+                secretKeyRef:
+                  name: kafkaml-blockchain-credentials
+                  key: wallet-key
                   optional: true

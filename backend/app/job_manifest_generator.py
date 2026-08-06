@@ -268,10 +268,25 @@ def single_federated_training(
                 "value": str(os.environ.get("FEDML_BLOCKCHAIN_WALLET_ADDRESS")),
             }
         )
+        # A private key, not config - unlike every other ETH_* var above,
+        # never copied out of this process's own env as a literal `value`.
+        # This pod's own copy already comes from a Secret (see
+        # backend-deployment.yaml's FEDML_BLOCKCHAIN_WALLET_KEY), but
+        # re-injecting that resolved value as plaintext here would still
+        # hand the raw key to whatever model code this Job execs. Point the
+        # training pod at the same Secret directly instead - it never
+        # passes through this process's memory or gets written into the Job
+        # manifest kubectl/etcd stores.
         job_manifest["spec"]["template"]["spec"]["containers"][0]["env"].append(
             {
                 "name": "ETH_WALLET_KEY",
-                "value": str(os.environ.get("FEDML_BLOCKCHAIN_WALLET_KEY")),
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": "kafkaml-blockchain-credentials",
+                        "key": "wallet-key",
+                        "optional": True,
+                    }
+                },
             }
         )
         job_manifest["spec"]["template"]["spec"]["containers"][0]["env"].append(

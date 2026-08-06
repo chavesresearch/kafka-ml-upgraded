@@ -119,7 +119,23 @@ async def deploy_on_kubernetes(
                 env.append({"name": "ETH_CONTRACT_ADDRESS", "value": model_item["blockchain"]["contract_address"]})
                 env.append({"name": "ETH_CONTRACT_ABI", "value": json.dumps(model_item["blockchain"]["contract_abi"])})
                 env.append({"name": "ETH_WALLET_ADDRESS", "value": os.environ.get("FEDML_BLOCKCHAIN_WALLET_ADDRESS")})
-                env.append({"name": "ETH_WALLET_KEY", "value": os.environ.get("FEDML_BLOCKCHAIN_WALLET_KEY")})
+                # A private key, not config - point the edge worker at the
+                # same Secret this process's own copy came from, rather than
+                # copying the resolved value as plaintext into a Job manifest
+                # for code this service doesn't trust. See
+                # federated-backend-deployment.yaml's own FEDML_BLOCKCHAIN_WALLET_KEY.
+                env.append(
+                    {
+                        "name": "ETH_WALLET_KEY",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": "kafkaml-blockchain-credentials",
+                                "key": "wallet-key",
+                                "optional": True,
+                            }
+                        },
+                    }
+                )
 
             logger.debug("Job manifest: %s", job_manifest)
             resp = await batch_api.create_namespaced_job(body=job_manifest, namespace=settings.KUBE_NAMESPACE)

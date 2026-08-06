@@ -6,6 +6,7 @@ resources:
   - resources/kafka-deployment.yaml
   - resources/kafka-service.yaml
   - resources/blockchain-devnet.yaml
+  - resources/blockchain-wallet-secret.yaml
   - "../v1.0"
 
 namespace: kafkaml
@@ -26,7 +27,9 @@ configMapGenerator:
       - fedml.blockchain.chain-id=31337
       - fedml.blockchain.network-id=31337
       - fedml.blockchain.wallet-address=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-      - fedml.blockchain.wallet-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+      # wallet-key is NOT here - it's a private key, not config. Provided
+      # via resources/blockchain-wallet-secret.yaml (a Secret) instead, per
+      # backend-deployment.yaml's own secretKeyRef.
       - fedml.blockchain.blockscout-url=
       # Locally-built training/inference images (see the `images:` block
       # below for the executor/backend/frontend equivalents) - dynamically

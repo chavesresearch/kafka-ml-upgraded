@@ -131,11 +131,17 @@ spec:
                   name: kafkaml-configmap
                   key: fedml.blockchain.wallet-address
                   optional: true
+            # A private key, not config - unlike its siblings above, never a
+            # configMapKeyRef (ConfigMaps are plaintext, readable to anyone
+            # with basic get access). Same optional-Secret pattern as
+            # KUBE_TOKEN/KUBE_HOST below: create out-of-band, e.g.
+            #   kubectl create secret generic kafkaml-blockchain-credentials \
+            #     -n kafkaml --from-literal=wallet-key=...
             - name: FEDML_BLOCKCHAIN_WALLET_KEY
               valueFrom:
-                configMapKeyRef:
-                  name: kafkaml-configmap
-                  key: fedml.blockchain.wallet-key
+                secretKeyRef:
+                  name: kafkaml-blockchain-credentials
+                  key: wallet-key
                   optional: true
             - name: FEDML_BLOCKCHAIN_BLOCKSCOUT_URL
               valueFrom:

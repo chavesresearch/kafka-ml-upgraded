@@ -29,7 +29,9 @@ data:
   fedml.blockchain.chain-id: "1337"
   fedml.blockchain.network-id: "1999"
   fedml.blockchain.wallet-address: "0x0"
-  fedml.blockchain.wallet-key: ffff
+  # wallet-key deliberately not here - it's a private key, not config. See
+  # backend-deployment.yaml's FEDML_BLOCKCHAIN_WALLET_KEY env (secretKeyRef
+  # against kafkaml-blockchain-credentials) for where it comes from instead.
   fedml.blockchain.blockscout-link: "0"
   fedml.blockchain.blockscout-url: http://blockscout:8000
   fedml.blockchain.token-name: KafkaML-FedToken

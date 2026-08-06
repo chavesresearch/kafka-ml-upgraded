@@ -32,7 +32,11 @@ configMapGenerator:
       # overlay's kustomize/local/resources/blockchain-devnet.yaml starts -
       # same well-known Anvil account #0 as that file, not a secret.
       - fedml.blockchain.wallet-address=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-      - fedml.blockchain.wallet-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+      # wallet-key is NOT here - it's a private key, not config. The main
+      # overlay's kustomize/local/resources/blockchain-wallet-secret.yaml
+      # already creates kafkaml-blockchain-credentials in this same
+      # kafkaml namespace; federated-backend-deployment.yaml's secretKeyRef
+      # references it directly rather than duplicating it here.
 
 images:
   - name: federated-kafka-ml-backend

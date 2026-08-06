@@ -14,4 +14,8 @@ data:
   
   # Blockchain configuration
   fedml.blockchain.wallet-address: "0x0"
-  fedml.blockchain.wallet-key: asdf
+  # wallet-key deliberately not here - it's a private key, not config. See
+  # federated-backend-deployment.yaml's FEDML_BLOCKCHAIN_WALLET_KEY env
+  # (secretKeyRef against kafkaml-blockchain-credentials, the same Secret
+  # the main kustomize/base/resources/backend-deployment.yaml uses - both
+  # deploy into the same kafkaml namespace) for where it comes from instead.
