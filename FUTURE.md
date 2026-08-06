@@ -911,3 +911,28 @@ policy.
    and too wide (9 files) to fold in as a drive-by - a mechanical
    `title="X"` → `title="X" aria-label="X"` pass across all ~19 is real
    follow-up work of its own.
+
+7. ~~`PlotView` leaks a blob URL on every refresh and can show a stale
+   chart under fast navigation.~~ — **done** (2026-08-06, fresh-eyes
+   rescan - see Critical items 5-6/High items 10-12/Medium items 10-16
+   above for the rest of this pass). Every `refreshData()` call did
+   `URL.createObjectURL(blob)` with no matching `revokeObjectURL` of the
+   previous one (unlike `api.ts`'s own `downloadBlob`, which does revoke)
+   - a real memory leak. There was also no unmount/id-change `cancelled`
+   guard here, unlike every other detail view in the app, so a fast route
+   change between two results' chart pages could let an older response
+   land after a newer one's and overwrite it with stale data. Fixed both:
+   a ref now tracks the last-created blob URL so a later call revokes it
+   before creating a new one (plus a dedicated unmount effect that revokes
+   whatever's still outstanding when the view is left entirely); the
+   mount/id-change effect now uses the same `cancelled` pattern
+   `ModelView`/etc. already use, guarding both awaited calls. Verified
+   live in a real browser with route-level mocking, not just reasoning
+   about the code: (1) navigated to a deliberately slow-responding result,
+   then immediately to a fast one - final heading correctly showed the
+   second result, confirming the first (now-cancelled) response never
+   landed; (2) three full refresh cycles produced 3 `createObjectURL`
+   calls and 2 matching `revokeObjectURL` calls for every URL except the
+   currently-displayed one - zero leaked; (3) navigating away entirely
+   afterward revoked the one still-outstanding URL too. `pnpm typecheck`/
+   `test:run` (98 tests)/`test:e2e` (3 tests) all still pass.
