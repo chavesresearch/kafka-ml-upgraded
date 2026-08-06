@@ -14,16 +14,336 @@ the same way — except this time the Vue implementation it replaced was
 deleted outright rather than preserved anywhere, since Vue was itself a
 rework artifact from this same project, not part of the original
 pre-rework codebase `../kafka-ml` preserves. Items resolved by these
-cutovers are marked **done** below rather than removed, so the history of
-what used to be true here isn't lost. Re-evaluate before acting — some
-items may already be stale by the time you read this.
+cutovers are kept (struck through, with a **done** note) rather than
+removed, so the history of what used to be true here isn't lost.
+Re-evaluate before acting — some items may already be stale by the time
+you read this.
+
+Split into two top-level sections, **TODO** and **Completed** (added
+2026-08-07 - before this, open and resolved items were interleaved within
+each severity level, which made it hard to see the real remaining backlog
+at a glance). Each is itself ordered by severity
+(Critical → High → Medium → Low, then the frontend-specific follow-ups),
+and items are renumbered sequentially within each severity subsection of
+each top-level section - a numbered cross-reference like "High item 9"
+always means item 9 of whichever of the two subsections (TODO/Completed)
+it's actually pointing at, called out explicitly wherever that isn't the
+same section the reference itself lives in.
 
 Severity guide: **Critical** = security/availability risk or actively
 breaks correctness guarantees today. **High** = real cost or risk, no active
 incident. **Medium** = maintainability/debt, no immediate risk. **Low** =
 nice-to-have polish.
 
-## Critical
+## TODO
+
+### High
+
+1. **`mlcode_executor`'s multiprocessing timeout/kill escalation ladder
+    (High item 12 in the Completed section below, and its queue-deadlock
+    regression fix) has zero test
+    coverage of the slow/hanging-code branch in either `tfexecutor` or
+    `pthexecutor`'s test suites - only happy/error paths are tested.**
+    Found in a 2026-08-07 audit. A regression here (like the deadlock
+    above) would only surface via a real cluster hang, not CI. Worth a
+    test that submits genuinely slow/large-payload model code against a
+    live `TestClient` and asserts the timeout/kill path actually returns
+    within a bounded wall-clock window, for both services.
+
+2. **Race condition in `federated_backend`'s collision-matching can
+    launch duplicate edge worker Jobs even after the "mark consumed" fix**
+    (High item 9 in the Completed section below).
+    `federated-module/federated_backend/app/
+    controllers.py`: select matching rows -> `await
+    deploy_on_kubernetes(...)` (a real await point, Kubernetes API call
+    latency) -> delete the matched rows, all on a single-process asyncio
+    event loop with no row locking (e.g. `SELECT ... FOR UPDATE` or an
+    application-level mutex). Two registrations arriving close enough
+    together can both match the same counterpart row before either
+    request's delete has committed, launching two edge worker Jobs for
+    one logical pairing. Distinct from the already-fixed bug (which only
+    prevented *reuse* of a row after a successful match's delete had
+    already committed) - this is a narrower, harder-to-hit window in the
+    delete-hasn't-happened-yet gap. Found in a 2026-08-07 audit, not yet
+    fixed.
+
+3. **`federated_backend` has the same SQLite-on-ephemeral-filesystem
+    design as `backend`, undocumented for this service specifically.**
+    `federated-module/federated_backend/app/config.py` defaults to
+    `sqlite+aiosqlite:///.../db.sqlite3`; neither
+    `kustomize/base/resources/backend-deployment.yaml` nor
+    `federated-backend-deployment.yaml` mounts any volume, so every
+    `kubectl rollout restart deployment/federated-backend` silently wipes
+    every registered `ModelSource`/`Datasource` row (any federated
+    registration mid-flight at restart time is lost, not just delayed).
+    Worth either a PVC for both databases or, more in line with how small
+    `federated_backend`'s schema is (2 tables), documenting the
+    restart-wipes-state behavior explicitly next to the `backend` one so
+    an operator doesn't get surprised twice.
+
+4. **Deploying a PyTorch model with "Federated learning" checked doesn't
+   error - it silently does plain, non-federated training while the
+   deployment is labeled and tracked as federated.**
+   `frontend/src/views/DeploymentView.tsx`'s federated-learning checkbox
+   and `frontend/src/logic/deployment.ts`'s `isDeploymentFormInvalid`/
+   `showBlockchainToggle` never check the model's framework - unlike the
+   "distributed" checkbox in `ModelView.tsx`, which is already gated to
+   `form.framework === 'tf'`. `backend/app/controllers/deployments.py`
+   picks the plain `PYTORCH_TRAINING_MODEL_IMAGE` and calls
+   `job_manifest_generator.single_federated_training(...)` regardless,
+   setting federated env vars/topics on a container running
+   `model_training/pytorch/training.py` - which has no `CASE` dispatch
+   at all (grepped, none) and always just runs single classic training.
+   Worse than a crash: the Job silently ignores every federated setting
+   while `backend` still records the deployment as federated. Fix by
+   adding the same framework gate the distributed checkbox already has
+   (frontend) and/or rejecting `framework=pth` + `federated=True` server
+   -side. Distinct from the already-known "PyTorch federated training
+   doesn't exist upstream" fact (that's about the missing
+   `federated_model_training/pytorch` directory) - this is about the
+   silently-wrong reachable path through the UI/backend that exists
+   because of it. Found in a 2026-08-07 audit.
+
+5. **PyTorch training only supports CASE=1 (single, non-distributed,
+   non-incremental, non-federated classic training) - `model_training/
+   pytorch/training.py` has no `CASE` env var dispatch at all, while
+   TensorFlow implements all 9 CASEs.** Nothing in the backend or
+   frontend gates this - `backend/app/job_manifest_generator.py` and
+   `frontend/src/views/DeploymentView.tsx` are both 100%
+   framework-agnostic, so a user can already configure a PyTorch
+   deployment as distributed/incremental/federated/blockchain today (see
+   item 4 above for the specific silently-wrong federated case). A full
+   phased implementation plan - dispatch skeleton, then CASE 2
+   (incremental, moderate cost, has a proven TF blueprint to port from),
+   CASE 3/4 (distributed, expensive, no PyTorch precedent for the
+   submodel-chaining design), CASE 5-8 (federated, expensive, additionally
+   blocked on a completely nonexistent `federated-module/
+   federated_model_training/pytorch/` edge-worker service - confirmed
+   only a `.gitkeep`), CASE 9 (blockchain, expensive but cheaper once
+   CASE 5 exists) - is written up in
+   `model_training/pytorch/CASE_2_9_PLAN.md`, including a suggested
+   one-day scope (Phase 0 + CASE 2) and per-phase verification bars.
+   Found/scoped in a 2026-08-07 audit.
+
+### Medium
+
+1. **`backend` is stuck on Python 3.12 while 7 sibling `python:3.12-slim`
+   services successfully moved to 3.14** (2026-08-05 dependency-audit
+   pass) - `sqlalchemy==2.0.36`'s typing internals
+   (`util/typing.py::make_union_type`) raise `TypeError: descriptor
+   '__getitem__' requires a 'typing.Union' object but received a 'tuple'`
+   on Python 3.14, hit while importing `app/models.py`'s `Mapped[...]`
+   annotations - not a test-only issue, the app wouldn't boot. Confirmed
+   empirically (a real failed `pytest` collection, not assumed from a
+   changelog) before reverting just this one service back to
+   `python:3.12-slim`. Revisit once SQLAlchemy ships a 3.14-compatible
+   stable release (2.1 was still beta as of this check - also blocked
+   from bumping to for a different reason, no stable release yet).
+
+2. **`website/`'s `typescript` pin is stuck at `~6.0.2` while `frontend/`
+   moved to `~7.0.2` cleanly** (2026-08-05) - TypeScript 7 removed the
+   `baseUrl` compiler option entirely, and `website/tsconfig.json` extends
+   `@docusaurus/tsconfig@3.10.2`, which still sets `baseUrl` itself - not
+   fixable from this repo (can't edit a third-party package's own
+   tsconfig). Revisit once a `@docusaurus/tsconfig` release drops
+   `baseUrl` for `paths`.
+
+3. **No resource `requests`/`limits` or liveness/readiness probes on any
+    of the 6 base Deployments** (`backend`, `frontend`, `tf-executor`,
+    `pth-executor`, `kafka-control-logger`, `federated-backend` - grepped
+    every manifest under `kustomize/base/resources/`, zero hits on either
+    field), **and none on dynamically-generated training/inference Jobs
+    either** (`backend/app/job_manifest_generator.py`,
+    `federated_backend/app/kubernetes_deploy.py` - grepped, nothing).
+    Distinct from the GPU-specific resource-limit code path this project
+    already has for `-gpu` variants. Without requests/limits, a runaway
+    training container (TensorFlow/PyTorch have no built-in memory cap)
+    can starve or OOM-kill neighboring pods on the same node instead of
+    being contained to its own; without probes, Kubernetes has no signal
+    to restart a hung-but-still-running pod (e.g. the exact "degraded
+    subprocess state" scenario documented in this project's own debugging
+    history required a manual `kubectl rollout restart` - a readiness
+    probe wired to a real health check could have caught it
+    automatically). Found in a 2026-08-07 audit.
+
+4. **Kafka has no transport security anywhere in the stack.** Grepped
+    every `KafkaProducer`/`KafkaConsumer`/`AIOKafkaConsumer` construction
+    repo-wide (`datasources`, `model_training/*`, `model_inference/*`,
+    `mlcode_executor/tfexecutor`, `kafka_control_logger`,
+    `federated-module/*`, `backend/app/websocket.py`) - zero SASL/SSL
+    config anywhere; every client connects to `BOOTSTRAP_SERVERS` in
+    plaintext with no authentication. This is more a deployment-topology
+    assumption than a code defect (fine inside a trusted cluster network,
+    which is the only topology this project currently documents/tests
+    against), but it's undocumented in the README's threat-model section
+    - anyone deploying across a less-trusted network boundary should know
+    every model weight, training datum, and control message is
+    unauthenticated plaintext on the wire. Found in a 2026-08-07 audit.
+
+5. **Blocking synchronous file I/O in async route handlers, on a
+    single-worker event loop.** `backend/app/controllers/
+    training_results.py` (two call sites) and `iot_devices.py` call
+    `.read_bytes()` directly inside `async def` handlers - unlike
+    `mlcode_executor`'s own `_convert_model_to_tflite`, which explicitly
+    offloads equivalent work via `anyio.to_thread.run_sync` for exactly
+    this reason (see `mlcode_executor/CLAUDE.md` gotcha 2). A large model
+    file read stalls the entire event loop for its duration, including
+    the live `/ws/` Kafka-to-browser visualization relay other requests
+    depend on. Found in a 2026-08-07 audit.
+
+6. **No CI job runs `integration-tests/` at all**, not even as a manual
+    `workflow_dispatch` - grepped every workflow file, no reference to
+    that directory anywhere. It's the only suite that exercises real
+    9-CASE training + inference end-to-end (see
+    `integration-tests/README.md`), and it currently only ever runs by
+    hand. A `workflow_dispatch`-triggered job (it needs a real cluster,
+    so not viable as a normal PR gate) would at least make it runnable
+    on demand without a local checkout. Found in a 2026-08-07 audit.
+
+7. **`model_training/pytorch`'s helper functions (`download_model`,
+    `select_gpu`, `load_environment_vars`, etc. in `utils.py`/
+    `training.py`) have zero test coverage** - an asymmetry versus the
+    `tensorflow` sibling's coverage of equivalent helpers. Found in a
+    2026-08-07 audit.
+
+8. **No PodDisruptionBudget anywhere in the repo.** Muted impact today
+    since every base Deployment is already `replicas: 1` (a PDB can't
+    protect a true singleton from eviction, only guarantee *how many* of
+    several replicas stay up), but worth revisiting if any service is
+    ever scaled past 1 replica - right now a voluntary node drain simply
+    takes each one down with no eviction guard at all. Found in a
+    2026-08-07 audit.
+
+9. **`website/docs/security.md`'s "Mitigations in place" list is stale**
+    - it omits both the `mlcode_executor` multiprocessing+60s-timeout
+    sandbox (Critical item 3 / High item 12 in the Completed section
+    below) and the blockchain wallet key moving to a real Kubernetes
+    Secret (Critical item 5, also below), even though both already
+    shipped per this file. Found in a 2026-08-07
+    audit; worth a follow-up pass through this doc against the current
+    state of this file's own Critical/High sections.
+
+10. **All 7 frontend list views show a misleading "No results." empty
+    state during the initial fetch** - `ModelList`, `ConfigurationList`,
+    `ResultList`, `DatasourceList`, `IoTDeviceList`, `DeploymentList`, and
+    `InferenceList` all render the empty-state message whenever their
+    array is empty, with no separate loading flag tracked while the
+    initial `get*()` call is still in flight - so a user on a slow
+    connection briefly sees "no data exists" before it flips to the real
+    rows. Found in a 2026-08-07 audit.
+
+11. **IoT/TFLite edge deployment is TensorFlow-only end-to-end, but
+    nothing tells a user that before they hit a confusing generic error.**
+    `mlcode_executor/pthexecutor/app.py` has no `/convert_to_tflite/`
+    equivalent (grepped - only `/exec_pth/` and `/check_deploy_config/`
+    exist); `backend/app/controllers/iot_devices.py`'s
+    `deploy_to_iot_devices` unconditionally looks for `{result_id}.h5`
+    and always calls `TENSORFLOW_EXECUTOR_URL`, regardless of the
+    result's actual framework (PyTorch results are stored as `.pth` -
+    see `training_results.py`). `frontend/src/views/InferenceIoTView.tsx`
+    applies no framework filter when picking a training result. Net
+    effect: a user with a finished PyTorch result can walk through the
+    entire IoT-deploy form (pick devices, write a Berry script) and only
+    get a generic `404 "Model file not found."` at submit time - no
+    indication anywhere that this path is TF-only. Fix by filtering the
+    result picker to `framework === 'tf'` (same pattern the distributed
+    checkbox in `ModelView.tsx` already uses) and/or a clearer backend
+    error message naming the actual problem. Found in a 2026-08-07 audit.
+
+12. **The blockchain-traced training feature (CASE=9) has no
+    operator/user-facing setup documentation anywhere** - not the root
+    README (grepped for "blockchain", zero matches), not
+    `website/docs/`. This is a fully implemented, end-to-end-verified
+    feature (see Completed/Critical item 5 and Completed/High item 5
+    above) with its own Kubernetes Secret, `ENABLE_FEDML_BLOCKCHAIN` env
+    var, and dedicated contract-deployment code
+    (`backend/app/blockchain.py`), but nothing explains how to actually
+    enable/use it - `website/docs/usage/federated-learning.md` mentions
+    it in one paragraph and defers to the `/showcase` page, which is
+    explicitly illustrative/simulated, not operational guidance. A user
+    who wants to actually run CASE=9 (not just watch the showcase
+    animation) has no page to follow: what wallet/devnet is needed, how
+    to create the credentials Secret, what the "Blockchain-traced
+    training" checkbox requires. Distinct from the existing TODO Medium
+    item 9 above (which flags `security.md`'s *mitigations list* as
+    stale re: the wallet secret specifically) - this is about the
+    complete absence of how-to documentation for the feature itself.
+    Found in a 2026-08-07 audit.
+
+### Low
+
+1. **Bare `except:` used as control flow (not real error handling) in
+   several training scripts** - `model_training/tensorflow/
+   mainTraining.py`, both copies of `KafkaModelEngine.py`, `model_training/
+   pytorch/training.py`, and `federated_mainTraining.py` all use a bare
+   `except:` around a dict-init-or-append pattern, swallowing
+   `KeyboardInterrupt`/`SystemExit` along with the expected `KeyError`
+   it's actually guarding against. Distinct from the already-fixed bare
+   `except:` around the RC-delete call (a different call site). Found in
+   a 2026-08-07 audit - low severity since the swallowed exception types
+   are rarely hit here in practice, but worth narrowing to `except
+   KeyError:` next time one of these files is touched.
+
+2. **Confusion-matrix generation swallows all exceptions down to an INFO
+   log** (`model_training/tensorflow/mainTraining.py`,
+   `model_training/pytorch/training.py`) - a real regression in this path
+   (e.g. a shape mismatch after a Keras/PyTorch version bump) would run
+   silently forever with no visible failure, only a log line easy to miss
+   in normal operation. Found in a 2026-08-07 audit.
+
+3. **The release process (workflows trigger on `release: types:
+   [created]`) is completely undocumented** - not in `CONTRIBUTING.md`,
+   not in the README, no comment in the workflow files themselves
+   explaining when/how a release should be cut. Found in a 2026-08-07
+   audit.
+
+4. **`website/docs/usage/distributed-models.md` is the one usage page
+   missing the "TensorFlow-only" disclaimer its siblings all have.**
+   `incremental-training.md`, `federated-learning.md`, and
+   `semi-supervised-learning.md` all explicitly state "Currently only
+   TensorFlow supports X." - `distributed-models.md` has no such line,
+   presenting TF Keras model code as if it were the only option without
+   saying PyTorch isn't supported for distributed models (confirmed
+   distributed models are TF-gated in the frontend,
+   `ModelView.tsx`'s `form.framework === 'tf'` check). A quick, low-cost
+   consistency fix. Found in a 2026-08-07 audit.
+
+5. **The canonical "getting started" example (`examples/MNIST_RAW_format/`,
+   the one the root README's own walkthrough exclusively uses) has no
+   PyTorch counterpart, and PyTorch coverage across all of `examples/` is
+   a bare model-code snippet in 4 of 9 example READMEs, not a runnable
+   script.** Grepped `examples/` - zero `.py` files import `torch`; only
+   `MLGPARK_STREAM_RAW_format`, `EUROSAT_RAW_format`, `SO2SAT_RAW_format`,
+   and `VGG16_CIFAR10_RAW_format` READMEs include a "In the PyTorch
+   Case..." paste-into-the-web-UI snippet (correctly scoped to CASE=1,
+   consistent with High item 5 above). A new user following the README's own
+   quickstart never sees a PyTorch example at all. Low severity since
+   this matches the already-known CASE=1-only PyTorch training gap - but
+   the example set doesn't even give the one supported PyTorch path a
+   real runnable script, just README fragments. Found in a 2026-08-07
+   audit.
+
+### `frontend`-specific follow-ups
+
+1. **Feature-parity audit vs. the previous frontend hasn't been done by a
+   human yet.** Applies transitively through both rewrites: the Angular→Vue
+   audit was never done (noted here since 2026-07-31), and neither has a
+   Vue→React one. Each rewrite was verified against the live backend
+   (CRUD + WebSocket smoke tests, Playwright passes of the UI) but not
+   clicked through screen-by-screen by a person. Not a gate on anything -
+   both older implementations are already fully retired (Angular preserved
+   at `../kafka-ml/frontend`; Vue not preserved anywhere, see this file's
+   intro) - just still worth doing.
+
+2. **Monaco adds ~579 kB gzipped as its own lazy chunk** (only fetched when
+   a screen with a code field is visited — see `frontend/CLAUDE.md`'s
+   Gotcha #5). Acceptable for now; if it becomes a real problem, evaluate a
+   lighter editor (CodeMirror 6) or loading Monaco from a CDN instead of
+   bundling it. Same order of magnitude as the Vue app's own ~594 kB figure.
+
+## Completed
+
+### Critical
 
 1. ~~Backend runs on end-of-life dependencies (Django 3.2.13, DRF 3.11.0,
    channels/daphne 3.x).~~ — **done** (2026-08-04): `backend/` is now a
@@ -124,7 +444,7 @@ nice-to-have polish.
 
 5. ~~Blockchain wallet private key shipped in plaintext to pods that
    `exec()` untrusted model code.~~ — **done** (2026-08-06). Found by a
-   4-agent fresh-eyes rescan (see Medium items 10-16 below for the rest of
+   4-agent fresh-eyes rescan (see Medium items 8-14 below for the rest of
    that pass). `job_manifest_generator.py`/`federated_backend/app/
    kubernetes_deploy.py` both re-injected `FEDML_BLOCKCHAIN_WALLET_KEY` as
    a literal `value:` env var into every CASE=9 training Job - a straight
@@ -147,6 +467,7 @@ nice-to-have polish.
    literal key value appears nowhere in any Deployment/Job spec except the
    Secret's own `stringData`, and ran a real CASE=1 deployment end-to-end
    afterward to confirm nothing broke.
+
 6. ~~A spoofable `Origin` header becomes a URL real IoT hardware fetches
    and auto-executes.~~ — **done** (2026-08-06), same rescan.
    `backend/app/controllers/iot_devices.py`'s `deploy_to_iot_devices`
@@ -160,7 +481,20 @@ nice-to-have polish.
    used it. `uv run pytest -v` (30/30, then 33/33 after the Medium-items
    test additions below) still passes.
 
-## High
+7. ~~`backend/app/controllers/iot_devices.py`'s `deploy_to_iot_devices`
+   passed a hardcoded `timeout=30` on the one `httpx` call to
+   `convert_to_tflite/` that can legitimately take *longer* than 30s -
+   `tfexecutor`'s int8-quantization path polls a live Kafka topic with
+   `consumer_timeout_ms=60000` before conversion even starts.~~ —
+   **done** (2026-08-07). Found during a fresh audit right after the
+   shared `httpx.AsyncClient` timeout was bumped 5s -> 180s (High item 12
+   below/`mlcode_executor`'s queue-deadlock fix) specifically to cover
+   this class of call - this one call site was explicitly overriding it
+   back down, guaranteeing a timeout on any real int8-quantized IoT
+   deployment against a moderately slow topic. Removed the override;
+   the call now inherits the shared client's 180s default.
+
+### High
 
 1. ~~Two frontends now coexist (`frontend/` Angular + `frontend-vue/`
    Vue).~~ — **done** (2026-08-04): cut over. `frontend/` became the Vue
@@ -353,7 +687,7 @@ nice-to-have polish.
    row consumed, and restarting either control-logger service replayed
    their entire retained Kafka history, re-matching every past
    registration at once.~~ — **done** (2026-08-05), fixed as part of the
-   Django→Litestar rewrite (Medium item 7 below): the new
+   Django→Litestar rewrite (Medium item 6 below): the new
    `federated_backend` deletes both matched rows right after a successful
    deploy, and `federated_model_control_logger.py`'s
    `auto_offset_reset='earliest'` (the actual, precisely-identified cause
@@ -378,6 +712,7 @@ nice-to-have polish.
     images already run a `useradd --uid 1000`/`USER kafkaml` non-root
     setup before assuming `runAsUser: 1000` was safe. `uv run pytest`
     still 30/30 (33/33 after the additions below).
+
 11. ~~Most static Deployments have no `securityContext`, and backend's own
     Dockerfile runs as root.~~ — **done** (2026-08-06), same rescan. Only
     `tf-executor`/`pth-executor` had the hardening block; `backend`,
@@ -402,6 +737,7 @@ nice-to-have polish.
     nginx (still binding port 80 correctly as non-root) and the backend
     API both still return real data, and reran a full CASE=1/CASE=3
     end-to-end deployment afterward with zero regressions.
+
 12. ~~`exec()`'d model code has no CPU or wall-clock limit - a few bad
     submissions can DoS the executor for everyone.~~ — **done**
     (2026-08-06), same rescan. `mlcode_executor/{tfexecutor,pthexecutor}`'s
@@ -425,8 +761,86 @@ nice-to-have polish.
     unchanged): submitted a genuine `while True: pass` model to a live
     `TestClient`-backed `/exec_tf/` and confirmed it was killed and
     returned a clean 400 at exactly the 60s timeout, not hung forever.
+    **Regression found and fixed (2026-08-06)**: the fix above called
+    `process.join(EXEC_TIMEOUT_S)` *before* reading `result_queue`, which
+    deadlocks if the child's `put()` payload exceeds the pipe's OS buffer
+    (e.g. a real `.h5` model file, easily >64KB) - the child blocks inside
+    `put()` waiting for a reader that never comes until `join()` has
+    already returned. Reproduced 100% of the time with a real MNIST
+    `load_model` call during a full CASE 1-9 regression pass. Fixed in
+    both `tfexecutor`/`pthexecutor` by reading the queue (with its own
+    timeout) *before* `join()`ing. Also widened the backend's shared
+    `httpx.AsyncClient` timeout from the 5s default to 180s
+    (`backend/app/main.py`'s `lifespan`) - both executors now spawn a
+    subprocess per call that re-imports TensorFlow/PyTorch from scratch
+    (~8-10s even for a trivial model), already past the old default,
+    which was surfacing as an opaque `httpx.ReadTimeout` -> 500. See
+    Critical item 7 above for one call site that had overridden this
+    global timeout back down and needed its own follow-up fix.
 
-## Medium
+13. ~~Path traversal / arbitrary file write in
+    `mlcode_executor/tfexecutor/app.py`'s `/convert_to_tflite/`.~~ —
+    **done** (2026-08-07). Found in the same audit:
+    `_convert_model_to_tflite` did `os.path.join('./tmp', filename)` with
+    `filename` taken directly from the uploaded file's raw multipart
+    `Content-Disposition` filename (the `.h5`-as-field-name wire contract
+    - see `mlcode_executor/CLAUDE.md` gotcha 3) - attacker-controlled.
+    `os.path.join` discards `'./tmp'` entirely if `filename` is absolute,
+    and a relative `../../x` walks out of it either way, so a crafted
+    filename could write/overwrite an arbitrary file (the `finally` block
+    then deletes whatever path it computed). Compounded by
+    `kustomize/base/resources/{tf,pth}-executor-service.yaml` both being
+    `type: LoadBalancer` - in a non-local deployment these executors are
+    directly internet-reachable, bypassing `backend` and the documented
+    exec() threat-model boundary entirely (see the root README's "Threat
+    model: exec()'d model code" section - worth a follow-up note there
+    that these services shouldn't be given a routable LoadBalancer IP in
+    any real deployment, `ClusterIP` is sufficient since only `backend`
+    calls them). Fixed by wrapping `filename` in `os.path.basename()`
+    before joining, confining the write to `./tmp` regardless of input.
+    Separately, `_exec_tf_worker`'s `load_model` branch wrote every
+    request's converted model to a fixed `./model.h5` relative to the
+    container's shared cwd - concurrent `/exec_tf/` requests (each its
+    own subprocess, but sharing that cwd) could interleave and deliver a
+    wrong/truncated file to one another. Fixed by using
+    `f"model_{os.getpid()}.h5"` (unique per subprocess) instead.
+
+14. ~~`KafkaModelEngine.__getModelWeights__` leaked a `KafkaConsumer`
+    every aggregation round~~ (`model_training/tensorflow/
+    KafkaModelEngine.py`, byte-identical in `federated-module/
+    federated_model_training/tensorflow/KafkaModelEngine.py`) —
+    **done** (2026-08-07). Found in the same audit: the loop called
+    `consumer.unsubscribe()` but never `.close()`; a fresh `KafkaConsumer`
+    is constructed every round inside `EdgeBasedTraining`'s `while rounds
+    < training.agg_rounds:` loop, so a long/high-round federated training
+    run leaked one socket+thread pair per round, unbounded. Fixed in both
+    copies: `consumer.close()` in a `finally` around the read loop, so it
+    also runs if an exception interrupts the read (not just on the
+    happy-path `break`).
+
+15. ~~`eval()` on user-submitted data runs inside the `backend` API pod
+    itself, not an isolated executor.~~ — **done** (2026-08-07).
+    `backend/app/utils.py`'s `parse_kwargs_fit` did
+    `dic[pair[0]] = eval(pair[1])` on a user-submitted `kwargs_fit`
+    string, in the same process that holds live Kubernetes RBAC
+    credentials and (when `ENABLE_FEDML_BLOCKCHAIN=1`) the wallet-key
+    secret. This was outside the scope the root README's "Threat model:
+    exec()'d model code" section describes (executor/training/inference
+    pods only, each non-root and capability-dropped per Critical item
+    3/High item 10-11 above) - `backend` itself has none of those
+    hardenings, since it was never meant to run untrusted code.
+    `backend/CLAUDE.md`'s "Things that look like bugs but are
+    intentionally preserved for parity" section had documented this as
+    deliberate ("not hardened here... this wasn't in scope to change"),
+    but that framing predated the executor sandboxing work and
+    undersold the actual blast radius difference. Fixed by swapping
+    `eval()` for `ast.literal_eval()` - every real `kwargs_fit` value
+    (`epochs=5`, `verbose=True`, ...) is a plain literal, never an
+    expression that needs full `eval()`, and `literal_eval` can only
+    ever produce a literal, not execute arbitrary code. `uv run pytest -v`
+    (33/33) still passes.
+
+### Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated
    (2026-08-04), recommendation: don't merge.** Read both codebases side
@@ -569,27 +983,14 @@ nice-to-have polish.
    `model_training/tensorflow/CLAUDE.md`'s "web3 5.28.0 -> 7.16.0"
    section for the full record.
 
-6. **`backend` is stuck on Python 3.12 while 7 sibling `python:3.12-slim`
-   services successfully moved to 3.14** (2026-08-05 dependency-audit
-   pass) - `sqlalchemy==2.0.36`'s typing internals
-   (`util/typing.py::make_union_type`) raise `TypeError: descriptor
-   '__getitem__' requires a 'typing.Union' object but received a 'tuple'`
-   on Python 3.14, hit while importing `app/models.py`'s `Mapped[...]`
-   annotations - not a test-only issue, the app wouldn't boot. Confirmed
-   empirically (a real failed `pytest` collection, not assumed from a
-   changelog) before reverting just this one service back to
-   `python:3.12-slim`. Revisit once SQLAlchemy ships a 3.14-compatible
-   stable release (2.1 was still beta as of this check - also blocked
-   from bumping to for a different reason, no stable release yet).
-
-7. ~~`federated_backend` (Django) is now the only non-Litestar backend
+6. ~~`federated_backend` (Django) is now the only non-Litestar backend
    service.~~ — **done** (2026-08-05): rewritten to Litestar + SQLAlchemy
    async + `kubernetes_asyncio`, as its own dedicated follow-up right
    after the routine dependency-audit pass that first surfaced this item
    (user: "why don't we change it to a litestar" - agreed to scope it
    separately given this service is the exact matching/deploy logic every
    CASE 5-9 federated test depends on). Done in the same pass: High item 9
-   below (mark-consumed) and a real, precise fix for the "replay on
+   above (mark-consumed) and a real, precise fix for the "replay on
    restart" bug (`federated_model_control_logger.py`'s
    `auto_offset_reset='earliest'`, previously only described here as an
    observed symptom, not a pinned-down cause). Verified via 14 ported
@@ -598,15 +999,7 @@ nice-to-have polish.
    `federated-module/CLAUDE.md`'s "federated_backend/ — Django→Litestar
    rewrite" section for the full record.
 
-8. **`website/`'s `typescript` pin is stuck at `~6.0.2` while `frontend/`
-   moved to `~7.0.2` cleanly** (2026-08-05) - TypeScript 7 removed the
-   `baseUrl` compiler option entirely, and `website/tsconfig.json` extends
-   `@docusaurus/tsconfig@3.10.2`, which still sets `baseUrl` itself - not
-   fixable from this repo (can't edit a third-party package's own
-   tsconfig). Revisit once a `@docusaurus/tsconfig` release drops
-   `baseUrl` for `paths`.
-
-9. ~~`datasources` and `kafkaml-client` (the two pip-installable Python
+7. ~~`datasources` and `kafkaml-client` (the two pip-installable Python
    libraries in this repo) had zero test coverage and no CI job.~~ —
    **done** (2026-08-06). `datasources` (43 tests): `KafkaConsumer`/
    `KafkaProducer` faked via a `patch_kafka` fixture (constructing any
@@ -633,7 +1026,7 @@ nice-to-have polish.
    {datasources,kafkaml-client}.yml` (test-only, no Docker image to
    build/push for either).
 
-10. ~~`stop_inference` swallows Kubernetes errors and marks the row
+8. ~~`stop_inference` swallows Kubernetes errors and marks the row
     "stopped" regardless.~~ — **done** (2026-08-06, fresh-eyes rescan -
     see Critical items 5-6/High items 10-12 above for the rest of this
     pass). A bare `except Exception: pass` around the RC-delete call in
@@ -646,7 +1039,8 @@ nice-to-have polish.
     instead of lying about the outcome. New `tests/test_inferences.py`
     (2 tests: 404 → marked stopped, 500 → stays "deployed" and the caller
     gets a real error) - `uv run pytest` 32/32.
-11. ~~A partial Kubernetes failure orphans already-created training Jobs
+
+9. ~~A partial Kubernetes failure orphans already-created training Jobs
     outside the DB transaction.~~ — **done** (2026-08-06), same rescan.
     `create_deployment` wraps one DB transaction around a loop that
     creates one real Job per root model - if job N+1 failed, the
@@ -673,7 +1067,8 @@ nice-to-have polish.
     explicitly in `conftest.py` itself. Confirmed fixed by stress-testing
     the previously-failing file combination 5 times in a row (previously
     reproduced 100% of the time) plus 5 full-suite runs, all clean.
-12. ~~Model-download HTTP calls have no timeout - can hang forever on the
+
+10. ~~Model-download HTTP calls have no timeout - can hang forever on the
     very first attempt.~~ — **done** (2026-08-06), same rescan.
     `urllib.request.urlopen(model_url)` (`model_training/tensorflow`,
     `model_inference/tensorflow`) and `requests.get(model_url)`
@@ -684,7 +1079,8 @@ nice-to-have polish.
     Fixed with `timeout=30` on all 4 call sites (`socket.timeout` is a
     subclass of `OSError`/`Exception`, already caught by each function's
     existing retry handler, so no other change was needed).
-13. ~~Every retried result upload leaks a file handle.~~ — **done**
+
+11. ~~Every retried result upload leaks a file handle.~~ — **done**
     (2026-08-06), same rescan. `mainTraining.py`'s `sendSingleMetrics`/
     `sendDistributedMetrics` opened the trained-model (and, for the
     distributed case, one file per submodel) with a bare `open(...)`
@@ -698,7 +1094,8 @@ nice-to-have polish.
     CASE=1 and CASE=3 end-to-end deployments against the live cluster
     after rebuilding the image, both reached `status: "finished"` with
     real metrics posted back correctly.
-14. ~~Labels above 255 still crash the data sink.~~ — **done**
+
+12. ~~Labels above 255 still crash the data sink.~~ — **done**
     (2026-08-06), same rescan, fixed by widening as requested rather than
     just documenting the ceiling. `KafkaMLSink.__object_to_bytes`'s `int`
     branch did `bytes([value])` - a single byte, raising `ValueError` for
@@ -722,7 +1119,8 @@ nice-to-have polish.
     new 4-byte output; new test cases added for values >255, >65535, and
     negative values, each confirmed to actually reach `sink.send()`
     successfully now. `uv run pytest` 46/46 in `datasources`.
-15. ~~The `-gpu` PyTorch images build and push successfully while silently
+
+13. ~~The `-gpu` PyTorch images build and push successfully while silently
     shipping CPU-only torch on a CUDA base.~~ — **done** (2026-08-06),
     same rescan, across all three affected services
     (`model_training/pytorch`, `mlcode_executor/pthexecutor`,
@@ -746,7 +1144,8 @@ nice-to-have polish.
     CUDA-enabled build, not just a relabeled CPU one. The default
     (non-GPU) build path is unaffected - confirmed the conditional
     correctly no-ops in ~0.2s when `TORCH_VARIANT` isn't set to `gpu`.
-16. ~~Three services get zero CI feedback on a pull request.~~ — **done**
+
+14. ~~Three services get zero CI feedback on a pull request.~~ — **done**
     (2026-08-06), same rescan. `kafka_control_logger.yml`/
     `federated_data_control_logger.yml`/`federated_model_control_logger.yml`
     had no `pull_request:` trigger at all, unlike every other
@@ -766,7 +1165,44 @@ nice-to-have polish.
     locally (proving the new job would give real, not just theoretical,
     feedback) and that the YAML itself parses correctly.
 
-## Low
+15. ~~No dependency or container-image vulnerability scanning anywhere in
+    CI.~~ — **done** (2026-08-07). Grepped every `.github/workflows/*.yml`
+    - Dependabot only opened version-bump PRs, never scanned for known
+    CVEs in what was currently pinned; no `trivy`/`grype`/`pip-audit`/
+    `npm audit`/CodeQL/`dependency-review-action` job existed anywhere.
+    With 10+ services each pinning their own dependency set (16
+    independent `uv.lock` files plus `frontend`'s and `website`'s
+    `pnpm-lock.yaml`), a known-CVE package could sit unnoticed
+    indefinitely between manual audits (see Low item 2's now-obsolete
+    `npm audit` note - nothing had replaced it as an ongoing check).
+    Fixed with a new `.github/workflows/security-scan.yml` running
+    [OSV-Scanner](https://google.github.io/osv-scanner/) - one tool
+    across both ecosystems already in use here (reads `uv.lock` and
+    `pnpm-lock.yaml` directly with `--recursive`, no per-ecosystem tool
+    needed) rather than wiring up separate `pip-audit`/`pnpm audit` jobs.
+    Runs on push/PR (SARIF results uploaded to code scanning via the
+    official reusable workflow) plus a weekly `schedule` trigger, so a
+    CVE disclosed *after* a dependency was already pinned still gets
+    caught without needing a new push.
+
+16. ~~No React `ErrorBoundary` anywhere in `frontend/src`~~ — **done**
+    (2026-08-07). Grepped, zero matches beforehand. Several list-view
+    cell renderers do unguarded field access (e.g. `ResultList.tsx`'s
+    status-icon lookup keyed by `row.original.status`) that can throw on
+    an unexpected payload shape; with no boundary anywhere in the tree,
+    React 19 unmounts the *entire* app on any such throw, rather than
+    degrading just the one broken view. Distinct from the already-fixed
+    `CodeEditor`/`DeploymentList`/`PlotView` bugs (see the
+    `` `frontend`-specific follow-ups `` section below) - this was the missing structural
+    backstop for whatever the *next* one turns out to be. Fixed with a
+    new `src/components/ErrorBoundary.tsx` (a class component -
+    React has no hook equivalent for catching render errors), wrapping
+    `Layout.tsx`'s `<Outlet/>` and keyed by `location.pathname` so
+    navigating away from a crashed view resets the boundary instead of
+    leaving the user stuck on the fallback UI. `pnpm typecheck`, `pnpm
+    test:run` (98/98), and `pnpm build` all pass clean.
+
+### Low
 
 1. ~~`backend/devices/__init__.py` is an empty stub app sitting alongside
    `backend/automl/views/iot_devices.py`.~~ — **obsolete** (2026-08-04):
@@ -798,7 +1234,7 @@ nice-to-have polish.
 
 5. ~~`frontend`'s Docker build sends its entire 486MB `node_modules` to the
    daemon every time.~~ — **done** (2026-08-06, fresh-eyes rescan - see
-   Critical items 5-6/High items 10-12/Medium items 10-16 above for the
+   Critical items 5-6/High items 10-12/Medium items 8-14 above for the
    rest of this pass). Unlike all 12 other Dockerfile directories in the
    repo, `frontend/` had no `.dockerignore` - its build context is
    `frontend` itself (`frontend.yml`'s `context: frontend`), so the root
@@ -808,13 +1244,7 @@ nice-to-have polish.
    transfer dropped from what a 486MB `node_modules` alone would cost to
    582KB.
 
-## `frontend`-specific follow-ups
-
-These are scoped to the current frontend itself (React 19 + shadcn/ui,
-cut over from Vue 2026-08-04), called out separately since they're closer
-to "next PR" than "someday". Items from the Vue-era version of this list
-are marked done/obsolete rather than deleted, per this file's usual
-policy.
+### `frontend`-specific follow-ups
 
 1. ~~No end-to-end tests.~~ — **done** (2026-08-06). `e2e/golden-path.spec.ts`
    (Playwright, `pnpm run test:e2e`, CI via `frontend.yml`) drives the
@@ -839,24 +1269,12 @@ policy.
    gap (confirmed `backend/app/schemas/__init__.py` always includes it),
    but the mock backend's own first draft didn't, and the real component
    had no defensive fallback for a shape violation either.
+
 2. ~~No TypeScript~~ — **done**, both in the original Vue rewrite
    (2026-07-31) and carried forward into the React rewrite (2026-08-04) -
    the whole app is typed, gated by `tsc -b` in `pnpm build` and CI.
-3. **Feature-parity audit vs. the previous frontend hasn't been done by a
-   human yet.** Applies transitively through both rewrites: the Angular→Vue
-   audit was never done (noted here since 2026-07-31), and neither has a
-   Vue→React one. Each rewrite was verified against the live backend
-   (CRUD + WebSocket smoke tests, Playwright passes of the UI) but not
-   clicked through screen-by-screen by a person. Not a gate on anything -
-   both older implementations are already fully retired (Angular preserved
-   at `../kafka-ml/frontend`; Vue not preserved anywhere, see this file's
-   intro) - just still worth doing.
-4. **Monaco adds ~579 kB gzipped as its own lazy chunk** (only fetched when
-   a screen with a code field is visited — see `frontend/CLAUDE.md`'s
-   Gotcha #5). Acceptable for now; if it becomes a real problem, evaluate a
-   lighter editor (CodeMirror 6) or loading Monaco from a CDN instead of
-   bundling it. Same order of magnitude as the Vue app's own ~594 kB figure.
-5. ~~`reactflow` and `@tanstack/react-query` are installed but unused~~ -
+
+3. ~~`reactflow` and `@tanstack/react-query` are installed but unused~~ -
    **done** (2026-08-06): both removed. `reactflow` had zero imports
    anywhere in `src/`. `@tanstack/react-query` turned out to be more than
    a dead import - `main.tsx` was mounting a live
@@ -870,7 +1288,8 @@ policy.
    pipeline-topology view or complex loading/error/refetch logic
    eventually justifies it - nothing else depends on them having been
    here.
-6. ~~No accessibility pass on the sidebar/theme-toggle shell or on
+
+4. ~~No accessibility pass on the sidebar/theme-toggle shell or on
    Monaco fields~~ — **done** (2026-08-06), verified with a real running
    dev server and Playwright driving actual keyboard `Tab`/`Enter` presses
    (not just static markup review). `Layout.tsx`: added a "Skip to main
@@ -912,9 +1331,9 @@ policy.
    `title="X"` → `title="X" aria-label="X"` pass across all ~19 is real
    follow-up work of its own.
 
-7. ~~`PlotView` leaks a blob URL on every refresh and can show a stale
+5. ~~`PlotView` leaks a blob URL on every refresh and can show a stale
    chart under fast navigation.~~ — **done** (2026-08-06, fresh-eyes
-   rescan - see Critical items 5-6/High items 10-12/Medium items 10-16
+   rescan - see Critical items 5-6/High items 10-12/Medium items 8-14
    above for the rest of this pass). Every `refreshData()` call did
    `URL.createObjectURL(blob)` with no matching `revokeObjectURL` of the
    previous one (unlike `api.ts`'s own `downloadBlob`, which does revoke)
