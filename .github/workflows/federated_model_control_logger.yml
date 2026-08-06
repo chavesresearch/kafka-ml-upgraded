@@ -7,6 +7,9 @@ on:
       - "main"
       - "latest"
       - "dev*"
+  pull_request:
+    paths:
+      - federated-module/federated_model_control_logger/**/*
   release:
     types:
       - created
@@ -20,7 +23,28 @@ permissions:
   packages: write
 
 jobs:
+  # This service has no test suite (a small script with everything inline
+  # under `if __name__ == '__main__':`, nothing factored out to unit-test -
+  # see backend/CLAUDE.md's Critical item 4). A real `docker build` is
+  # still a meaningful PR check on its own (catches a broken Dockerfile or
+  # a dependency that no longer resolves) - previously a PR touching this
+  # directory got no CI feedback at all.
+  test-build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Build image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: federated-module/federated_model_control_logger
+          file: federated-module/federated_model_control_logger/Dockerfile
+          push: false
+
   build-federated-model-control-logger:
+    # Only publish an image from pushes/releases, never from a PR.
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/build.yml
     with:
       context: federated-module/federated_model_control_logger
