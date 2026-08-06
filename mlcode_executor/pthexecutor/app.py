@@ -1,5 +1,6 @@
 import json
 import logging
+import multiprocessing
 from typing import Any
 
 import numpy as np
@@ -44,16 +45,21 @@ def exec_model(imports_code, model_code, distributed):
     return model
 
 
-@post("/exec_pth/", sync_to_thread=True)
-def pytorch_executor(data: dict[str, Any]) -> Response:
+# Wall-clock cap on exec()'d model code. Generous - real model-building
+# code is milliseconds to low seconds - but bounded, so a submission with
+# an infinite loop can't tie up this service forever.
+EXEC_TIMEOUT_S = 60
+
+
+def _exec_pth_worker(imports_code, model_code, distributed, request_type, result_queue) -> None:
+    """Runs in a *subprocess* (see pytorch_executor below for why) - do all
+    model-dependent work here, not just exec_model() itself, since an
+    nn.Module isn't reliably picklable back across the process boundary.
+    Only json/str-safe results go on the queue.
+    """
     try:
-        logger.info("Data code received %s", data)
-
-        # Remove pretrained=True
-        data['model_code'] = data['model_code'].replace("pretrained=True", "pretrained=False")
-        model = exec_model(data['imports_code'], data['model_code'], data['distributed'])
-
-        if data['request_type'] == "check":
+        model = exec_model(imports_code, model_code, distributed)
+        if request_type == "check":
             summary(model)
 
             # Some checks to ensure the model is well defined for Kafka-ML
@@ -63,15 +69,58 @@ def pytorch_executor(data: dict[str, Any]) -> Response:
 
             logger.info(type(model.metrics()["loss"]._loss_fn) == type(model.loss_fn()))
 
-            return Response(content=b"", status_code=200)
-        elif data['request_type'] == 'input_shape':
+            result_queue.put(("ok", b""))
+        elif request_type == "input_shape":
             # TODO: https://stackoverflow.com/questions/66488807/pytorch-model-input-shape ??
             input_shape = next(model.parameters()).size()
-            return Response(content=str(input_shape), media_type="text/plain", status_code=200)
-
-        return Response(content=b"", status_code=404)
+            result_queue.put(("ok", str(input_shape)))
+        else:
+            result_queue.put(("not_found", None))
     except Exception as e:
-        logger.error("exec_pth failed: %s", e)
+        result_queue.put(("error", str(e)))
+
+
+@post("/exec_pth/", sync_to_thread=True)
+def pytorch_executor(data: dict[str, Any]) -> Response:
+    logger.info("Data code received %s", data)
+
+    # Remove pretrained=True
+    data['model_code'] = data['model_code'].replace("pretrained=True", "pretrained=False")
+
+    # exec()'d code runs in a genuinely killable child process, not this
+    # thread - see tfexecutor/app.py's tensorflow_executor for the full
+    # reasoning (same fix, same root cause, independent services).
+    ctx = multiprocessing.get_context("spawn")
+    result_queue = ctx.Queue()
+    process = ctx.Process(
+        target=_exec_pth_worker,
+        args=(data['imports_code'], data['model_code'], data['distributed'], data['request_type'], result_queue),
+    )
+    process.start()
+    process.join(EXEC_TIMEOUT_S)
+
+    if process.is_alive():
+        process.terminate()
+        process.join(5)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        logger.error("exec_pth timed out after %ss - submitted code likely never returns", EXEC_TIMEOUT_S)
+        return Response(content=b"", status_code=400)
+
+    if result_queue.empty():
+        logger.error("exec_pth worker exited without a result (exit code %s)", process.exitcode)
+        return Response(content=b"", status_code=400)
+
+    status, payload = result_queue.get()
+    if status == "ok":
+        if data['request_type'] == 'input_shape':
+            return Response(content=payload, media_type="text/plain", status_code=200)
+        return Response(content=b"", status_code=200)
+    elif status == "not_found":
+        return Response(content=b"", status_code=404)
+    else:
+        logger.error("exec_pth failed: %s", payload)
         return Response(content=b"", status_code=400)
 
 def get_sample_data(batch):

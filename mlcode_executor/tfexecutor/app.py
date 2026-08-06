@@ -1,5 +1,6 @@
 import json
 import logging
+import multiprocessing
 import os
 from typing import Any, Optional
 
@@ -81,31 +82,89 @@ def get_sample_model():
     return tf_executor_sample_model
 
 
-@post("/exec_tf/", sync_to_thread=True)
-def tensorflow_executor(data: dict[str, Any]) -> Response:
-    try:
-        logger.info("Data code received %s", data)
-        model = exec_model(data['imports_code'], data['model_code'], data['distributed'])
+# Wall-clock cap on exec()'d model code. Generous - real model-building
+# code is milliseconds to low seconds - but bounded, so a submission with
+# an infinite loop can't tie up this service forever.
+EXEC_TIMEOUT_S = 60
 
-        if data['request_type'] == "check":
+
+def _exec_tf_worker(imports_code, model_code, distributed, request_type, result_queue) -> None:
+    """Runs in a *subprocess* (see tensorflow_executor below for why) - do
+    all model-dependent work here, not just exec_model() itself, since a
+    Keras model object isn't reliably picklable back across the process
+    boundary. Only json/bytes-safe results go on the queue.
+    """
+    try:
+        model = exec_model(imports_code, model_code, distributed)
+        if request_type == "check":
             model.summary()
-            return Response(content=b"", status_code=200)
-        elif data['request_type'] == 'load_model':
+            result_queue.put(("ok", b""))
+        elif request_type == "load_model":
             filename = "model.h5"
             model.save(filename)
-            with open(filename, 'rb') as f:
+            with open(filename, "rb") as f:
                 file_data = f.read()
             if os.path.exists(filename):
                 os.remove(filename)
                 """Removes the temporally file created"""
-            return Response(content=file_data, media_type="application/octet-stream", status_code=200)
-        elif data['request_type'] == 'input_shape':
-            input_shape = str(model.input_shape)
-            return Response(content=input_shape, media_type="text/plain", status_code=200)
-
-        return Response(content=b"", status_code=404)
+            result_queue.put(("ok", file_data))
+        elif request_type == "input_shape":
+            result_queue.put(("ok", str(model.input_shape)))
+        else:
+            result_queue.put(("not_found", None))
     except Exception as e:
-        logger.error("exec_tf failed: %s", e)
+        result_queue.put(("error", str(e)))
+
+
+@post("/exec_tf/", sync_to_thread=True)
+def tensorflow_executor(data: dict[str, Any]) -> Response:
+    logger.info("Data code received %s", data)
+
+    # exec()'d code runs in a genuinely killable child process, not this
+    # thread - Python has no supported way to forcibly stop a *thread*
+    # stuck in an infinite loop (this handler only gets its own thread at
+    # all via sync_to_thread=True), so a hung submission would otherwise
+    # pin a worker for that thread's entire lifetime. spawn (not fork) is
+    # required for TensorFlow/CUDA safety - a forked child would inherit
+    # this process's already-initialized GPU context, which TF/CUDA does
+    # not support safely across fork(). The real cost: the child re-runs
+    # this whole module's imports (including TensorFlow itself) from
+    # scratch, adding real per-call latency versus calling exec_model()
+    # in-process - accepted here since correctness (a hung submission
+    # can't outlive its timeout) matters more than shaving that off.
+    ctx = multiprocessing.get_context("spawn")
+    result_queue = ctx.Queue()
+    process = ctx.Process(
+        target=_exec_tf_worker,
+        args=(data['imports_code'], data['model_code'], data['distributed'], data['request_type'], result_queue),
+    )
+    process.start()
+    process.join(EXEC_TIMEOUT_S)
+
+    if process.is_alive():
+        process.terminate()
+        process.join(5)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        logger.error("exec_tf timed out after %ss - submitted code likely never returns", EXEC_TIMEOUT_S)
+        return Response(content=b"", status_code=400)
+
+    if result_queue.empty():
+        logger.error("exec_tf worker exited without a result (exit code %s)", process.exitcode)
+        return Response(content=b"", status_code=400)
+
+    status, payload = result_queue.get()
+    if status == "ok":
+        if data['request_type'] == 'load_model':
+            return Response(content=payload, media_type="application/octet-stream", status_code=200)
+        elif data['request_type'] == 'input_shape':
+            return Response(content=payload, media_type="text/plain", status_code=200)
+        return Response(content=b"", status_code=200)
+    elif status == "not_found":
+        return Response(content=b"", status_code=404)
+    else:
+        logger.error("exec_tf failed: %s", payload)
         return Response(content=b"", status_code=400)
 
 
