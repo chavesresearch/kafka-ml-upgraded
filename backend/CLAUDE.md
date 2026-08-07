@@ -130,6 +130,61 @@ backend-deployment.yaml`, which points at this port's image.
    because* of the explicit import already in `conftest.py` - don't remove
    it as apparently-unused.
 
+## Importing an already-trained model (2026-08-07)
+
+`POST /deployments/import` (`app/controllers/deployments.py`) lets an
+operator register an already-trained model for inference without a real
+training Job - the platform's normal path is always Model ->
+Configuration -> Deployment -> (real K8s training Job) -> finished
+`TrainingResult`; this is the same chain with the Job step skipped and
+the weights supplied directly. No schema change was needed: it just
+creates a `Deployment` and one `TrainingResult` with `status="finished"`
+up front, writes the uploaded file to the same
+`{TRAINED_MODELS_DIR}/{result.id}.h5`/`.pth` convention `upload_result`
+already uses, and every downstream consumer (real-time inference
+deploy, IoT/TFLite deploy, download, chart view) works completely
+unmodified - none of them know or care whether a result came from a
+real training run or an import.
+
+Scope, deliberately: only a **single (non-distributed) model**.
+`configurations.py`'s `_expand_with_children` auto-expands a distributed
+model's whole father/child chain into a configuration's `ml_models`, so
+a distributed configuration always has >= 2 entries - checked explicitly
+(and first, before the generic "exactly one model" length check, so the
+error message names the real reason) rather than relying on the length
+check to catch it as a side effect.
+
+**The upload is validated before anything is persisted** - `POST`s the
+file to the matching mlcode_executor service's new `/validate_model/`
+endpoint (`tf.keras.models.load_model()` for TF; for PyTorch, `exec()`s
+the model's own `code` to build the untrained module, then
+`load_state_dict()`s the uploaded weights onto it) and only creates the
+`Deployment`/`TrainingResult`/writes the file if that returns `200`. A
+bad upload gets the real Keras/PyTorch error message back, not a generic
+one, and nothing is left half-created. This means, for PyTorch
+specifically, `code` must be the *exact* architecture that produced the
+uploaded weights - `load_state_dict()` fails on any mismatch (missing/
+extra/wrong-shape params), unlike TensorFlow's H5 format, which bakes in
+both architecture and weights, so the model's `code` field isn't even
+read at real-time-inference time (confirmed via `model_inference/
+tensorflow/inference.py`, which just does `keras.models.load_model()` on
+the downloaded file directly).
+
+Verified for real, not just via the pytest suite below: built and
+deployed the real `backend`/`tfexecutor`/`pthexecutor` images, imported
+a real (untrained-but-real) `.h5` and a real `.pth` against the live
+cluster, confirmed both landed as `status="finished"` results with the
+uploaded bytes on disk, confirmed the TF import could actually be
+deployed for real-time inference and produce a real prediction from a
+real running pod, and confirmed a garbage upload is rejected with the
+real underlying error (`Unable to synchronously open file (file
+signature not found)`).
+
+`uv run pytest tests/test_deployments.py -k import` (6 new tests,
+40/40 total) - mocks `httpx.AsyncClient.post` (the one genuinely
+external call, to the executor's `/validate_model/`), not the executor
+service itself.
+
 ## Bugs found in the Django backend and fixed here
 
 Don't reintroduce these while porting more of the old Django backend's

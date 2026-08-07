@@ -2,13 +2,18 @@ import json
 import logging
 import os
 import re
-from typing import Any
+from typing import Annotated, Any, Optional
 
+import anyio
 import httpx
+import msgspec
 from kubernetes_asyncio import client as k8s_client, config as k8s_config
 from litestar import Router, get, delete
 from litestar import post as litestar_post
+from litestar.datastructures import UploadFile
+from litestar.enums import RequestEncodingType
 from litestar.exceptions import HTTPException
+from litestar.params import Body
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -382,11 +387,125 @@ async def get_deployment_results(pk: int, db_session: AsyncSession) -> list[dict
     return [training_result_dict(r) for r in result.scalars().all()]
 
 
+class ImportDeploymentUpload(msgspec.Struct):
+    configuration: str
+    trained_model: UploadFile
+    # JSON: {"train_metrics": ..., "val_metrics": ..., "test_metrics": ...,
+    # "training_time": ...} - every key optional, matches
+    # TrainingResult's own nullable metric columns.
+    metrics: Optional[str] = None
+
+
+@litestar_post("/deployments/import", tags=["deployments"], status_code=201)
+async def import_deployment(
+    data: Annotated[ImportDeploymentUpload, Body(media_type=RequestEncodingType.MULTI_PART)],
+    db_session: AsyncSession,
+    http_client: httpx.AsyncClient,
+) -> None:
+    """Imports an already-trained model for real-time/IoT inference,
+    without a real training Job - creates a Deployment and one
+    already-`"finished"` TrainingResult for `configuration`'s single
+    model. The uploaded weights are validated against the matching
+    mlcode_executor service (`/validate_model/` - a real `load_model()`/
+    `load_state_dict()` attempt, not just a file-type sniff) *before*
+    anything is persisted, so a bad upload never creates a half-finished
+    row. For PyTorch specifically, this means the model's `code` must be
+    the exact architecture that produced the uploaded weights -
+    `load_state_dict()` fails on any mismatch (params missing, extra,
+    or wrong shape).
+
+    Only single (non-distributed) models are supported - a distributed
+    father/child pair would need two coordinated weight files, out of
+    scope for this endpoint.
+    """
+    configuration = await db_session.get(
+        Configuration, int(data.configuration), options=[selectinload(Configuration.ml_models)]
+    )
+    if configuration is None:
+        raise HTTPException(status_code=400, detail="Configuration not found")
+
+    # Checked before the length check below, not after: create_configuration
+    # auto-expands a distributed model's whole father/child chain into
+    # ml_models (see configurations.py's _expand_with_children), so a
+    # distributed configuration always has >= 2 entries anyway - checking
+    # this first gives the specific, actually-actionable error instead of
+    # a generic "pick just one model" message that would technically also
+    # be true but not the real reason.
+    if any(m.distributed for m in configuration.ml_models):
+        raise HTTPException(
+            status_code=400,
+            detail="Importing a trained model is not supported for distributed models.",
+        )
+    if len(configuration.ml_models) != 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Importing a trained model requires a configuration with exactly one model.",
+        )
+    model = configuration.ml_models[0]
+
+    metrics: dict[str, Any] = {}
+    if data.metrics:
+        try:
+            metrics = json.loads(data.metrics)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid metrics JSON: {e}") from e
+
+    model_bytes = await data.trained_model.read()
+
+    try:
+        if model.framework == "tf":
+            resp = await http_client.post(
+                settings.TENSORFLOW_EXECUTOR_URL + "validate_model/",
+                files={"import.h5": model_bytes},
+            )
+        else:
+            resp = await http_client.post(
+                settings.PYTORCH_EXECUTOR_URL + "validate_model/",
+                data={"imports_code": model.imports, "model_code": model.code},
+                files={"trained_model": ("weights.pth", model_bytes)},
+            )
+    except httpx.HTTPError as e:
+        logger.error(f"Model validation service error: {e}")
+        raise HTTPException(status_code=503, detail="Error contacting model validation service.") from e
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=400, detail=f"Uploaded model failed validation: {resp.text}"
+        )
+
+    deployment = Deployment(configuration=configuration)
+    db_session.add(deployment)
+    await db_session.flush()
+
+    result = TrainingResult(
+        model=model,
+        deployment=deployment,
+        status="finished",
+        train_metrics=metrics.get("train_metrics"),
+        val_metrics=metrics.get("val_metrics"),
+        test_metrics=metrics.get("test_metrics"),
+        training_time=metrics.get("training_time"),
+    )
+    db_session.add(result)
+    await db_session.flush()
+
+    # mkdir is a fast metadata-only op - matches training_results.py's
+    # upload_result, which doesn't offload it either; only the actual
+    # (potentially large) file write below is.
+    trained_dir = settings.MEDIA_ROOT / settings.TRAINED_MODELS_DIR
+    trained_dir.mkdir(parents=True, exist_ok=True)
+    extension = "h5" if model.framework == "tf" else "pth"
+    model_path = trained_dir / f"{result.id}.{extension}"
+    await anyio.to_thread.run_sync(model_path.write_bytes, model_bytes)
+    result.trained_model_path = settings.TRAINED_MODELS_DIR + f"{result.id}.{extension}"
+
+
 router = Router(
     path="/",
     route_handlers=[
         list_deployments,
         create_deployment,
+        import_deployment,
         list_deployments_for_configuration,
         delete_deployment,
         get_deployment_results,
