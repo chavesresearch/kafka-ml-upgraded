@@ -135,6 +135,44 @@ def test_convert_to_tflite_no_quantization_returns_flatbuffer(client):
     assert len(response.content) > 0
 
 
+def test_convert_to_tflite_matches_backends_actual_upload_shape(client):
+    """The other convert_to_tflite test passes an explicit (filename, ...)
+    tuple, which happens to hide a real bug: ../../backend/app/controllers/
+    iot_devices.py posts the model as `files={f"{result_id}.h5": model_bytes}`
+    - bare bytes, no tuple. httpx's multipart encoder then has no .name to
+    read a filename from and falls back to "upload" (see httpx's FileField),
+    so the actual production request never carries a .h5-suffixed filename
+    at all - only the correct field *name* does. convert_to_tflite used to
+    pass `model_file.filename` ("upload") to _convert_model_to_tflite
+    instead of the field name it had already matched on, making every real
+    IoT/TFLite deploy fail with "File format not supported: filepath=./tmp/
+    upload". Fixed to use the field name throughout - this test pins that
+    fix against the real backend's request shape, not the friendlier one
+    the other test happens to send."""
+    import tensorflow as tf
+
+    model = tf.keras.models.Sequential(
+        [
+            tf.keras.layers.Dense(4, activation="relu", input_shape=(2,)),
+            tf.keras.layers.Dense(1),
+        ]
+    )
+    model.compile(loss="mse", optimizer="sgd")
+    model_path = "/tmp/tfexecutor_test_convert_backend_shape.h5"
+    model.save(model_path)
+    with open(model_path, "rb") as f:
+        model_bytes = f.read()
+
+    response = client.post(
+        "/convert_to_tflite/",
+        files={"42.h5": model_bytes},
+        data={"applyQuantization": "false"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert len(response.content) > 0
+
+
 def test_convert_to_tflite_missing_file_returns_400(client):
     response = client.post(
         "/convert_to_tflite/",

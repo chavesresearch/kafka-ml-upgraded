@@ -348,9 +348,11 @@ async def convert_to_tflite(request: Request) -> Response:
     # matches how the backend posts it (`files={f"{result_id}.h5": ...}`),
     # so we look for a field ending in .h5 rather than a fixed field name.
     model_file: Optional[UploadFile] = None
+    model_filename: Optional[str] = None
     for name, value in form.items():
         if isinstance(value, UploadFile) and name.endswith('.h5'):
             model_file = value
+            model_filename = name
             break
 
     if model_file is None:
@@ -366,8 +368,14 @@ async def convert_to_tflite(request: Request) -> Response:
     model_bytes = await model_file.read()
 
     try:
+        # Use the multipart field name (e.g. "42.h5"), not
+        # model_file.filename - the backend posts raw bytes via httpx's
+        # files={} dict form, which only uses the dict key as the field
+        # name and leaves the actual filename part unset (httpx falls back
+        # to "upload" for a bare bytes value with no .name attribute), so
+        # model_file.filename never carried a real extension to begin with.
         tflite_bytes = await anyio.to_thread.run_sync(
-            _convert_model_to_tflite, model_bytes, model_file.filename, quantization_params
+            _convert_model_to_tflite, model_bytes, model_filename, quantization_params
         )
     except Exception as e:
         logger.error("TFLite conversion failed: %s", e)
