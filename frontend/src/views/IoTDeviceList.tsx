@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import { CloudUpload, CloudDownload, Copy, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import DataTable from '@/components/DataTable'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getIoTDevices, deleteIoTDevice } from '@/api'
 import { useNotify } from '@/notify'
@@ -62,9 +62,9 @@ export default function IoTDeviceList() {
       header: 'Configuration',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="ghost" size="icon" title="Copy configuration" onClick={() => copyToClipboard(row.original.backlog)}>
+        <TooltipIconButton variant="ghost" tooltip="Copy configuration" onClick={() => copyToClipboard(row.original.backlog)}>
           <Copy className="size-4" />
-        </Button>
+        </TooltipIconButton>
       ),
     },
     {
@@ -84,19 +84,18 @@ export default function IoTDeviceList() {
       enableSorting: false,
       cell: ({ row }) => (
         <div className="flex gap-1">
-          <Button variant="ghost" size="icon" title="View/edit device" asChild>
+          <TooltipIconButton variant="ghost" tooltip="View/edit device" asChild>
             <Link to={`/device/${row.original.id}`}>
               <Pencil className="size-4" />
             </Link>
-          </Button>
-          <Button
+          </TooltipIconButton>
+          <TooltipIconButton
             variant="ghost"
-            size="icon"
-            title="Delete device"
+            tooltip="Delete device"
             onClick={() => confirmDelete(row.original.id, row.original.token)}
           >
             <Trash2 className="size-4" />
-          </Button>
+          </TooltipIconButton>
         </div>
       ),
     },
@@ -107,11 +106,11 @@ export default function IoTDeviceList() {
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold">Tasmota ML-Enabled IoT Devices</h1>
         <span className="flex-1" />
-        <Button size="icon" className="rounded-full" title="Add a new device" asChild>
+        <TooltipIconButton tooltip="Add a new device" className="rounded-full" asChild>
           <Link to="/devices-create">
             <Plus className="size-4" />
           </Link>
-        </Button>
+        </TooltipIconButton>
       </div>
 
       <DataTable columns={columns} data={devices} getRowId={(d) => String(d.id)} loading={loading} />

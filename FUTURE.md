@@ -1013,6 +1013,31 @@ one of these comes up again - "not planned" is a scoping call made on
     actions visible and correctly wired, zero console errors.
     `pnpm typecheck`/`test:run` (106/106)/`build`/`lint` all still pass.
 
+29. **Every icon-only button's native `title` tooltip was slow to appear
+    and unstyled** - raised directly by the user right after item 28
+    above. Replaced across the whole app (`ModelList`, `DatasourceList`,
+    `IoTDeviceList`, `InferenceList`, `ResultList`, `PlotView`,
+    `ResultCompareView`, `VisualizationView`, `ConfigurationList`,
+    `DeploymentList`, `Layout`'s theme toggle) with a new
+    `TooltipIconButton` component wrapping shadcn's `Tooltip` (already
+    wired up globally via `<TooltipProvider>` in `main.tsx`, just unused
+    until now). **Found a real accessibility regression via the test
+    suite, not by inspection**: Radix's `Tooltip` doesn't wire its
+    content into the trigger's accessible name by default, so swapping
+    `title` for a visual-only tooltip would have silently dropped every
+    button's accessible name - `title`'s HTML fallback rule was doing
+    that job unnoticed. Fixed by having `TooltipIconButton` set
+    `aria-label={tooltip}` explicitly. `ModelList.test.tsx`'s existing
+    `getByTitle(...)` query and 3 in `e2e/golden-path.spec.ts` (plus one
+    dropdown-menu-based Deploy click, since item 28 removed that dropdown
+    entirely) all broke immediately and were fixed to query by role/name
+    instead - a real regression the suite caught before it shipped, not
+    after. Verified live: hovered a real button in the deployed app via
+    Playwright and screenshotted the actual rendered tooltip (dark
+    rounded pill, arrow, fade/zoom animation), confirming the real
+    component renders, not just that nothing threw. `pnpm typecheck`/
+    `test:run` (106/106)/`build`/`lint`/`test:e2e` (3/3) all pass.
+
 ### Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated

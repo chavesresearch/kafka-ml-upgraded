@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import ModelList from './ModelList'
 
 vi.mock('@/api', () => ({
@@ -13,13 +14,15 @@ import { getModels, deleteModel } from '@/api'
 
 function renderModelList() {
   return render(
-    <MemoryRouter initialEntries={['/models']}>
-      <Routes>
-        <Route path="/models" element={<ModelList />} />
-        <Route path="/model-create" element={<div />} />
-        <Route path="/model/:id" element={<div />} />
-      </Routes>
-    </MemoryRouter>,
+    <TooltipProvider>
+      <MemoryRouter initialEntries={['/models']}>
+        <Routes>
+          <Route path="/models" element={<ModelList />} />
+          <Route path="/model-create" element={<div />} />
+          <Route path="/model/:id" element={<div />} />
+        </Routes>
+      </MemoryRouter>
+    </TooltipProvider>,
   )
 }
 
@@ -66,7 +69,7 @@ describe('ModelList', () => {
     renderModelList()
     expect(await screen.findByText('To be deleted')).toBeInTheDocument()
 
-    await user.click(screen.getByTitle('Delete model'))
+    await user.click(screen.getByRole('button', { name: 'Delete model' }))
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() => expect(deleteModel).toHaveBeenCalledWith(1))

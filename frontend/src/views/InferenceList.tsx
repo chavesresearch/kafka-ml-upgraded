@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Check, Info, Square, Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import DataTable from '@/components/DataTable'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getInferences, stopInference, deleteInference } from '@/api'
 import { useNotify } from '@/notify'
@@ -95,9 +95,9 @@ export default function InferenceList() {
       header: 'Info',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="ghost" size="icon" title="Connection details" onClick={() => openInfoDialog(row.original)}>
+        <TooltipIconButton variant="ghost" tooltip="Connection details" onClick={() => openInfoDialog(row.original)}>
           <Info className="size-4" />
-        </Button>
+        </TooltipIconButton>
       ),
     },
     {
@@ -123,16 +123,16 @@ export default function InferenceList() {
         const inference = row.original
         if (inference.status === 'stopped') {
           return (
-            <Button variant="ghost" size="icon" title="Remove inference" onClick={() => confirmDeletion(inference.id)}>
+            <TooltipIconButton variant="ghost" tooltip="Remove inference" onClick={() => confirmDeletion(inference.id)}>
               <Trash2 className="size-4" />
-            </Button>
+            </TooltipIconButton>
           )
         }
         if (inference.status === 'deployed') {
           return (
-            <Button variant="ghost" size="icon" title="Stop inference" onClick={() => confirmStopping(inference.id)}>
+            <TooltipIconButton variant="ghost" tooltip="Stop inference" onClick={() => confirmStopping(inference.id)}>
               <Square className="size-4" />
-            </Button>
+            </TooltipIconButton>
           )
         }
         return null

@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import DataTable from '@/components/DataTable'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import MetricsTable from '@/components/MetricsTable'
 import MultiSelect from '@/components/MultiSelect'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -144,9 +145,9 @@ export default function ResultList() {
       header: 'Metrics',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="ghost" size="icon" onClick={() => openMetricsDialog(row.original)}>
+        <TooltipIconButton variant="ghost" tooltip="Metrics" onClick={() => openMetricsDialog(row.original)}>
           <Info className="size-4" />
-        </Button>
+        </TooltipIconButton>
       ),
     },
     {
@@ -168,14 +169,13 @@ export default function ResultList() {
       enableSorting: false,
       cell: ({ row }) =>
         row.original.status === 'finished' ? (
-          <Button
+          <TooltipIconButton
             variant="ghost"
-            size="icon"
-            title="Deploy inference"
+            tooltip="Deploy inference"
             onClick={() => navigate(`/results/inference/${row.original.id}`)}
           >
             <Play className="size-4" />
-          </Button>
+          </TooltipIconButton>
         ) : null,
     },
     {
@@ -230,9 +230,9 @@ export default function ResultList() {
           )}
         </h1>
         <span className="flex-1" />
-        <Button variant="ghost" size="icon" title="Refresh" onClick={refreshData}>
+        <TooltipIconButton variant="ghost" tooltip="Refresh" onClick={refreshData}>
           <RefreshCw className="size-4" />
-        </Button>
+        </TooltipIconButton>
       </div>
 
       {results.length >= 2 && (

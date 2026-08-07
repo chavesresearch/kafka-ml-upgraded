@@ -4,6 +4,7 @@ import { Eye, Play, ExternalLink, Trash2, Plus, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getConfigurations, deleteConfiguration } from '@/api'
 import { useNotify } from '@/notify'
@@ -54,11 +55,11 @@ export default function ConfigurationList() {
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold">Configurations</h1>
         <span className="flex-1" />
-        <Button size="icon" className="rounded-full" title="Add a configuration" asChild>
+        <TooltipIconButton tooltip="Add a configuration" className="rounded-full" asChild>
           <Link to="/configuration-create">
             <Plus className="size-4" />
           </Link>
-        </Button>
+        </TooltipIconButton>
       </div>
 
       <Input placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-xs" />
@@ -76,36 +77,33 @@ export default function ConfigurationList() {
                 <p className="text-sm text-muted-foreground">{configuration.description}</p>
               </div>
               <div className="flex gap-1">
-                <Button
+                <TooltipIconButton
                   variant="ghost"
-                  size="icon"
-                  title="View"
+                  tooltip="View"
                   onClick={() => navigate(`/configuration/${configuration.id}`)}
                 >
                   <Eye className="size-4" />
-                </Button>
-                <Button variant="ghost" size="icon" title="Deploy" onClick={() => navigate(`/deploy/${configuration.id}`)}>
+                </TooltipIconButton>
+                <TooltipIconButton variant="ghost" tooltip="Deploy" onClick={() => navigate(`/deploy/${configuration.id}`)}>
                   <Play className="size-4" />
-                </Button>
-                <Button
+                </TooltipIconButton>
+                <TooltipIconButton
                   variant="ghost"
-                  size="icon"
-                  title="Import trained model"
+                  tooltip="Import trained model"
                   onClick={() => navigate(`/import/${configuration.id}`)}
                 >
                   <Upload className="size-4" />
-                </Button>
-                <Button
+                </TooltipIconButton>
+                <TooltipIconButton
                   variant="ghost"
-                  size="icon"
-                  title="Deployments"
+                  tooltip="Deployments"
                   onClick={() => navigate(`/deployments/${configuration.id}`)}
                 >
                   <ExternalLink className="size-4" />
-                </Button>
-                <Button variant="ghost" size="icon" title="Remove" onClick={() => confirmDelete(configuration.id)}>
+                </TooltipIconButton>
+                <TooltipIconButton variant="ghost" tooltip="Remove" onClick={() => confirmDelete(configuration.id)}>
                   <Trash2 className="size-4" />
-                </Button>
+                </TooltipIconButton>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">

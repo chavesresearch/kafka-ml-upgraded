@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import DataTable from '@/components/DataTable'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { getDatasources, deployDatasource } from '@/api'
 import { useNotify } from '@/notify'
 import { formatDate, prettyJson } from '@/logic/format'
@@ -61,14 +62,13 @@ export default function DatasourceList() {
       header: 'Properties',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button
+        <TooltipIconButton
           variant="ghost"
-          size="icon"
-          title="Datasource properties"
+          tooltip="Datasource properties"
           onClick={() => setPropertiesDialogData(row.original)}
         >
           <Info className="size-4" />
-        </Button>
+        </TooltipIconButton>
       ),
     },
     {
@@ -76,9 +76,9 @@ export default function DatasourceList() {
       header: 'Send again',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="ghost" size="icon" title="Send again to another deployment" onClick={() => openSendDialog(row.original)}>
+        <TooltipIconButton variant="ghost" tooltip="Send again to another deployment" onClick={() => openSendDialog(row.original)}>
           <LogIn className="size-4" />
-        </Button>
+        </TooltipIconButton>
       ),
     },
   ]

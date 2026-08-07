@@ -92,8 +92,10 @@ test.describe('golden path: model -> configuration -> deployment -> training -> 
     const configId = backend.configurations[0].id
 
     // -- 3. Deploy the configuration ------------------------------------------
-    await configCard.locator('[data-slot="dropdown-menu-trigger"]').click()
-    await page.getByRole('menuitem', { name: 'Deploy', exact: true }).click()
+    // ConfigurationList shows its actions as inline icon buttons (each with
+    // its own tooltip/aria-label), not a hidden dropdown menu - see
+    // ConfigurationList.tsx.
+    await configCard.getByRole('button', { name: 'Deploy', exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`/deploy/${configId}$`))
 
     // shadcn's CardTitle renders a plain <div data-slot="card-title">, not
@@ -135,7 +137,7 @@ test.describe('golden path: model -> configuration -> deployment -> training -> 
     await page.keyboard.press('Escape')
 
     // -- 5. Deploy the finished result for inference --------------------------
-    await resultRow.getByTitle('Deploy inference').click()
+    await resultRow.getByRole('button', { name: 'Deploy inference' }).click()
     await expect(page).toHaveURL(new RegExp(`/results/inference/${resultId}$`))
 
     await fieldByLabel(page, 'Number of replicas *').locator('input').fill('1')
@@ -160,7 +162,7 @@ test.describe('golden path: model -> configuration -> deployment -> training -> 
     })
     // Connection details (topics, host, etc.) live behind an Info-icon
     // modal, not as plain visible cells - see InferenceList.tsx.
-    await page.getByTitle('Connection details').click()
+    await page.getByRole('button', { name: 'Connection details' }).click()
     await expect(page.getByRole('dialog')).toContainText('e2e-input-topic')
     await expect(page.getByRole('dialog')).toContainText('e2e-output-topic')
   })
@@ -200,7 +202,7 @@ test.describe('golden path: model -> configuration -> deployment -> training -> 
     await page.goto('/models')
     await expect(page.getByRole('cell', { name: 'to-delete' })).toBeVisible()
 
-    await page.getByTitle('Delete model').click()
+    await page.getByRole('button', { name: 'Delete model' }).click()
     await page.getByRole('button', { name: 'Confirm' }).click()
 
     await expect(page.getByRole('cell', { name: 'to-delete' })).not.toBeVisible()

@@ -356,6 +356,46 @@ through the real rendered form and Import button, confirmed the success
 toast, the navigation to `/deployments/:id`, and the new finished result
 actually appearing there - zero console errors throughout.
 
+`ConfigurationList`/`DeploymentList` were also the only two list views
+hiding their actions behind a "⋮" dropdown, unlike every other list in
+the app - found because the user couldn't locate the new "Import trained
+model" action, since it was inside that hidden menu. Converted both to
+the same inline-icon-buttons-with-tooltip pattern `ModelList`/
+`DatasourceList`/etc. already used.
+
+## `TooltipIconButton` - shadcn tooltips instead of native `title` (2026-08-07)
+
+Prompted directly: the native browser tooltip every icon-only button's
+bare `title` attribute produces is slow to appear and unstyled. Every
+such button across the app (`ModelList`, `DatasourceList`, `IoTDeviceList`,
+`InferenceList`, `ResultList`, `PlotView`, `ResultCompareView`,
+`VisualizationView`, `ConfigurationList`, `DeploymentList`, `Layout`'s
+theme toggle) now goes through `src/components/TooltipIconButton.tsx`, a
+thin wrapper composing shadcn's `Tooltip`/`TooltipTrigger`/`TooltipContent`
+around `Button` - `TooltipProvider` was already wired up globally in
+`main.tsx` (`delayDuration={300}`), just unused until now.
+
+**Real accessibility regression caught by the test suite, not by
+inspection**: Radix's `Tooltip` does not wire its content into the
+trigger's accessible name by default (only `aria-describedby` while
+open) - simply swapping `title` for a visual-only tooltip would have
+silently dropped every one of these buttons' accessible name (the exact
+thing `title`'s HTML fallback rule used to provide "for free"). Fixed by
+having `TooltipIconButton` set `aria-label={tooltip}` explicitly (a
+caller can still override with its own `aria-label`, e.g. if it needs a
+different accessible name than the visible tooltip text). Caught because
+`ModelList.test.tsx`'s existing `getByTitle('Delete model')` query and
+three `getByTitle(...)` locators in `e2e/golden-path.spec.ts` all broke
+the moment `title` was removed - fixed by switching those to
+`getByRole('button', { name: ... })`, which now works precisely because
+of the `aria-label` fix (not despite it).
+
+Verified live: hovered a real button in the deployed app via Playwright
+and screenshotted the actual rendered tooltip (dark rounded pill with an
+arrow, fades/zooms in) - confirmed it's genuinely the shadcn component
+rendering, not just that no error was thrown. `pnpm typecheck`/
+`test:run` (106/106)/`build`/`lint`/`test:e2e` (3/3) all pass.
+
 ## Remaining work
 
 1. **Feature-parity audit vs. the old Vue app hasn't been done by a human

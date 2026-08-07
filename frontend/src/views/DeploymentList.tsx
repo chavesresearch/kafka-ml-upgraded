@@ -4,6 +4,7 @@ import { Eye, Trash2, PencilLine, LogIn, Square, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getDeployments, getDeploymentsOfConfiguration, getConfiguration, deleteDeployment } from '@/api'
 import { useNotify } from '@/notify'
@@ -105,12 +106,12 @@ export default function DeploymentList() {
                 <p className="text-sm text-muted-foreground">{formatDate(deployment.time)}</p>
               </div>
               <div className="flex gap-1">
-                <Button variant="ghost" size="icon" title="Results" onClick={() => navigate(`/results/${deployment.id}`)}>
+                <TooltipIconButton variant="ghost" tooltip="Results" onClick={() => navigate(`/results/${deployment.id}`)}>
                   <Eye className="size-4" />
-                </Button>
-                <Button variant="ghost" size="icon" title="Remove" onClick={() => confirmDelete(deployment.id)}>
+                </TooltipIconButton>
+                <TooltipIconButton variant="ghost" tooltip="Remove" onClick={() => confirmDelete(deployment.id)}>
                   <Trash2 className="size-4" />
-                </Button>
+                </TooltipIconButton>
               </div>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">

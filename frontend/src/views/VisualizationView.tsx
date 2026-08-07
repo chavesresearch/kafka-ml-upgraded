@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import CodeEditor from '@/components/CodeEditor'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { createVisualizationSocket, type VisualizationSocket } from '@/ws'
 import { useNotify } from '@/notify'
 import {
@@ -180,13 +181,13 @@ export default function VisualizationView() {
           <Label>Kafka output topic</Label>
           <div className="flex gap-2">
             <Input value={topic} onChange={(e) => setTopic(e.target.value)} disabled={connected || topicConfigured} />
-            <Button variant="outline" size="icon" title="Connect to topic" disabled={connected || topicConfigured} onClick={sendTopic}>
+            <TooltipIconButton variant="outline" tooltip="Connect to topic" disabled={connected || topicConfigured} onClick={sendTopic}>
               <Send className="size-4" />
-            </Button>
+            </TooltipIconButton>
             {connected && (
-              <Button variant="outline" size="icon" title="Disconnect" onClick={closeWS}>
+              <TooltipIconButton variant="outline" tooltip="Disconnect" onClick={closeWS}>
                 <X className="size-4" />
-              </Button>
+              </TooltipIconButton>
             )}
           </div>
         </div>

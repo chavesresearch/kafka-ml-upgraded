@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import MultiSelect from '@/components/MultiSelect'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { getChartInfo, getConfusionMatrix, downloadJSON } from '@/api'
 import { useNotify } from '@/notify'
 import { availableMetricNames, buildChartData, toRechartsData } from '@/logic/plot'
@@ -108,9 +109,9 @@ export default function PlotView() {
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold">Training result {resultID} — Metrics charts</h1>
         <span className="flex-1" />
-        <Button variant="ghost" size="icon" title="Refresh" onClick={() => refreshData()}>
+        <TooltipIconButton variant="ghost" tooltip="Refresh" onClick={() => refreshData()}>
           <RefreshCw className="size-4" />
-        </Button>
+        </TooltipIconButton>
       </div>
 
       <div className="max-w-md space-y-1.5">

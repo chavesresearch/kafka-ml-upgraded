@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import MultiSelect from '@/components/MultiSelect'
 import MetricsTable from '@/components/MetricsTable'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { getResults, getChartInfo, downloadJSON } from '@/api'
 import { useNotify } from '@/notify'
 import { buildMetricsTable } from '@/logic/format'
@@ -132,9 +133,9 @@ export default function ResultCompareView() {
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold">Compare training results</h1>
         <span className="flex-1" />
-        <Button variant="ghost" size="icon" title="Refresh" onClick={refreshData}>
+        <TooltipIconButton variant="ghost" tooltip="Refresh" onClick={refreshData}>
           <RefreshCw className="size-4" />
-        </Button>
+        </TooltipIconButton>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

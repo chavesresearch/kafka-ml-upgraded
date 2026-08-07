@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/theme'
 
@@ -95,17 +96,16 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 function ThemeToggleButton({ className }: { className?: string }) {
   const { isDark, toggle } = useTheme()
   return (
-    <Button
+    <TooltipIconButton
       variant="ghost"
-      size="icon"
       className={className}
       onClick={toggle}
       aria-label="Toggle theme"
       aria-pressed={isDark}
-      title={isDark ? 'Switch to light' : 'Switch to dark'}
+      tooltip={isDark ? 'Switch to light' : 'Switch to dark'}
     >
       {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-    </Button>
+    </TooltipIconButton>
   )
 }
 

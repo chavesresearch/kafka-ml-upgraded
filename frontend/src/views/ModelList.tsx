@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Eye, Plus, Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import DataTable from '@/components/DataTable'
+import TooltipIconButton from '@/components/TooltipIconButton'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getModels, deleteModel } from '@/api'
 import { useNotify } from '@/notify'
@@ -73,14 +73,14 @@ export default function ModelList() {
       enableSorting: false,
       cell: ({ row }) => (
         <div className="flex gap-1">
-          <Button variant="ghost" size="icon" title="View/edit model" asChild>
+          <TooltipIconButton variant="ghost" tooltip="View/edit model" asChild>
             <Link to={`/model/${row.original.id}`}>
               <Eye className="size-4" />
             </Link>
-          </Button>
-          <Button variant="ghost" size="icon" title="Delete model" onClick={() => confirmDelete(row.original.id)}>
+          </TooltipIconButton>
+          <TooltipIconButton variant="ghost" tooltip="Delete model" onClick={() => confirmDelete(row.original.id)}>
             <Trash2 className="size-4" />
-          </Button>
+          </TooltipIconButton>
         </div>
       ),
     },
@@ -91,11 +91,11 @@ export default function ModelList() {
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold">Models</h1>
         <span className="flex-1" />
-        <Button size="icon" className="rounded-full" title="Add a model" asChild>
+        <TooltipIconButton tooltip="Add a model" className="rounded-full" asChild>
           <Link to="/model-create">
             <Plus className="size-4" />
           </Link>
-        </Button>
+        </TooltipIconButton>
       </div>
 
       <DataTable columns={columns} data={models} getRowId={(m) => String(m.id)} loading={loading} />
