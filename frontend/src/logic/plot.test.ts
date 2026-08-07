@@ -39,7 +39,7 @@ describe('buildChartData', () => {
 
   it('pads labels to the longest selected series', () => {
     const data = buildChartData(metrics, ['loss', 'accuracy'], colors)
-    expect(data!.labels).toEqual([0, 1, 2]) // accuracy has 3 points, loss/loss_val have 2
+    expect(data!.labels).toEqual([1, 2, 3]) // accuracy has 3 points, loss/loss_val have 2
   })
 
   it('assigns colors by dataset index, wrapping around the palette', () => {
@@ -57,15 +57,15 @@ describe('toRechartsData', () => {
   it('pivots labels/datasets into one row per epoch, keyed by dataset label', () => {
     const shape = buildChartData(metrics, ['loss'], colors)!
     expect(toRechartsData(shape)).toEqual([
-      { x: 0, loss: 0.9, loss_val: 1.0 },
-      { x: 1, loss: 0.5, loss_val: 0.7 },
+      { x: 1, loss: 0.9, loss_val: 1.0 },
+      { x: 2, loss: 0.5, loss_val: 0.7 },
     ])
   })
 
   it('a shorter dataset yields undefined past its own length, not a fabricated value', () => {
     const shape = buildChartData(metrics, ['loss', 'accuracy'], colors)!
     const rows = toRechartsData(shape)
-    expect(rows[2]).toEqual({ x: 2, accuracy: 0.9, loss: undefined, loss_val: undefined })
+    expect(rows[2]).toEqual({ x: 3, accuracy: 0.9, loss: undefined, loss_val: undefined })
   })
 })
 
@@ -141,7 +141,7 @@ describe('buildComparisonChartData', () => {
   it('labels span the longest of all results\' own series, not just one', () => {
     // resultA's loss has 2 points, resultB's has only 1.
     const data = buildComparisonChartData([resultA, resultB], 'loss', resultColors)
-    expect(data!.labels).toEqual([0, 1])
+    expect(data!.labels).toEqual([1, 2])
   })
 
   it('a result missing the metric entirely is simply absent, not padded', () => {

@@ -31,7 +31,7 @@ export function buildChartData(
 
   const maxLen = Math.max(...shown.map((m) => m.series.length))
   return {
-    labels: Array.from({ length: maxLen }, (_, i) => i),
+    labels: Array.from({ length: maxLen }, (_, i) => i + 1),
     datasets: shown.map((m, i) => ({
       label: m.name,
       data: m.series.map((p) => p.value),
@@ -125,7 +125,7 @@ export function buildComparisonChartData(
   const color = (resultId: number) => resultColors[resultId] ?? '#888888'
 
   return {
-    labels: Array.from({ length: maxLen }, (_, i) => i),
+    labels: Array.from({ length: maxLen }, (_, i) => i + 1),
     datasets: perResult.flatMap(({ result, shape }) =>
       shape.datasets.map((d) => ({
         ...d,
