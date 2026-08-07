@@ -1,0 +1,76 @@
+# Runs integration-tests/ - the only suite that exercises real 9-CASE
+# training + inference end-to-end (real backend REST API calls, real
+# Kubernetes Jobs/ReplicationControllers, real Kafka messages) - see
+# integration-tests/README.md. This can NOT run on a GitHub-hosted
+# runner: per that README's "Prerequisites" section, it needs a real
+# local Kubernetes cluster (Docker Desktop's, in every session that's
+# built this so far) with `backend`/`kafka`/`tfexecutor`/`pthexecutor`
+# already deployed and reachable at localhost:8000/localhost:9094, plus
+# the kafkaml-configmap patched to point at locally-built :test images -
+# infrastructure a hosted runner doesn't have and this workflow can't
+# stand up on its own.
+#
+# workflow_dispatch only, on a self-hosted runner - manually triggered
+# ("run it on demand without a local checkout"), never a PR/push gate.
+# Register a self-hosted runner with the `kafka-ml-local-cluster` label
+# on a machine that already satisfies the README's prerequisites
+# (Settings -> Actions -> Runners -> New self-hosted runner, then
+# `./config.sh --url <repo-url> --token <token> --labels
+# kafka-ml-local-cluster` before `./run.sh`) before dispatching this.
+on:
+  workflow_dispatch:
+    inputs:
+      test_pattern:
+        description: >-
+          pytest -k expression to select specific test(s) - e.g.
+          "case1 or case2". Leave empty to run the full suite
+          (real training end-to-end, expect several minutes).
+        required: false
+        type: string
+      run_real_mnist_case:
+        description: >-
+          Also run one real-MNIST/epochs=5 case script
+          (mnist_case1_single_classic.py through mnist_case9_blockchain.py
+          - not part of the pytest suite, each takes real minutes on its
+          own). Enter the exact filename to run it, e.g.
+          "mnist_case1_single_classic.py", or leave empty to skip.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  integration-tests:
+    runs-on: [self-hosted, kafka-ml-local-cluster]
+    defaults:
+      run:
+        working-directory: integration-tests
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.9.x"
+      - name: Sync dependencies
+        run: uv sync
+      - name: Confirm the local cluster is reachable
+        # Fails fast with a clear message instead of pytest's own
+        # confusing connection-refused traceback several tests deep, if
+        # the runner's cluster isn't actually up.
+        run: |
+          curl -sf http://localhost:8000/results/ > /dev/null || {
+            echo "::error::backend not reachable at localhost:8000 - see integration-tests/README.md's Prerequisites section"
+            exit 1
+          }
+      - name: Run integration tests (pytest suite)
+        run: |
+          if [ -n "${{ inputs.test_pattern }}" ]; then
+            uv run pytest -v -s -k "${{ inputs.test_pattern }}"
+          else
+            uv run pytest -v -s
+          fi
+      - name: Run real-MNIST case script
+        if: inputs.run_real_mnist_case != ''
+        run: uv run python3 "${{ inputs.run_real_mnist_case }}"
