@@ -521,25 +521,40 @@ made both issues visible at actual size:
 
 **Section order (2026-08-07)**: "Single models" renders above
 "Distributed models" by default, per explicit request - a `sectionOrder:
-SectionKind[]` state (`['single', 'distributed']`) drives render order,
-with `ChevronUp`/`ChevronDown` `TooltipIconButton`s next to each visible
-heading to swap the two rows (`moveSection` swaps adjacent entries in
-the order array - generic beyond just 2 sections, though only 2 exist
-today). Not persisted across reloads - no requirement to, and every
-other piece of view-local UI state in this app (filters, dialog open
-state, etc.) already resets on remount the same way.
+SectionKind[]` state (`['single', 'distributed']`) drives render order.
+Not persisted across reloads - no requirement to, and every other piece
+of view-local UI state in this app (filters, dialog open state, etc.)
+already resets on remount the same way.
 
-When only one of the two groups has any content, its heading and the
-reorder controls don't render at all - nothing to distinguish it from
-or reorder against when there's only one row. `visibleSections =
-sectionOrder.filter(kind => chainsByKind[kind].length > 0)` drives both
-the loop and this condition (`visibleSections.length > 1`), so a single-
-group state renders as a plain unlabeled grid, same as the view looked
-before either row concept existed. Verified live: default order is
-single-above-distributed, clicking "Move down" on the top row swaps
-both position and disabled-state of the chevrons correctly (top row's
-"Move up" and bottom row's "Move down" are disabled), and filtering
-down to only one group's results removes the heading/controls entirely.
+When only one of the two groups has any content, its heading doesn't
+render at all - nothing to distinguish it from or reorder against when
+there's only one row. `visibleSections = sectionOrder.filter(kind =>
+chainsByKind[kind].length > 0)` drives both the loop and this condition
+(`visibleSections.length > 1`), so a single-group state renders as a
+plain unlabeled grid, same as the view looked before either row concept
+existed.
+
+**Reordering is real drag-and-drop, not up/down buttons (2026-08-07,
+same-day follow-up)** - explicitly requested over the button-based first
+attempt. Each visible heading is a native HTML5 `draggable` row (a
+`GripVertical` handle + the label, `cursor-grab`/`active:cursor-grabbing`)
+- no new dependency: the app already deliberately avoids pulling in a
+DnD library for things a few event handlers cover (see the removed
+`reactflow`/`@tanstack/react-query` history in "Remaining work" below),
+and reordering exactly 2 rows doesn't need one. `onDragStart` records
+the dragged kind; the drop target's `onDragOver` (`preventDefault()`,
+required for `onDrop` to fire at all on a non-form element) tracks
+`dragOverKind` for a dashed-border hover indicator; `handleDrop` removes
+the dragged kind from `sectionOrder` and reinserts it at the target's
+index - a real "move to position" reorder, not just a 2-item swap
+(written generically in case a third section kind is ever added). The
+dragged row itself drops to `opacity-40` while in flight, matching the
+usual drag-affordance convention. Verified live with Playwright's
+`locator.dragTo()` (dispatches the real `dragstart`/`dragover`/`drop`
+sequence, unlike synthesized mouse-move sequences) - default order is
+single-above-distributed, dragging the "Single models" row onto
+"Distributed models" swaps them, and filtering down to only one group's
+results removes the heading (and therefore the handle) entirely.
 
 ## Remaining work
 

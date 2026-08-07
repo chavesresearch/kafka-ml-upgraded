@@ -1860,13 +1860,20 @@ one of these comes up again - "not planned" is a scoping call made on
    pass; verified live in both themes against the real seeded data.
 
    **Third follow-up, same day**: "Single models" now renders above
-   "Distributed models" by default (was the other way round), and the
-   two rows are user-reorderable via `ChevronUp`/`ChevronDown` buttons
-   next to each heading - swaps adjacent entries in a `sectionOrder`
-   state array. When only one of the two groups actually has content,
-   its heading and the reorder controls don't render at all (nothing to
-   distinguish or reorder against with a single row) - the view falls
-   back to a plain, unlabeled grid exactly like before either row
-   concept existed. Verified live: default order, the swap (and each
-   row's now-correctly-disabled chevron at the top/bottom), and the
-   filtered-down-to-one-group case all behave as described.
+   "Distributed models" by default (was the other way round). When only
+   one of the two groups actually has content, its heading doesn't
+   render at all (nothing to distinguish or reorder against with a
+   single row) - the view falls back to a plain, unlabeled grid exactly
+   like before either row concept existed.
+
+   **Fourth follow-up, same day**: the up/down-button reordering from
+   the third follow-up was replaced with real drag-and-drop, explicitly
+   requested over buttons - a native HTML5 `draggable` row (`GripVertical`
+   handle) per heading, no new dependency (this app already avoids DnD/
+   graph libraries for things a few event handlers cover - see the
+   removed `reactflow` history above). Drop reinserts the dragged
+   section at the target's index (a real move-to-position reorder, not
+   just a 2-item swap). Verified live with Playwright's `dragTo()`
+   (dispatches the actual `dragstart`/`dragover`/`drop` sequence) -
+   dragging "Single models" onto "Distributed models" correctly swaps
+   their order.

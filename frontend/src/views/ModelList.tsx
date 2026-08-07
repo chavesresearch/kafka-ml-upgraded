@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, Pencil, Trash2, Plus, GitBranch, ChevronUp, ChevronDown } from 'lucide-react'
+import { Eye, Pencil, Trash2, Plus, GitBranch, GripVertical } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Card, CardAction, CardContent, CardHeader } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -10,6 +10,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { getModels, deleteModel } from '@/api'
 import { useNotify } from '@/notify'
 import { formatDate } from '@/logic/format'
+import { cn } from '@/lib/utils'
 import type { MLModel } from '@/types'
 
 interface ModelCardProps {
@@ -107,8 +108,10 @@ export default function ModelList() {
   const [filter, setFilter] = useState('')
   const [viewing, setViewing] = useState<MLModel | null>(null)
   // Single models above distributed by default - user-reorderable from
-  // there (swap the two rows), not persisted across reloads.
+  // there by dragging a row's handle, not persisted across reloads.
   const [sectionOrder, setSectionOrder] = useState<SectionKind[]>(['single', 'distributed'])
+  const [draggedKind, setDraggedKind] = useState<SectionKind | null>(null)
+  const [dragOverKind, setDragOverKind] = useState<SectionKind | null>(null)
 
   useEffect(() => {
     getModels()
@@ -163,15 +166,20 @@ export default function ModelList() {
   // don't render either.
   const visibleSections = sectionOrder.filter((kind) => chainsByKind[kind].length > 0)
 
-  function moveSection(kind: SectionKind, direction: -1 | 1) {
-    setSectionOrder((order) => {
-      const from = order.indexOf(kind)
-      const to = from + direction
-      if (to < 0 || to >= order.length) return order
-      const next = [...order]
-      ;[next[from], next[to]] = [next[to], next[from]]
-      return next
-    })
+  // Standard drag-and-drop reordering: pick up a row by its handle, drop it
+  // on another row to move it to that row's position (not just swap the
+  // two - written generically in case a third section kind ever exists,
+  // though only 2 do today).
+  function handleDrop(targetKind: SectionKind) {
+    if (draggedKind !== null && draggedKind !== targetKind) {
+      setSectionOrder((order) => {
+        const next = order.filter((kind) => kind !== draggedKind)
+        next.splice(order.indexOf(targetKind), 0, draggedKind)
+        return next
+      })
+    }
+    setDraggedKind(null)
+    setDragOverKind(null)
   }
 
   function confirmDelete(id: number) {
@@ -212,29 +220,33 @@ export default function ModelList() {
         <p className="py-8 text-center text-muted-foreground">{loading ? 'Loading…' : 'No models.'}</p>
       )}
 
-      {visibleSections.map((kind, index) => (
+      {visibleSections.map((kind) => (
         <div key={kind} className="space-y-3">
           {visibleSections.length > 1 && (
-            <div className="flex items-center gap-1">
+            <div
+              className={cn(
+                'flex items-center gap-1.5 rounded-md border border-transparent px-1 -mx-1',
+                draggedKind === kind && 'opacity-40',
+                dragOverKind === kind && draggedKind !== kind && 'border-dashed border-primary',
+              )}
+              draggable
+              onDragStart={() => setDraggedKind(kind)}
+              onDragEnd={() => {
+                setDraggedKind(null)
+                setDragOverKind(null)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragOverKind(kind)
+              }}
+              onDragLeave={() => setDragOverKind((current) => (current === kind ? null : current))}
+              onDrop={(e) => {
+                e.preventDefault()
+                handleDrop(kind)
+              }}
+            >
+              <GripVertical className="size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing" />
               <h2 className="text-sm font-semibold text-muted-foreground">{SECTION_LABEL[kind]}</h2>
-              <TooltipIconButton
-                variant="ghost"
-                size="icon-sm"
-                tooltip="Move up"
-                disabled={index === 0}
-                onClick={() => moveSection(kind, -1)}
-              >
-                <ChevronUp className="size-3.5" />
-              </TooltipIconButton>
-              <TooltipIconButton
-                variant="ghost"
-                size="icon-sm"
-                tooltip="Move down"
-                disabled={index === visibleSections.length - 1}
-                onClick={() => moveSection(kind, 1)}
-              >
-                <ChevronDown className="size-3.5" />
-              </TooltipIconButton>
             </div>
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
