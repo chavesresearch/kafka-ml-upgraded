@@ -88,3 +88,9 @@ results = client.wait_for_results(deployment_id, timeout=120)
 
 See [Deployments & Training Modes](./deployments-and-training-modes) for
 every field `create_deployment` accepts.
+
+## Reading predictions back
+
+Once a trained result is deployed for real-time inference, `predict_one`/
+`predict_batch` send input row(s) and read the prediction(s) back the
+same way — see [Waiting for Results & Inference](./waiting-for-results-and-inference#sending-requests-and-reading-predictions).

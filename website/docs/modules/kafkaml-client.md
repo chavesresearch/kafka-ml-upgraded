@@ -94,9 +94,10 @@ an HTTP-layer failure.
 It wraps `/models/`, `/configurations/`, `/deployments/`, `/results/`,
 `/results/inference/{id}`, and `/inferences/{id}` — the core CRUD plus
 the training-completion polling loop — and, via `send_dataset`/
-`send_dataframe` (below), sending an actual dataset to Kafka and
-registering it as a datasource. It does not wrap IoT device endpoints or
-the `/ws/` visualization relay.
+`send_dataframe` and `predict_one`/`predict_batch` (below), sending an
+actual dataset to Kafka and registering it as a datasource, and sending/
+reading real-time inference requests. It does not wrap IoT device
+endpoints or the `/ws/` visualization relay.
 
 ## Sending datasets
 
@@ -141,6 +142,31 @@ still gets registered with whatever row count it actually reached,
 rather than leaving already-published Kafka data completely
 unregistered.
 
+## Reading predictions
+
+`send_dataset` gets training data in; `predict_one`/`predict_batch`
+close the loop on the other side — sending input row(s) to a deployed
+real-time inference's input topic and reading the prediction(s) back
+from its output topic. There's no dedicated class for this in
+`kafkaml_datasources` either (only `AvroInference`, for AVRO) —
+RAW-format inference I/O is just plain Kafka topics by design, the same
+pattern every `examples/*/*_dataset_inference_example.py` script
+hand-rolls with a raw `KafkaProducer`/`KafkaConsumer` pair:
+
+```python
+prediction = client.predict_one("localhost:9094", "my-input", "my-output", X[0])
+predictions = client.predict_batch("localhost:9094", "my-input", "my-output", X[:5])  # in send order
+```
+
+The output consumer is always built with `auto_offset_reset="earliest"`,
+not `kafka-python`'s own `"latest"` default — unconditionally, not a
+keyword a caller could forget. A consumer created with the default can
+join its group *after* a fast deployment has already produced the
+prediction and silently see nothing; that's a real bug this project
+found (and fixed, in six places) in its own example scripts.
+`predict_batch` raises `TimeoutError` if fewer predictions arrive than
+rows were sent within the timeout.
+
 ## Testing approach
 
 `tests/` (`uv run pytest -v`, CI via `.github/workflows/kafkaml-client.yml`)
@@ -175,6 +201,17 @@ than a constant), since `RawSink`'s `total_msg` control-message field is
 computed from that offset diff — a constant would silently make any
 `total_msg` assertion meaningless regardless of how many rows were
 actually sent.
+
+`test_predictions.py` (8 more tests) covers `predict_one`/`predict_batch`
+similarly, patched at the `kafka` module itself rather than
+`kafkaml_datasources.sink` (`predictions.py` imports `kafka` directly).
+Since neither fake simulates a real deployment's consume-and-publish
+loop, tests use a small helper that makes every send to the input topic
+immediately produce a matching, test-controlled prediction on the output
+topic — standing in for "a real deployment handled this input." Covers
+order-preservation across a batch, the `TimeoutError` path, pandas-row
+support, and — directly — that `auto_offset_reset="earliest"` is what's
+actually passed to the consumer.
 
 ## Status
 

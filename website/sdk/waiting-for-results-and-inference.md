@@ -45,6 +45,22 @@ client.delete_inference(inference_id)
 Input-stream parameters (`input_format`/`input_config`) default to
 whatever was seen during training and usually don't need overriding.
 
+### Sending requests and reading predictions
+
+Needs the [`datasets` extra](./sending-datasets). `predict_one` sends
+one row to the input topic and returns the one prediction read back;
+`predict_batch` does the same for several rows at once, returning
+predictions in send order:
+
+```python
+prediction = client.predict_one("localhost:9094", "my-input", "my-output", X[0])
+predictions = client.predict_batch("localhost:9094", "my-input", "my-output", X[:5])
+```
+
+Both accept a numpy `ndarray` row (or a pandas `Series`/`DataFrame` row).
+`predict_batch` raises `TimeoutError` if fewer predictions arrive than
+rows were sent within `timeout_ms` (default 60s).
+
 ## Listing and inspecting results
 
 ```python

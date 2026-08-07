@@ -108,6 +108,53 @@ constant - otherwise `total_msg` in the control message would always
 read 0 regardless of how many rows were actually sent, silently
 defeating any test that checks it.
 
+## Real-time inference request/response support (2026-08-07)
+
+`kafkaml_client.predictions.predict_one`/`predict_batch` (also exposed as
+`KafkaMLClient.predict_one`/`.predict_batch`) close the loop on the
+*other* side of a deployment: `send_dataset` gets training data in,
+these send input row(s) to a deployed real-time inference's input topic
+and read the prediction(s) back from its output topic - the same flow
+every `examples/*/*_dataset_inference_example.py` script hand-rolls with
+a plain `kafka.KafkaProducer`/`KafkaConsumer` pair (there's no dedicated
+class for this in `kafkaml_datasources` either - it only has
+`AvroInference`, for AVRO; RAW-format inference I/O is just plain Kafka
+topics by design). `predict_batch` takes a list of rows and returns
+predictions in send order (matching a single-partition input/output
+topic, the standard shape for a Kafka-ML deployment); `predict_one` is
+`predict_batch` for exactly one row. Same `datasets` extra as
+`send_dataset` (now lists `kafka-python` explicitly too, not just
+transitively via `kafkaml-datasources` - `predictions.py` imports `kafka`
+directly, it doesn't go through `RawSink`).
+
+**Bakes in a real bug's fix by construction**: the output consumer is
+always built with `auto_offset_reset="earliest"`, not `kafka-python`'s
+own `"latest"` default. A consumer created with the default can join its
+consumer group *after* a fast real-time inference deployment has already
+produced the prediction(s), and silently see nothing - this is the exact
+bug found (and fixed, in 6 places) in this project's own
+`examples/*/*_dataset_inference_example.py` scripts on 2026-08-07 (see
+`FUTURE.md`). Rather than leave a caller of this SDK exposed to the same
+trap, the fix is unconditional here, not a keyword a caller could forget
+to pass.
+
+Tested (`tests/test_predictions.py`, 8 tests) against a faked
+`kafka.KafkaConsumer`/`KafkaProducer`, patched at the `kafka` module
+itself (not `kafkaml_datasources.sink`, which `send_dataset`'s tests
+patch instead) - `predictions.py` imports `kafka.KafkaConsumer`/
+`KafkaProducer` directly inside its own function bodies, re-resolving
+them from the `kafka` module on every call, so that's the patch target
+that actually takes effect. Since neither fake simulates a real
+deployment's consume-and-publish loop, tests install a small
+`_echo_predictions_on_send` helper that makes every send to the input
+topic immediately produce a matching, test-controlled prediction on the
+output topic - standing in for "a real deployment handled this input,"
+which nothing in the fakes does on their own. Covers order-preservation
+across a batch, the `TimeoutError` path (fewer predictions arrive than
+rows sent), pandas-row support, and - directly - that
+`auto_offset_reset="earliest"` is what's actually passed to the
+consumer.
+
 ## Design notes worth keeping if this is extended
 
 - `create_model`/`create_configuration`/`create_deployment`/

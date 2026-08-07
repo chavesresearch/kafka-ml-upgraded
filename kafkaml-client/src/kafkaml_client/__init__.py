@@ -20,6 +20,10 @@ names.
     # (`pip install kafkaml-client[datasets]`); see kafkaml_client.datasets.
     client.send_dataset("localhost:9094", topic="my-topic", deployment_id=deployment_id, data=X, labels=y)
     results = client.wait_for_results(deployment_id, timeout=120)
+
+    inference_id = client.deploy_inference(results[0]["id"], input_topic="my-in", output_topic="my-out")
+    # Sends one row and reads its prediction back - also needs 'datasets'.
+    prediction = client.predict_one("localhost:9094", "my-in", "my-out", X[0])
 """
 
 from .client import KafkaMLClient, KafkaMLError

@@ -273,6 +273,39 @@ class KafkaMLClient:
 
         _send_dataframe(bootstrap_servers, topic, deployment_id, dataframe, label_column, **kwargs)
 
+    def predict_one(
+        self,
+        bootstrap_servers: str,
+        input_topic: str,
+        output_topic: str,
+        row: Any,
+        **kwargs,
+    ) -> dict[str, Any]:
+        """Sends one input row to a deployed real-time inference's input
+        topic and returns the one prediction read back from its output
+        topic - see `kafkaml_client.predictions.predict_one`. Needs the
+        `datasets` extra, same as `send_dataset`."""
+        from .predictions import predict_one as _predict_one
+
+        return _predict_one(bootstrap_servers, input_topic, output_topic, row, **kwargs)
+
+    def predict_batch(
+        self,
+        bootstrap_servers: str,
+        input_topic: str,
+        output_topic: str,
+        rows: list[Any],
+        **kwargs,
+    ) -> list[dict[str, Any]]:
+        """Sends every row in `rows` to a deployed real-time inference's
+        input topic and returns the predictions read back from its output
+        topic, in send order - see
+        `kafkaml_client.predictions.predict_batch`. Needs the `datasets`
+        extra, same as `send_dataset`."""
+        from .predictions import predict_batch as _predict_batch
+
+        return _predict_batch(bootstrap_servers, input_topic, output_topic, rows, **kwargs)
+
     # -- internal ----------------------------------------------------
 
     def _find_id_by_name(self, list_path: str, name: str) -> int:

@@ -9,13 +9,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# kafkaml_client.datasets (send_dataset/send_dataframe/KafkaMLClient.
-# send_dataset/.send_dataframe) needs these to actually talk to Kafka and
-# accept numpy/pandas input - kept optional so the base REST client
-# doesn't force a numpy/pandas/kafka-python install on a caller who never
-# touches that feature. `pip install kafkaml-client[datasets]`.
+# kafkaml_client.datasets (send_dataset/send_dataframe) and
+# kafkaml_client.predictions (predict_one/predict_batch) need these to
+# actually talk to Kafka and accept numpy/pandas input - kept optional so
+# the base REST client doesn't force a numpy/pandas/kafka-python install
+# on a caller who never touches either feature. `pip install
+# kafkaml-client[datasets]`. `kafka-python` is listed explicitly even
+# though `kafkaml-datasources` already depends on it transitively -
+# predictions.py imports `kafka` directly (it doesn't use RawSink), so it
+# shouldn't rely on a sibling package's own dependency to make that import
+# work.
 datasets = [
     "kafkaml-datasources",
+    "kafka-python==3.0.10",
     "numpy>=1.24",
     "pandas>=2.0",
 ]

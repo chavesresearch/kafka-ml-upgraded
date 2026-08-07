@@ -207,3 +207,68 @@ def patch_kafka(monkeypatch):
     monkeypatch.setattr(sink_mod, "KafkaProducer", FakeKafkaProducer)
 
     return {"consumer": FakeKafkaConsumer, "producer": FakeKafkaProducer}
+
+
+# -- fakes for kafkaml_client.predictions (predict_one/predict_batch) --
+#
+# predictions.py imports `kafka.KafkaConsumer`/`KafkaProducer` directly
+# inside its own function bodies (not via kafkaml_datasources), so the
+# patch target here is the real `kafka` module itself, not a
+# kafkaml_datasources submodule.
+
+
+class FakeInferenceMessage:
+    """Stands in for `kafka.consumer.fetcher.ConsumerRecord` -
+    predictions.py only ever reads `.value` off a consumed message."""
+
+    def __init__(self, value: bytes):
+        self.value = value
+
+
+class FakeInferenceConsumer:
+    """Stands in for `kafka.KafkaConsumer` as `predictions.py` uses it -
+    constructed with the topic as a positional arg, then iterated
+    directly. Rather than a real subscribe/poll loop, iterating yields
+    whatever the most recently constructed `FakeKafkaProducer` has
+    `send()`t to this consumer's topic - evaluated lazily, at iteration
+    time, so construction order (consumer before producer, matching
+    `predict_batch`'s real order) doesn't matter."""
+
+    instances: list["FakeInferenceConsumer"] = []
+
+    def __init__(self, *topics, **kwargs):
+        self.topics = topics
+        self.kwargs = kwargs
+        self.closed = False
+        FakeInferenceConsumer.instances.append(self)
+
+    def __iter__(self):
+        topic = self.topics[0]
+        producer = FakeKafkaProducer.instances[-1] if FakeKafkaProducer.instances else None
+        messages = [m for m in (producer.sent if producer else []) if m["topic"] == topic]
+        for m in messages:
+            yield FakeInferenceMessage(value=m["value"])
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def patch_kafka_module(monkeypatch):
+    """Patches `kafka.KafkaConsumer`/`kafka.KafkaProducer` at the source -
+    `kafkaml_client.predictions._import_kafka` does `from kafka import
+    KafkaConsumer, KafkaProducer` inside a function body (lazily, on every
+    call), so it re-resolves these names from the `kafka` module itself
+    each time - patching the module directly is what actually takes
+    effect here, unlike `patch_kafka` above (which patches a *copy*
+    `kafkaml_datasources.sink` already imported at its own module load
+    time)."""
+    import kafka as kafka_mod
+
+    FakeInferenceConsumer.instances = []
+    FakeKafkaProducer.instances = []
+
+    monkeypatch.setattr(kafka_mod, "KafkaConsumer", FakeInferenceConsumer)
+    monkeypatch.setattr(kafka_mod, "KafkaProducer", FakeKafkaProducer)
+
+    return {"consumer": FakeInferenceConsumer, "producer": FakeKafkaProducer}

@@ -74,6 +74,8 @@ Needs the `datasets` extra (`pip install kafkaml-client[datasets]`). See
 | `list_inferences()` | `list[dict]` | |
 | `stop_inference(inference_id)` | `None` | Stops a running inference. |
 | `delete_inference(inference_id)` | `None` | |
+| `predict_one(bootstrap_servers, input_topic, output_topic, row, *, timeout_ms=60000, group_id="kafkaml-client")` | `dict` | Needs the `datasets` extra. Sends one row, returns its prediction. Output consumer always reads from `"earliest"`. |
+| `predict_batch(bootstrap_servers, input_topic, output_topic, rows, **kwargs)` | `list[dict]` | Needs the `datasets` extra. Sends every row, returns predictions in send order. Raises `TimeoutError` if fewer predictions arrive than rows sent. |
 
 ## Errors
 

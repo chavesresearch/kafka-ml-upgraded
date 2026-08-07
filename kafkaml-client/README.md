@@ -58,6 +58,10 @@ with KafkaMLClient("http://localhost:8000") as client:
     inference_id = client.deploy_inference(
         results[0]["id"], input_topic="my-input", output_topic="my-output",
     )
+    # Sends one row and reads its prediction back - also needs the
+    # `datasets` extra.
+    prediction = client.predict_one("localhost:9094", "my-input", "my-output", X[0])
+    # For several rows at once, in order: client.predict_batch(..., rows)
     # ... later ...
     client.stop_inference(inference_id)
     client.delete_inference(inference_id)
@@ -81,7 +85,17 @@ Datasource registration itself happens over Kafka, not this REST API (see
 `datasets` extra) send a numpy/pandas dataset to Kafka directly and
 register it automatically, the same flow this project's own
 `examples/*/*_dataset_training_example.py` scripts hand-roll with
-`kafkaml_datasources.RawSink`.
+`kafkaml_datasources.RawSink`. Real-time inference request/response is
+the same story on the other end (see `kafkaml_client/predictions.py`) -
+`predict_one`/`predict_batch` (also needs the `datasets` extra) send
+input row(s) to a deployed inference's input topic and read the
+prediction(s) back, the same flow `examples/*/*_dataset_inference_example.py`
+scripts hand-roll with plain `kafka.KafkaProducer`/`KafkaConsumer`. Its
+output consumer always reads from `"earliest"`, not `kafka-python`'s own
+`"latest"` default - a consumer created with the default can join its
+group after a fast deployment has already produced the prediction and
+silently see nothing, a real bug found (and fixed, in 6 places) in this
+project's own examples while building this.
 
 ## Status
 
@@ -92,6 +106,6 @@ the request-building/polling logic that
 `common.py`, which now just re-exports from this package) - covers the
 core CRUD + the "wait until a real training result finishes" polling loop
 that almost every real usage needs, plus (with the `datasets` extra)
-sending a dataset to Kafka and registering it. Not the backend's entire
-surface though - IoT devices and websocket visualization aren't wrapped
-here yet.
+sending a dataset to Kafka and registering it, and sending/reading
+real-time inference requests. Not the backend's entire surface though -
+IoT devices and websocket visualization aren't wrapped here yet.

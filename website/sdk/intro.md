@@ -70,6 +70,7 @@ with KafkaMLClient("http://localhost:8000") as client:
     inference_id = client.deploy_inference(
         results[0]["id"], input_topic="my-input", output_topic="my-output",
     )
+    prediction = client.predict_one("localhost:9094", "my-input", "my-output", X[0])
     # ... later ...
     client.stop_inference(inference_id)
     client.delete_inference(inference_id)
