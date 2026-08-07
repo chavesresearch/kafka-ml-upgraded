@@ -9,10 +9,12 @@ note) and is out of scope here.
 """
 
 import io
+import time
 
 import pytest
 from litestar.testing import TestClient
 
+import app as app_module
 from app import app
 
 VALID_MODEL_CODE = (
@@ -139,3 +141,36 @@ def test_convert_to_tflite_missing_file_returns_400(client):
         data={"applyQuantization": "false"},
     )
     assert response.status_code == 400
+
+
+def test_exec_tf_hanging_code_is_killed_within_bounded_time(client, monkeypatch):
+    """Covers the timeout/kill escalation ladder's actual slow-path -
+    previously only the happy/error paths were tested, so a regression in
+    the queue-read-before-join fix (see app.py's own comment on
+    tensorflow_executor) would only ever have surfaced as a real cluster
+    hang, not a test failure. EXEC_TIMEOUT_S is patched down from the
+    production 60s so this doesn't make the suite itself slow - the
+    subprocess spawn/kill machinery under test is identical either way,
+    only the wait duration changes.
+    """
+    monkeypatch.setattr(app_module, "EXEC_TIMEOUT_S", 2)
+
+    start = time.monotonic()
+    response = client.post(
+        "/exec_tf/",
+        json={
+            "imports_code": "",
+            "model_code": "while True:\n    pass",
+            "distributed": False,
+            "request_type": "check",
+        },
+    )
+    elapsed = time.monotonic() - start
+
+    assert response.status_code == 400
+    assert response.content == b""
+    # Bounded, not "eventually" - the 2s timeout plus the two 5s
+    # terminate/kill join windows in the escalation ladder is a real
+    # upper bound; a regression back to the join-before-read deadlock
+    # would hang here well past this, not just run slower.
+    assert elapsed < 15

@@ -7,9 +7,12 @@ A valid Kafka-ML PyTorch model must define `loss_fn()`, `optimizer()`, and
 `get_sample_model()` for the reference shape this mirrors.
 """
 
+import time
+
 import pytest
 from litestar.testing import TestClient
 
+import app as app_module
 from app import app
 
 VALID_MODEL_CODE = (
@@ -134,3 +137,28 @@ def test_check_deploy_config_missing_max_epochs_returns_400(client):
         },
     )
     assert response.status_code == 400
+
+
+def test_exec_pth_hanging_code_is_killed_within_bounded_time(client, monkeypatch):
+    """Same coverage gap/fix as tfexecutor/tests/test_app.py's identical
+    test - see that file's comment for the full rationale. EXEC_TIMEOUT_S
+    patched down from the production 60s so this doesn't slow the suite;
+    the subprocess spawn/kill machinery under test is unchanged.
+    """
+    monkeypatch.setattr(app_module, "EXEC_TIMEOUT_S", 2)
+
+    start = time.monotonic()
+    response = client.post(
+        "/exec_pth/",
+        json={
+            "imports_code": "",
+            "model_code": "while True:\n    pass",
+            "distributed": False,
+            "request_type": "check",
+        },
+    )
+    elapsed = time.monotonic() - start
+
+    assert response.status_code == 400
+    assert response.content == b""
+    assert elapsed < 15
