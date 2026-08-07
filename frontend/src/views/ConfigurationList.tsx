@@ -101,7 +101,7 @@ export default function ConfigurationList() {
                 >
                   <ExternalLink className="size-4" />
                 </TooltipIconButton>
-                <TooltipIconButton variant="ghost" tooltip="Remove" onClick={() => confirmDelete(configuration.id)}>
+                <TooltipIconButton variant="destructive" tooltip="Remove" onClick={() => confirmDelete(configuration.id)}>
                   <Trash2 className="size-4" />
                 </TooltipIconButton>
               </div>

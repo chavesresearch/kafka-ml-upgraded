@@ -1877,3 +1877,21 @@ one of these comes up again - "not planned" is a scoping call made on
    (dispatches the actual `dragstart`/`dragover`/`drop` sequence) -
    dragging "Single models" onto "Distributed models" correctly swaps
    their order.
+
+9. ~~Delete/remove/stop icon buttons and edit icon buttons had no color
+   distinction from any other icon button app-wide - nothing signaled
+   "this one is destructive" at a glance.~~ - **done** (2026-08-07).
+   Added a `--warning` CSS variable (mirrors `--destructive`'s own
+   light/dark oklch pair in `src/index.css`) and a matching `warning`
+   variant in `buttonVariants` (`components/ui/button.tsx`, copied
+   class-for-class from `destructive` with only the token swapped).
+   Applied `variant="destructive"` to every delete/remove/stop
+   `TooltipIconButton` and `variant="warning"` to every edit one across
+   `ModelList`, `ConfigurationList`, `DeploymentList`, `InferenceList`,
+   `IoTDeviceList`, and `ResultList`'s dropdown "Stop" item (its
+   "Remove" item already had it). `useConfirm.tsx`'s shared confirm
+   dialog's "Confirm" button is also `variant="destructive"` now - every
+   one of its 8 call sites app-wide is a delete-or-stop confirmation,
+   confirmed via grep before changing something shared this broadly.
+   `pnpm typecheck`/`test:run` (106/106)/`build`/`lint`/`test:e2e`
+   (3/3) all pass; verified live in both themes.

@@ -123,14 +123,14 @@ export default function InferenceList() {
         const inference = row.original
         if (inference.status === 'stopped') {
           return (
-            <TooltipIconButton variant="ghost" tooltip="Remove inference" onClick={() => confirmDeletion(inference.id)}>
+            <TooltipIconButton variant="destructive" tooltip="Remove inference" onClick={() => confirmDeletion(inference.id)}>
               <Trash2 className="size-4" />
             </TooltipIconButton>
           )
         }
         if (inference.status === 'deployed') {
           return (
-            <TooltipIconButton variant="ghost" tooltip="Stop inference" onClick={() => confirmStopping(inference.id)}>
+            <TooltipIconButton variant="destructive" tooltip="Stop inference" onClick={() => confirmStopping(inference.id)}>
               <Square className="size-4" />
             </TooltipIconButton>
           )

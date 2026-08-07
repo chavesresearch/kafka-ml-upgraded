@@ -209,7 +209,7 @@ export default function ResultList() {
                   <Trash2 /> Remove
                 </DropdownMenuItem>
               ) : (
-                <DropdownMenuItem onClick={() => confirmStopping(result.id)}>
+                <DropdownMenuItem variant="destructive" onClick={() => confirmStopping(result.id)}>
                   <Square /> Stop
                 </DropdownMenuItem>
               )}

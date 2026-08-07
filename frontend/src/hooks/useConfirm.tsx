@@ -34,6 +34,7 @@ export function useConfirm() {
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
+            variant="destructive"
             onClick={() => {
               options?.accept()
               setOptions(null)

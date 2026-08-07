@@ -556,6 +556,41 @@ single-above-distributed, dragging the "Single models" row onto
 "Distributed models" swaps them, and filtering down to only one group's
 results removes the heading (and therefore the handle) entirely.
 
+## Destructive/edit action colors (2026-08-07)
+
+Prompted directly: delete/stop icon buttons app-wide should read as
+destructive (red), edit icon buttons as a caution color (orange), with
+proper light/dark theme handling - not a one-off hardcoded color. Added
+a `--warning` CSS variable to `src/index.css` (`:root`/`.dark`, mirrors
+`--destructive`'s own two-value light/dark oklch pair exactly, plus a
+`--color-warning: var(--warning)` mapping in the `@theme inline` block
+so Tailwind utilities like `bg-warning`/`text-warning` exist) and a new
+`warning` variant in `buttonVariants` (`components/ui/button.tsx`),
+copied class-for-class from the existing `destructive` variant with only
+the token swapped - same opacity-tinted background/text/focus-ring
+treatment, so it's visually consistent with how destructive already
+looks, just orange instead of red.
+
+Applied `variant="destructive"` to every delete/remove/stop
+`TooltipIconButton` and `variant="warning"` to every edit
+`TooltipIconButton` across the app: `ModelList` (Delete/Edit, both root
+and nested chain rows), `ConfigurationList`/`DeploymentList` ("Remove"),
+`InferenceList` ("Remove inference"/"Stop inference"),
+`IoTDeviceList`("Delete device"/"View-edit device"), and
+`ResultList`'s dropdown "Stop" item (its "Remove" item already had
+`variant="destructive"` from an earlier pass - "Stop" didn't, now does).
+`useConfirm.tsx`'s shared `AlertDialogAction` "Confirm" button is also
+`variant="destructive"` now - every one of its 8 call sites across the
+app is a delete-or-stop confirmation, none are used for anything
+non-destructive (confirmed via grep before changing something shared
+app-wide), so this isn't a one-off, it's the actually-correct default
+for what this dialog is exclusively used for.
+
+Verified live in both themes: edit buttons render a legible orange
+badge, delete/stop buttons a legible red badge, in both light and dark
+mode, including inside the confirm dialog. `pnpm typecheck`/`test:run`
+(106/106)/`build`/`lint`/`test:e2e` (3/3) all pass.
+
 ## Remaining work
 
 1. **Feature-parity audit vs. the old Vue app hasn't been done by a human

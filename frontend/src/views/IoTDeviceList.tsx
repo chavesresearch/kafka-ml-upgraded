@@ -84,13 +84,13 @@ export default function IoTDeviceList() {
       enableSorting: false,
       cell: ({ row }) => (
         <div className="flex gap-1">
-          <TooltipIconButton variant="ghost" tooltip="View/edit device" asChild>
+          <TooltipIconButton variant="warning" tooltip="View/edit device" asChild>
             <Link to={`/device/${row.original.id}`}>
               <Pencil className="size-4" />
             </Link>
           </TooltipIconButton>
           <TooltipIconButton
-            variant="ghost"
+            variant="destructive"
             tooltip="Delete device"
             onClick={() => confirmDelete(row.original.id, row.original.token)}
           >

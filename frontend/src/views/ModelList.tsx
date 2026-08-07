@@ -42,10 +42,10 @@ function ModelCard({ chain, onView, onEdit, onDelete }: ModelCardProps) {
           <TooltipIconButton variant="ghost" tooltip="View model" onClick={() => onView(root)}>
             <Eye className="size-4" />
           </TooltipIconButton>
-          <TooltipIconButton variant="ghost" tooltip="Edit model" onClick={() => onEdit(root.id)}>
+          <TooltipIconButton variant="warning" tooltip="Edit model" onClick={() => onEdit(root.id)}>
             <Pencil className="size-4" />
           </TooltipIconButton>
-          <TooltipIconButton variant="ghost" tooltip="Delete model" onClick={() => onDelete(root.id)}>
+          <TooltipIconButton variant="destructive" tooltip="Delete model" onClick={() => onDelete(root.id)}>
             <Trash2 className="size-4" />
           </TooltipIconButton>
         </CardAction>
@@ -68,7 +68,7 @@ function ModelCard({ chain, onView, onEdit, onDelete }: ModelCardProps) {
                   <Eye className="size-3.5" />
                 </TooltipIconButton>
                 <TooltipIconButton
-                  variant="ghost"
+                  variant="warning"
                   size="icon-sm"
                   tooltip="Edit model"
                   onClick={() => onEdit(child.id)}
@@ -76,7 +76,7 @@ function ModelCard({ chain, onView, onEdit, onDelete }: ModelCardProps) {
                   <Pencil className="size-3.5" />
                 </TooltipIconButton>
                 <TooltipIconButton
-                  variant="ghost"
+                  variant="destructive"
                   size="icon-sm"
                   tooltip="Delete model"
                   onClick={() => onDelete(child.id)}

@@ -109,7 +109,7 @@ export default function DeploymentList() {
                 <TooltipIconButton variant="ghost" tooltip="Results" onClick={() => navigate(`/results/${deployment.id}`)}>
                   <Eye className="size-4" />
                 </TooltipIconButton>
-                <TooltipIconButton variant="ghost" tooltip="Remove" onClick={() => confirmDelete(deployment.id)}>
+                <TooltipIconButton variant="destructive" tooltip="Remove" onClick={() => confirmDelete(deployment.id)}>
                   <Trash2 className="size-4" />
                 </TooltipIconButton>
               </div>
