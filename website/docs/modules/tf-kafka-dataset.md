@@ -63,9 +63,36 @@ string group id, unlike some older Kafka clients.
 ## Build and packaging
 
 The package uses a standard `pyproject.toml` (`uv_build` backend),
-depends on `kafka-python==3.0.10` and `tensorflow>=2.16`, and has no
+depends on `kafka-python==3.0.10` and `tensorflow>=2.16,<3.0`, and has no
 compiled/native component — it's pure Python on top of `kafka-python`,
-not a custom TensorFlow op registered against the C++ op registry.
+not a custom TensorFlow op registered against the C++ op registry. The
+`tensorflow` bound isn't just a floor: `2.16` is the earliest version
+this package's `tf.data.Dataset`/`TensorSpec` usage has ever actually
+been checked against, and `<3.0` stops a future major TensorFlow release
+from being silently accepted sight-unseen.
+
+## Testing
+
+`tests/` (11 tests, `uv run pytest -v`, CI via its own dedicated
+`.github/workflows/tf-kafka-dataset.yml` — deliberately not folded into
+`model-training`'s TensorFlow workflow, so this package's own
+correctness is checked independently of whether that trainer happens to
+touch it that day). `kafka.KafkaConsumer` is faked in `tests/conftest.py`
+(the same broker-free-fake approach [datasources](./datasources) uses,
+adapted for this package's different consumer usage — `assign()`/
+`seek()`/iterate for `get_bounded_kafka_dataset`, `poll()` for
+`get_streaming_kafka_batches`), but every dataset produced is a real,
+actually-iterated `tf.data.Dataset` — this proves the generator functions
+yield the exact shape/values TensorFlow expects, not just that the right
+consumer calls happened. Covers exact offset-range bounding (inclusive
+start, exclusive end), multi-partition/multi-topic specs concatenating in
+declared order, `group_id` `str()` coercion, and streaming's finite-vs.-
+infinite (`stream_timeout=-1`) polling behavior.
+
+This is a fast, broker-free regression check for this package's own
+logic — it doesn't replace the real, live-cluster verification
+[model-training](./model-training) documents (real CASE 1–9 runs against
+these exact dataset functions, against a real broker).
 
 ## Relationship to the TensorFlow trainers
 
@@ -119,12 +146,14 @@ would include every other service's `.venv`/`node_modules`/etc.
 
 ## Status
 
-This is a draft/proof-of-concept extraction, not a "for real"
-independent release: there is no version pin strategy beyond matching
-whatever TensorFlow ceiling `model_training/tensorflow`'s own
-`pyproject.toml` already settled on, no CI, and no PyPI publish. If it
-is ever published independently, the two consumers would need to decide
-whether to switch from a local path dependency to a real version pin.
+Still a monorepo-internal package, not a "for real" independent PyPI
+release — consumed only via a local `path` dependency by the two
+trainers above. It does now have a real regression suite, its own CI
+workflow, and a bounded (not just floored) dependency pin, so it's
+independently testable and version-tracked *within this repo*; genuinely
+publishing it externally, and whether the two consumers would then
+switch from a local path dependency to a real version pin, is a separate
+decision, still deferred.
 
 ## See also
 

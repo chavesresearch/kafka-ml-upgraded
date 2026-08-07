@@ -1,13 +1,34 @@
 [project]
 name = "tf-kafka-dataset"
-version = "0.1.0"
+version = "0.2.0"
 description = "tf.data.Dataset sources that read directly from Apache Kafka, without tensorflow-io"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "kafka-python==3.0.10",
-    "tensorflow>=2.16",
+    # Bounded, not just a floor: 2.16 is the earliest version this
+    # package's tf.data.Dataset/TensorSpec usage has ever been checked
+    # against, and CI (see ../.github/workflows/tf-kafka-dataset.yml)
+    # actually installs and tests against tensorflow==2.21.0 specifically
+    # (the version model_training/tensorflow and
+    # federated-module/federated_model_training/tensorflow both pin exactly) -
+    # <3.0 leaves room for any 2.x release without silently accepting a
+    # future major version this package has never been run against. See
+    # CLAUDE.md's "Versioning" section.
+    "tensorflow>=2.16,<3.0",
 ]
+
+[dependency-groups]
+# pytest==9.x dropped Python 3.9 support - same reasoning as
+# ../datasources/pyproject.toml and ../kafkaml-client/pyproject.toml's
+# identical comment: this package's own requires-python floor is a real
+# compatibility promise, not an internal detail to bump freely.
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["tests"]
 
 [build-system]
 requires = ["uv_build>=0.9.22,<0.10.0"]

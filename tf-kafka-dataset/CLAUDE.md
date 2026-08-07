@@ -70,11 +70,62 @@ the running container, and (for `model_training/tensorflow`) a
 real re-run of `integration-tests/test_case1_single_classic.py` against
 the rebuilt image - passed, same as before the extraction.
 
+## Automated test suite + CI (2026-08-07)
+
+`tests/` (11 tests, `uv run pytest -v`, CI via `.github/workflows/
+tf-kafka-dataset.yml` - deliberately its own workflow, not folded into
+`tensorflow_model_training.yml`'s `paths:` trigger, so this package's own
+correctness is verified independently of whether `model_training/
+tensorflow` happens to touch it that day). `kafka.KafkaConsumer` is faked
+(`tests/conftest.py` - same broker-free-fake approach as `../datasources/
+tests/conftest.py`, adapted for this package's different consumer usage:
+`assign()`/`seek()`/iterate for `get_bounded_kafka_dataset`, `poll()` for
+`get_streaming_kafka_batches`), but every dataset returned is a real,
+actually-iterated `tf.data.Dataset` - proves the generator functions
+produce the exact shape/values TensorFlow expects, not just that the
+right consumer calls happened. Covers: exact offset-range bounding
+(inclusive start, exclusive end), multi-partition and multi-topic specs
+concatenating in declared order, value/key preservation, `group_id`
+`str()` coercion (both functions), streaming's finite-vs-`-1` (infinite)
+`stream_timeout` behavior including that `-1` keeps polling through empty
+polls rather than giving up, and that the consumer is always `close()`d
+once a generator is exhausted. Pinned `pytest==8.4.2`, matching
+`../datasources`/`../kafkaml-client` - see either's identical comment for
+why (`requires-python = ">=3.9"` here is a real compatibility promise,
+not an implementation detail).
+
+Same reasoning as `../datasources/CLAUDE.md`'s testing section: this is a
+fast, broker-free *regression* check for routine changes to this file's
+own logic - it doesn't replace the real, live-cluster verification
+`model_training/tensorflow/CLAUDE.md` already documents (real CASE=1-9
+runs against these exact dataset functions, against a real broker).
+
+## Versioning
+
+Bumped to `0.2.0` alongside the test suite above - no longer an entirely
+untested draft. Still pre-1.0 (no external consumers beyond this repo's
+own two, and no PyPI publish yet), so minor version bumps may still
+include breaking changes; this isn't a promise of semver stability yet,
+just an honest version number reflecting "now has a real regression
+suite" vs. "didn't."
+
+`tensorflow` is pinned `>=2.16,<3.0` in `pyproject.toml` - bounded, not
+just a floor. `2.16` is the earliest version this package's `tf.data.
+Dataset`/`TensorSpec` usage has ever actually been checked against; the
+upper bound stops a future TF major version from being silently accepted
+sight-unseen. CI installs whatever `>=2.16,<3.0` resolves to at the time
+(currently `2.21.0`, matching the exact version both real consumers -
+`model_training/tensorflow` and `federated-module/
+federated_model_training/tensorflow` - pin) rather than pinning this
+package's own CI to one hardcoded version, so a `uv sync` here stays
+representative of what a real consumer's resolver would actually pick.
+
 ## Status
 
-A draft/PoC, not a "for real" independent release: no version pin
-strategy beyond matching whatever TensorFlow ceiling
-`model_training/tensorflow`'s own `pyproject.toml` already
-settled on, no CI, no PyPI publish. If this is ever actually published
-independently, decide then whether the two consumers should switch from a
-local path dependency to a real version pin.
+Still a monorepo-internal package, not a "for real" independent PyPI
+release: consumed only via a local `path` dependency by the two trainers
+above, no PyPI publish. The version pin strategy and CI above make it
+independently testable and version-tracked *within this repo* - genuinely
+publishing it externally is a separate decision, deferred until then
+(along with whether the two consumers should switch from a local path
+dependency to a real version pin at that point).
