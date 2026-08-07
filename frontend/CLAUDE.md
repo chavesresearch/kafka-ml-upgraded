@@ -481,6 +481,44 @@ variant. Same component interface (`framework`/`className` props) - no
 other file needed to change. Verified live: both logos render crisp and
 legible at the card's small icon size, in both themes.
 
+**Card action icons moved to the right + distributed/single split
+(2026-08-07)**, both prompted directly after seeding real example data
+made both issues visible at actual size:
+- The icon row was rendering *below* the title/date instead of beside
+  it, unlike `ConfigurationList`/`DeploymentList`'s cards, which look
+  correct - not actually a difference in those two views' own markup,
+  just never scrutinized closely enough to notice they have the same
+  layout bug. Root cause: `CardHeader` (`components/ui/card.tsx`) is a
+  CSS grid, not a flex row - it only switches to a 2-column
+  `[1fr_auto]` layout when it has a direct child with
+  `data-slot="card-action"` (`has-data-[slot=card-action]:grid-cols-
+  [1fr_auto]`). A plain `<div className="flex ... justify-between">` of
+  buttons doesn't set that data attribute, so the header stayed
+  single-column and the actions fell into the next implicit grid row
+  below the title instead of beside it - `justify-between`/`flex-row`
+  on that div had nothing to do since the *parent* was still grid, not
+  flex. Fixed by wrapping the action buttons in the already-exported
+  `CardAction` component instead of a bare `div` - the intended shadcn
+  pattern for this exact layout, confirmed live afterward (icons now
+  sit top-right, matching the requested position). Not yet applied to
+  `ConfigurationList`/`DeploymentList`, which likely have the identical
+  bug (same override pattern) - flagged, not fixed, since it wasn't
+  asked for here.
+- Distributed chains and single (non-distributed) models used to share
+  one grid. CSS grid rows stretch every cell in a row to match its
+  tallest cell by default, so a short single-model card sitting next to
+  a tall multi-tier distributed card visibly inflated to match it -
+  empty space, no content. Split into two independently-gridded
+  sections, "Distributed models" and "Single models" (the exact
+  section names the project's own `README.md`'s Usage ToC already uses
+  for these two concepts, not invented terminology) - each grid's rows
+  now only stretch to match other cards of the same kind, so single
+  models stay a fixed, compact size regardless of how tall a
+  distributed chain elsewhere on the page is. `pnpm typecheck`/
+  `test:run` (106/106)/`build`/`lint`/`test:e2e` (3/3) all pass;
+  verified live in both light and dark mode against the real seeded
+  cloud/fog/edge chain plus the two single models.
+
 ## Remaining work
 
 1. **Feature-parity audit vs. the old Vue app hasn't been done by a human

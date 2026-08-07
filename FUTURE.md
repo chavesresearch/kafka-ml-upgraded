@@ -1837,3 +1837,24 @@ one of these comes up again - "not planned" is a scoping call made on
    it stays legible in both themes without a separate dark variant -
    same component interface, no other file changed. Verified live in
    both light and dark mode.
+
+   **Second follow-up, same day**: two more issues surfaced once real
+   seeded data made the cards visible at actual size. (1) The action
+   icons rendered below the title instead of beside it - `CardHeader`
+   is a CSS grid that only lays out a right-aligned action column when
+   its action element is the exported `CardAction` component (sets
+   `data-slot="card-action"`, which the header's own
+   `has-data-[slot=card-action]:grid-cols-[1fr_auto]` class depends on)
+   - a plain `<div>` of buttons, which is what was there, doesn't
+   trigger it and falls into the next implicit grid row instead. Fixed
+   by switching to `CardAction`. Likely affects
+   `ConfigurationList`/`DeploymentList` too (same pattern) - flagged,
+   not fixed there, out of scope of what was asked. (2) Distributed
+   chains and single models shared one grid, and CSS grid stretches
+   every card in a row to match its tallest neighbor - a short
+   single-model card next to a tall 3-tier chain visibly inflated with
+   empty space. Split into two independently-gridded sections,
+   "Distributed models" and "Single models" - names taken directly from
+   the project's own `README.md` Usage ToC, not invented. `pnpm
+   typecheck`/`test:run` (106/106)/`build`/`lint`/`test:e2e` (3/3) all
+   pass; verified live in both themes against the real seeded data.
