@@ -20,7 +20,9 @@ for i in range (0, ITEMS_TO_PREDICT):
 producer.flush()
 producer.close()
 
-output_consumer = KafkaConsumer(OUTPUT_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group")
+output_consumer = KafkaConsumer(
+    OUTPUT_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group", auto_offset_reset="earliest"
+)
 """Creates an output consumer to receive the predictions"""
 
 print('\n')

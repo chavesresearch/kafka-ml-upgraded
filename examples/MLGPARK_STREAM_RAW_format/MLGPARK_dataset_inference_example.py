@@ -45,7 +45,9 @@ producer.flush()
 producer.close()
 
 
-output_consumer = KafkaConsumer(OUTPUT_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group")
+output_consumer = KafkaConsumer(
+    OUTPUT_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group", auto_offset_reset="earliest"
+)
 print('\n')
 
 print('Output consumer: ')

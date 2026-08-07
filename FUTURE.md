@@ -786,6 +786,34 @@ one of these comes up again - "not planned" is a scoping call made on
     a real `.tflite` file (confirmed via `kubectl exec` into the backend
     pod), not just a passing unit test.
 
+20. ~~Two real bugs in `examples/`, found by actually running the
+    documented quickstarts against a live cluster, not just reading
+    them~~ — **done** (2026-08-07). (1) `examples/HCOPD_Avro_format/
+    README.md`'s documented TF model crashed real training with
+    `ValueError: Cannot take the length of shape with unknown rank` -
+    its first layer was `tf.keras.layers.Dropout(0.2, input_shape=(3,))`,
+    which under Keras 3 doesn't register the model's input spec, leaving
+    the input tensor's rank unknown once consumed from a
+    `tf.data.Dataset`. Fixed by making `tf.keras.Input(shape=(3,))` the
+    actual first layer, `Dropout` after it - confirmed by actually
+    training the fixed model on real (if synthetic-shaped) data. Also
+    fixed the same snippet's `keras.optimizers.Adam(lr=.0001)` - `lr` was
+    renamed to `learning_rate` and current Keras rejects the old kwarg
+    outright (`ValueError: Argument(s) not recognized`), confirmed the
+    same way. (2) Every one of the 6 example inference scripts
+    (`MNIST_RAW_format` x2, `HCOPD_Avro_format`, `MLGPARK_STREAM_RAW_format`,
+    `SO2SAT_RAW_format`, `VGG16_CIFAR10_RAW_format`,
+    `EUROSAT_RAW_format`) shared one copy-pasted race: each script sends
+    its predict-request messages, *then* constructs its output
+    `KafkaConsumer` with no `auto_offset_reset` set (default `"latest"`).
+    Since the backend's real inference deployment can finish producing
+    predictions before that consumer even joins its group, the script can
+    silently see zero output - confirmed via a real deployment where a
+    second, `earliest`-configured consumer proved every prediction had
+    genuinely landed on the topic while the documented script's own
+    consumer would have missed them. Fixed all 6 by adding
+    `auto_offset_reset="earliest"`.
+
 ### Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated

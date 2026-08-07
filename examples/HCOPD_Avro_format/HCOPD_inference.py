@@ -42,7 +42,9 @@ for i in range (0, ITEMS_TO_PREDICT):
 logging.info("Data sent for prediction")
 hcopd.close()
 
-consumer = KafkaConsumer(OUTPUT_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group")
+consumer = KafkaConsumer(
+    OUTPUT_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group", auto_offset_reset="earliest"
+)
 """Creates a consumer to receive the predictions"""
 
 logging.info("Waiting for predictions")

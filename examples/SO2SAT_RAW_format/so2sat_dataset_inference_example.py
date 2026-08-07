@@ -22,7 +22,9 @@ for image, _ in so2sat[0]:
 producer.flush()
 producer.close()
 
-output_consumer = KafkaConsumer(OUTPUT_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group")
+output_consumer = KafkaConsumer(
+    OUTPUT_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group", auto_offset_reset="earliest"
+)
 """Creates an output consumer to receive the predictions"""
 
 print('\n')

@@ -7,7 +7,9 @@ logging.basicConfig(level=logging.INFO)
 UPPER_TOPIC = 'minst-upper'
 BOOTSTRAP_SERVERS= '127.0.0.1:9094'
 
-upper_consumer = KafkaConsumer(UPPER_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group")
+upper_consumer = KafkaConsumer(
+    UPPER_TOPIC, bootstrap_servers=BOOTSTRAP_SERVERS, group_id="output_group", auto_offset_reset="earliest"
+)
 """Creates an upper consumer to receive the predictions"""
 
 print('\n')

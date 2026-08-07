@@ -7,11 +7,12 @@ The following TensorFlow model has been used in Kafka-ML for this dataset:
 
 ```
 model = tf.keras.Sequential([
-    tf.keras.layers.Dropout(0.2, input_shape=(3,)),  
+    tf.keras.layers.Input(shape=(3,)),
+    tf.keras.layers.Dropout(0.2),
     tf.keras.layers.Dense(4, activation='sigmoid'),
     tf.keras.layers.Dense(2, activation='softmax')
 ])
-model.compile(keras.optimizers.Adam(lr=.0001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.compile(keras.optimizers.Adam(learning_rate=.0001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 ```
 
 In the PyTorch Case, the following deep learning model has been used in Kafka-ML for the HCOPD dataset example:
