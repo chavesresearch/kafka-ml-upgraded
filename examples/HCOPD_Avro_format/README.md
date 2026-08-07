@@ -13,6 +13,39 @@ model = tf.keras.Sequential([
 ])
 model.compile(keras.optimizers.Adam(lr=.0001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 ```
+
+In the PyTorch Case, the following deep learning model has been used in Kafka-ML for the HCOPD dataset example:
+
+```py
+class NeuralNetwork(nn.Module):
+    def __init__(self):
+        super(NeuralNetwork, self).__init__()
+        self.linear_relu_stack = nn.Sequential(
+            nn.Dropout(0.2),
+            nn.Linear(3, 4),
+            nn.Sigmoid(),
+            nn.Linear(4, 2),
+            nn.Softmax()
+        )
+
+    def forward(self, x):
+        return self.linear_relu_stack(x)
+
+    def loss_fn(self):
+        return nn.CrossEntropyLoss()
+
+    def optimizer(self):
+        return torch.optim.Adam(model.parameters(), lr=.0001)
+
+    def metrics(self):
+        val_metrics = {
+            "accuracy": Accuracy(),
+            "loss": Loss(self.loss_fn())
+         }
+        return val_metrics
+
+model = NeuralNetwork()
+```
 The batch_size used is 10, the training configuration (steps=1000, shuffle=True) and evaluation configuration (steps=5).
 
 Definition of 4 sample groups included within the Exasens dataset: 
