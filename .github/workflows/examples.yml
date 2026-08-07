@@ -13,6 +13,14 @@ on:
       - examples/**/*
       - datasources/**/*
   workflow_dispatch:
+    inputs:
+      example:
+        description: >-
+          Which example to actually run end to end (real-execution job
+          below) - see verify_example_ci.py's EXAMPLES dict for the
+          current choices. Leave empty to skip that job.
+        required: false
+        type: string
 
 jobs:
   test:
@@ -50,3 +58,55 @@ jobs:
       # its scripts actually import still resolves against it.
       - name: Check example script imports resolve
         run: .venv/bin/python ../check_imports.py .
+
+  # Actually runs one example end to end (real model/configuration/
+  # deployment via kafkaml-client, the example's own real producer
+  # script, a real finished training result) - the `test` job above only
+  # proves imports resolve, which neither of the two real bugs found in
+  # examples/ on 2026-08-07 (a Keras-3-incompatible model layer, a Kafka
+  # consumer race) would have tripped. Needs a real local Kubernetes
+  # cluster reachable at localhost:8000/localhost:9094 (same
+  # prerequisites as integration-tests/), so - same reasoning as
+  # integration-tests.yml - this can't run on a GitHub-hosted runner and
+  # is workflow_dispatch-only, never a PR/push gate. Register a
+  # self-hosted runner with the `kafka-ml-local-cluster` label first (see
+  # integration-tests.yml's own comment for the exact steps) before
+  # dispatching this with an `example` input.
+  #
+  # Only "hcopd" is wired up as of 2026-08-07 (verify_example_ci.py's
+  # EXAMPLES dict) - MNIST's own example sends the full 60k-image dataset
+  # and would make this job too slow to run routinely; extend the dict
+  # with more examples as they're worth covering here.
+  real-execution:
+    if: inputs.example != ''
+    runs-on: [self-hosted, kafka-ml-local-cluster]
+    defaults:
+      run:
+        working-directory: examples
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.9.x"
+      - name: Create virtual environment
+        run: uv venv --python 3.11 .venv
+      - name: Install httpx
+        # Needed just to import verify_example_ci.py at all (it imports
+        # kafkaml_client at module level) - installed on its own, before
+        # the example-specific requirements.txt below can even be
+        # resolved (that resolution itself imports this script).
+        run: uv pip install --python .venv/bin/python httpx
+      - name: Install the selected example's dependencies
+        run: |
+          DIR=$(.venv/bin/python -c "import verify_example_ci as v; print(v.EXAMPLES['${{ inputs.example }}']['dir'])")
+          uv pip install --python .venv/bin/python -r "$DIR/requirements.txt"
+      - name: Confirm the local cluster is reachable
+        run: |
+          curl -sf http://localhost:8000/results/ > /dev/null || {
+            echo "::error::backend not reachable at localhost:8000 - see integration-tests/README.md's Prerequisites section"
+            exit 1
+          }
+      - name: Run the example end to end
+        run: .venv/bin/python verify_example_ci.py "${{ inputs.example }}"

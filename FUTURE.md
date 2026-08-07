@@ -62,15 +62,6 @@ nice-to-have polish.
    runner - say so explicitly if asked whether this has run in CI, not
    just whether the workflow file exists.
 
-2. **All 7 frontend list views show a misleading "No results." empty
-   state during the initial fetch** - `ModelList`, `ConfigurationList`,
-   `ResultList`, `DatasourceList`, `IoTDeviceList`, `DeploymentList`, and
-   `InferenceList` all render the empty-state message whenever their
-   array is empty, with no separate loading flag tracked while the
-   initial `get*()` call is still in flight - so a user on a slow
-   connection briefly sees "no data exists" before it flips to the real
-   rows. Found in a 2026-08-07 audit.
-
 ### `frontend`-specific follow-ups
 
 1. **Feature-parity audit vs. the previous frontend hasn't been done by a
@@ -877,6 +868,97 @@ one of these comes up again - "not planned" is a scoping call made on
     cross-linked from `single-models.md`. `pnpm build`/`pnpm typecheck`
     both pass clean (Docusaurus's `onBrokenLinks: 'throw'` means a clean
     build also proves every new cross-link actually resolves).
+
+24. ~~All 7 frontend list views showed a misleading "No results." empty
+    state during the initial fetch~~ - **done** (2026-08-07), and the
+    original finding was itself half-wrong, corrected while fixing it:
+    `ModelList`, `ResultList`, `DatasourceList`, `IoTDeviceList`, and
+    `InferenceList` do use the shared `DataTable` and did show
+    "No results." during the initial fetch (no separate loading flag) -
+    fixed by adding an optional `loading` prop to `DataTable` (shows
+    "Loading…" instead while true and `data` is empty) and a `loading`
+    state in each view, set `false` in the fetch's `.finally()`/`catch`
+    path. But `ConfigurationList` and `DeploymentList` turned out **not**
+    to use `DataTable` at all - they're plain card grids with **no**
+    empty-state message of any kind, not even a misleading one (silently
+    rendered nothing) - confirmed via `grep -c DataTable` on both files
+    before touching them, not assumed from the original finding's
+    framing. Fixed the same way (a `loading` state + a "Loading…"/"No
+    configurations."/"No deployments." message shown when the filtered
+    list is empty). Also rebuilt the frontend image and redeployed to the
+    live cluster. `pnpm typecheck`/`test:run` (99/99)/`build`/`lint` all
+    pass.
+
+25. ~~`kafkaml-client` had no way to read real-time inference predictions
+    back~~ - **done** (2026-08-07). `send_dataset` (item 21 above) closed
+    the loop on getting training data *into* Kafka; `predict_one`/
+    `predict_batch` (`kafkaml_client.predictions`, also exposed as
+    `KafkaMLClient.predict_one`/`.predict_batch`) close the loop on the
+    other side - send input row(s) to a deployed real-time inference's
+    input topic, read the prediction(s) back from its output topic, same
+    `datasets` extra. The output consumer is unconditionally built with
+    `auto_offset_reset="earliest"`, not `kafka-python`'s own `"latest"`
+    default - baking in the fix for the exact bug found (and fixed, in 6
+    places) in `examples/*/*_dataset_inference_example.py` earlier the
+    same day (item 20 above), so a caller of this SDK can't hit the same
+    trap. `predict_batch` raises `TimeoutError` if fewer predictions
+    arrive than rows sent. 8 new tests (`uv run pytest`, 41/41 total)
+    against a faked `kafka` module (patched at the module itself, not
+    `kafkaml_datasources.sink`, since `predictions.py` imports `kafka`
+    directly) with a small helper simulating "a real deployment handled
+    this input" (neither fake does that on its own). Documented in
+    `README.md`, `CLAUDE.md`, `website/docs/modules/kafkaml-client.md`,
+    and `website/sdk/` (`waiting-for-results-and-inference.md`,
+    `sending-datasets.md`, `api-reference.md`).
+
+26. **A CI job that actually runs `examples/` scripts end to end,
+    prepared but not yet dispatched/verified against a real runner** -
+    same honest-status caveat as item 1 in `## TODO`'s `### Medium`
+    below, which this is closely related to (same
+    `[self-hosted, kafka-ml-local-cluster]` runner prerequisite). The
+    existing `examples.yml` `test` job (GitHub-hosted, every push/PR)
+    only checks that each example's `requirements.txt` still installs
+    and every script's imports still resolve - it cannot run the scripts
+    themselves (no live Kafka broker on a hosted runner), and neither of
+    the two real bugs found in `examples/` earlier the same day (item 20
+    above - a Keras-3-incompatible model layer, a Kafka consumer race)
+    would have tripped an import check. Added a new `real-execution` job
+    (`workflow_dispatch`-only, same self-hosted-runner label, `example`
+    input) plus `examples/verify_example_ci.py`, which creates a real
+    model/configuration/deployment via `kafkaml-client` and runs one
+    example's own real producer script against it (its
+    `KAFKAML_DEPLOYMENT_ID` env-var override, added to
+    `HCOPD_data_stream_producer.py`, defaults to `1` so a human
+    copy-pasting the script is unaffected). Only `"hcopd"` is wired up
+    for now (small, locally-available dataset, fast) - MNIST's own
+    example sends the full 60k-image dataset and would make this job too
+    slow to run routinely; extend `verify_example_ci.py`'s `EXAMPLES`
+    dict as more examples are worth covering here. **Partially verified
+    for real** against this session's own live local cluster (not just
+    written and assumed to work): ran `verify_example_ci.py hcopd` in a
+    scratch venv against the real deployed backend - it created a real
+    model/configuration/deployment (id 22) via the real API and ran the
+    real, unmodified `HCOPD_data_stream_producer.py` against it, which
+    genuinely sent all 239 real Avro-encoded messages and published a
+    correctly-formed control-topic registration message (confirmed in
+    the run's own log output, not assumed). The script then correctly
+    raised `TimeoutError` waiting for training to finish - **not a bug in
+    this script**, the training pod itself got `OOMKilled` repeatedly
+    (confirmed via `kubectl`, `reason: "OOMKilled"`, `exitCode: 137`),
+    the same local-cluster memory exhaustion this session already
+    surfaced and discussed (16 real-time inference pods were kept
+    running concurrently per explicit instruction, leaving little spare
+    memory for anything else). Deleted the resulting dead `model-training-30`
+    Job as cleanup (a temporary CI-verification artifact, not one of the
+    kept inference deployments). So: the create-deployment→run-producer→
+    real-registration path is proven correct end to end; a full
+    training-completes confirmation on this specific run is not, purely
+    due to local memory pressure, not a defect found in the script or
+    the example. Say so explicitly if asked whether this has actually run
+    as real CI (on a registered runner) or been confirmed to complete a
+    full training - it hasn't, same runner caveat as item 1 below, plus
+    this additional memory-pressure caveat specific to this local
+    verification attempt.
 
 ### Medium
 
