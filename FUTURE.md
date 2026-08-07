@@ -814,6 +814,70 @@ one of these comes up again - "not planned" is a scoping call made on
     consumer would have missed them. Fixed all 6 by adding
     `auto_offset_reset="earliest"`.
 
+21. **`kafkaml-client` had no way to send an actual dataset** - a caller
+    needed `kafkaml-datasources` as a second, separately-installed
+    dependency to drive a real end-to-end flow, undercutting the SDK's
+    own stated goal. **Done** (2026-08-07):
+    `kafkaml_client.datasets.send_dataset`/`send_dataframe` (also exposed
+    as `KafkaMLClient.send_dataset`/`.send_dataframe`) send a numpy
+    `ndarray`/pandas `Series`/`DataFrame` dataset to Kafka and register it
+    as a datasource for a deployment, collapsing the
+    construct-`RawSink`/loop-`.send()`/`.close()` pattern every
+    `examples/*/*_dataset_training_example.py` script hand-rolls into one
+    call. Gated behind a new `datasets` extra (`pip install
+    kafkaml-client[datasets]`, pulling in `kafkaml-datasources` + `numpy`
+    + `pandas` via a local `path` source, same monorepo pattern
+    `tf-kafka-dataset`'s consumers use) - every import is lazy, so plain
+    `import kafkaml_client` never requires any of them. Checks
+    `len(data) == len(labels)` before ever constructing a Kafka client;
+    still registers (via `close()` in a `finally`) if a row-level send
+    fails mid-stream, so a partial send isn't left orphaned/unregistered.
+    10 new tests (`uv run pytest`, 33/33 total) against a faked
+    `KafkaConsumer`/`KafkaProducer` whose `end_offsets` counts real sent
+    messages (not a constant) so `total_msg` assertions are meaningful.
+    Documented in `kafkaml-client/README.md`, `CLAUDE.md`,
+    `website/docs/modules/kafkaml-client.md`, and a new
+    `website/sdk/sending-datasets.md` page. Version bumped to `0.2.0`.
+
+22. **`tf-kafka-dataset` had no tests, no CI, and only a floating
+    `tensorflow>=2.16` dependency bound** - couldn't be verified
+    independently of whether `model_training/tensorflow` happened to
+    touch it. **Done** (2026-08-07): 11 new tests (`tests/`, `uv run
+    pytest -v`) against a faked `kafka.KafkaConsumer` (`assign`/`seek`/
+    iterate for `get_bounded_kafka_dataset`, `poll` for
+    `get_streaming_kafka_batches`), exercising real, actually-iterated
+    `tf.data.Dataset` objects - covers exact offset-range bounding,
+    multi-partition/multi-topic spec concatenation, `group_id` `str()`
+    coercion, and streaming's finite-vs.-infinite (`stream_timeout=-1`)
+    polling behavior. New dedicated `.github/workflows/
+    tf-kafka-dataset.yml` (separate from `tensorflow_model_training.yml`,
+    which only triggers on this package's paths to rebuild *its own*
+    image, never ran this package's tests). `tensorflow` bounded to
+    `>=2.16,<3.0` (was an unbounded floor) - CI installs whatever that
+    resolves to (currently `2.21.0`, matching both real consumers'
+    own exact pin) rather than testing a hardcoded version divorced from
+    what a real consumer's resolver would pick. Verified both real
+    consumers (`model_training/tensorflow`,
+    `federated-module/federated_model_training/tensorflow`) still
+    resolve cleanly against the new bound. Version bumped to `0.2.0`.
+
+23. **Docs quality pass**: (1) `website/docs/modules/tf-kafka-dataset.md`
+    and `modules/kafkaml-client.md` updated for items 21/22 above
+    (testing/CI/versioning sections, new "Sending datasets" section);
+    (2) new `website/sdk/sending-datasets.md` page + `api-reference.md`
+    entries for `send_dataset`/`send_dataframe`; (3) two real, working,
+    previously user-doc-less features got their first tutorial-style
+    Usage page: `usage/iot-tflite-deployment.md` (deploying a trained TF
+    model to a physical Tasmota/Berry device as `.tflite`, distinct from
+    the Kubernetes real-time-inference path `single-models.md` already
+    covered - both `IoT Devices` and `ResultCompareView`/"Compare
+    results" were previously mentioned only in module-architecture docs
+    or not at all, never walked through as a user-facing how-to) and
+    `usage/comparing-results.md` (the training-results comparison view),
+    cross-linked from `single-models.md`. `pnpm build`/`pnpm typecheck`
+    both pass clean (Docusaurus's `onBrokenLinks: 'throw'` means a clean
+    build also proves every new cross-link actually resolves).
+
 ### Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated

@@ -18,6 +18,8 @@ const sidebars: SidebarsConfig = {
         'usage/incremental-training',
         'usage/federated-learning',
         'usage/blockchain-traced-training',
+        'usage/iot-tflite-deployment',
+        'usage/comparing-results',
       ],
     },
     {

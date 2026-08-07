@@ -132,7 +132,15 @@ metrics, open a training result's detail view:
 That view also exposes the same data as JSON, for building your own
 plots and reports.
 
+Once you have two or more finished results, see [Comparing Training
+Results](./comparing-results) to overlay their metric curves side by
+side.
+
 ## 6. Deploy a trained model for inference
+
+TensorFlow models can also be deployed straight to a physical IoT
+device instead of a Kubernetes inference pod — see [IoT / TFLite
+Deployment](./iot-tflite-deployment).
 
 Input-stream parameters are pre-filled from the training data seen
 earlier (you can still change them). Mainly you'll set the number of
