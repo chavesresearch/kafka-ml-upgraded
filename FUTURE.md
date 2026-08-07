@@ -159,59 +159,6 @@ nice-to-have polish.
    connection briefly sees "no data exists" before it flips to the real
    rows. Found in a 2026-08-07 audit.
 
-### Low
-
-1. **Bare `except:` used as control flow (not real error handling) in
-   several training scripts** - `model_training/tensorflow/
-   mainTraining.py`, both copies of `KafkaModelEngine.py`, `model_training/
-   pytorch/training.py`, and `federated_mainTraining.py` all use a bare
-   `except:` around a dict-init-or-append pattern, swallowing
-   `KeyboardInterrupt`/`SystemExit` along with the expected `KeyError`
-   it's actually guarding against. Distinct from the already-fixed bare
-   `except:` around the RC-delete call (a different call site). Found in
-   a 2026-08-07 audit - low severity since the swallowed exception types
-   are rarely hit here in practice, but worth narrowing to `except
-   KeyError:` next time one of these files is touched.
-
-2. **Confusion-matrix generation swallows all exceptions down to an INFO
-   log** (`model_training/tensorflow/mainTraining.py`,
-   `model_training/pytorch/training.py`) - a real regression in this path
-   (e.g. a shape mismatch after a Keras/PyTorch version bump) would run
-   silently forever with no visible failure, only a log line easy to miss
-   in normal operation. Found in a 2026-08-07 audit.
-
-3. **The release process (workflows trigger on `release: types:
-   [created]`) is completely undocumented** - not in `CONTRIBUTING.md`,
-   not in the README, no comment in the workflow files themselves
-   explaining when/how a release should be cut. Found in a 2026-08-07
-   audit.
-
-4. **`website/docs/usage/distributed-models.md` is the one usage page
-   missing the "TensorFlow-only" disclaimer its siblings all have.**
-   `incremental-training.md`, `federated-learning.md`, and
-   `semi-supervised-learning.md` all explicitly state "Currently only
-   TensorFlow supports X." - `distributed-models.md` has no such line,
-   presenting TF Keras model code as if it were the only option without
-   saying PyTorch isn't supported for distributed models (confirmed
-   distributed models are TF-gated in the frontend,
-   `ModelView.tsx`'s `form.framework === 'tf'` check). A quick, low-cost
-   consistency fix. Found in a 2026-08-07 audit.
-
-5. **The canonical "getting started" example (`examples/MNIST_RAW_format/`,
-   the one the root README's own walkthrough exclusively uses) has no
-   PyTorch counterpart, and PyTorch coverage across all of `examples/` is
-   a bare model-code snippet in 4 of 9 example READMEs, not a runnable
-   script.** Grepped `examples/` - zero `.py` files import `torch`; only
-   `MLGPARK_STREAM_RAW_format`, `EUROSAT_RAW_format`, `SO2SAT_RAW_format`,
-   and `VGG16_CIFAR10_RAW_format` READMEs include a "In the PyTorch
-   Case..." paste-into-the-web-UI snippet (correctly scoped to CASE=1,
-   consistent with High item 5 above). A new user following the README's own
-   quickstart never sees a PyTorch example at all. Low severity since
-   this matches the already-known CASE=1-only PyTorch training gap - but
-   the example set doesn't even give the one supported PyTorch path a
-   real runnable script, just README fragments. Found in a 2026-08-07
-   audit.
-
 ### `frontend`-specific follow-ups
 
 1. **Feature-parity audit vs. the previous frontend hasn't been done by a
@@ -223,12 +170,6 @@ nice-to-have polish.
    both older implementations are already fully retired (Angular preserved
    at `../kafka-ml/frontend`; Vue not preserved anywhere, see this file's
    intro) - just still worth doing.
-
-2. **Monaco adds ~579 kB gzipped as its own lazy chunk** (only fetched when
-   a screen with a code field is visited — see `frontend/CLAUDE.md`'s
-   Gotcha #5). Acceptable for now; if it becomes a real problem, evaluate a
-   lighter editor (CodeMirror 6) or loading Monaco from a CDN instead of
-   bundling it. Same order of magnitude as the Vue app's own ~594 kB figure.
 
 ## Not planned (short term)
 
@@ -1297,6 +1238,78 @@ one of these comes up again - "not planned" is a scoping call made on
    transfer dropped from what a 486MB `node_modules` alone would cost to
    582KB.
 
+6. ~~Bare `except:` used as control flow (not real error handling) in
+   several training scripts~~ — **done** (2026-08-07).
+   `model_training/tensorflow/mainTraining.py`, both copies of
+   `KafkaModelEngine.py`, `model_training/pytorch/training.py`, and
+   `federated_mainTraining.py` all used a bare `except:` around either a
+   dict-init-or-append pattern (swallowing `KeyboardInterrupt`/
+   `SystemExit` along with the expected `KeyError`) or a best-effort
+   serialize/deserialize-with-fallback pattern (where the fallback
+   itself is intentional, but a bare `except:` still swallowed
+   `KeyboardInterrupt`/`SystemExit` unnecessarily). Narrowed each to the
+   exception it's actually meant to catch: `except KeyError:` for the
+   dict-init-or-append sites (`mainTraining.py`'s `saveSingleMetrics`/
+   `saveDistributedMetrics`, `training.py`'s `save_metrics`,
+   `federated_mainTraining.py`'s `save_metrics`), `except Exception:` for
+   the serialize/deserialize-fallback sites (`KafkaModelEngine.py`'s
+   `__parse_model_compile_args`/`__deserialize_compile_args__` in both
+   copies) where the broad catch is genuinely intentional and only
+   `BaseException` subclasses needed excluding. All five files still
+   compile clean.
+
+7. ~~Confusion-matrix generation swallows all exceptions down to an INFO
+   log~~ — **done** (2026-08-07). `model_training/tensorflow/
+   mainTraining.py`'s `createConfussionMatrix` and `model_training/
+   pytorch/training.py`'s equivalent inline block both switched from
+   `logging.info` to `logging.exception` (still catching the same broad
+   `Exception` - confusion-matrix generation can legitimately fail in
+   many different ways depending on the model/data shape, so the catch
+   itself wasn't the problem) - a real regression here now logs a full
+   traceback at ERROR level instead of an easy-to-miss one-line INFO
+   message. `cf_generated` still stays `False` on failure either way, so
+   training itself still succeeds without a confusion matrix - only the
+   visibility of *why* changed.
+
+8. ~~The release process (workflows trigger on `release: types:
+   [created]`) is completely undocumented~~ — **done** (2026-08-07).
+   Added a "Releases" section to `CONTRIBUTING.md` documenting the
+   process as it actually is: no formal versioning scheme or release
+   schedule, a GitHub release is cut whenever a notable feature or big
+   change lands on `master`, and every service's CI workflow already
+   builds+pushes that service's images tagged with the release version
+   when one is cut (on top of the floating tags a regular push already
+   produces) since each already triggers on `release: types: [created]`.
+
+9. ~~`website/docs/usage/distributed-models.md` is the one usage page
+   missing the "TensorFlow-only" disclaimer its siblings all have~~ —
+   **done** (2026-08-07). Added the same "Currently only TensorFlow
+   supports X" line `incremental-training.md`/`federated-learning.md`/
+   `semi-supervised-learning.md` already have, right after the intro
+   paragraph, matching their placement. `pnpm build` confirms no broken
+   links.
+
+10. ~~The canonical "getting started" example (`examples/MNIST_RAW_format/`)
+    has no PyTorch counterpart, and PyTorch coverage across `examples/`
+    is a bare model-code snippet in 4 of 9 example READMEs~~ — **done**
+    (2026-08-07). New `examples/MNIST_RAW_format/README.md` (this
+    directory had no README at all before) with both the TensorFlow and
+    PyTorch model code already established and verified in the root
+    README's own quickstart (reused verbatim, not reinvented), plus
+    instructions for the directory's existing runnable data-producer
+    scripts (framework-agnostic - they stream raw MNIST into Kafka
+    regardless of which model consumes it). Also added PyTorch snippets
+    to two more examples' READMEs (`HCOPD_Avro_format`,
+    `NO2SoftSensor_RAW_format` - both simple `Dense`/`Sequential`
+    translations, low risk), bringing PyTorch-documented coverage from
+    4 to 7 of 9. **Not done**: `TCN_NILM_RAW_format`'s custom
+    dilated-Conv1D/causal-padding TCN architecture would need real
+    training-time verification to port correctly (not attempted, real
+    risk of a subtly wrong translation going unnoticed) - flag if asked,
+    don't assume it's covered; `FEDERATED_MNIST_RAW_format` correctly
+    has none, since PyTorch federated training doesn't exist at any
+    layer (see `model_training/pytorch/CASE_2_9_PLAN.md`'s Phase 3).
+
 ### `frontend`-specific follow-ups
 
 1. ~~No end-to-end tests.~~ — **done** (2026-08-06). `e2e/golden-path.spec.ts`
@@ -1408,3 +1421,23 @@ one of these comes up again - "not planned" is a scoping call made on
    currently-displayed one - zero leaked; (3) navigating away entirely
    afterward revoked the one still-outstanding URL too. `pnpm typecheck`/
    `test:run` (98 tests)/`test:e2e` (3 tests) all still pass.
+
+6. ~~Monaco adds ~579 kB gzipped as its own lazy chunk - evaluate a
+   lighter editor (CodeMirror 6) if it becomes a real problem~~ —
+   **evaluated (2026-08-07), decision: keep Monaco, no code change.**
+   CodeMirror 6's syntax highlighting is built on Lezer, a proper
+   incremental parser - not the regex-based Monarch tokenizer Monaco
+   uses. The hand-written Berry grammar this project already has and
+   ships (`berryLanguage.ts`, sourced from Berry's own Pygments lexer +
+   EBNF grammar, real and verified - see `frontend/CLAUDE.md`'s "Berry
+   language support" section) would need a full rewrite as a Lezer
+   grammar to move to CodeMirror - a strictly bigger, more error-prone
+   lift than what already exists and works, for a single language.
+   Visually, CodeMirror 6 also doesn't match Monaco out of the box (no
+   minimap, different bracket/suggestion chrome by default) - real
+   theming work would be needed to get close, with no guarantee of an
+   exact match. Given the one-time cost of a working Berry tokenizer is
+   already paid, redoing it in a harder grammar system just to save
+   ~579 kB gzipped isn't a good trade. No action taken; revisit only if
+   Monaco's size becomes an actual measured problem, not a theoretical
+   one.
