@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, Pencil, Trash2, Plus, GitBranch } from 'lucide-react'
+import { Eye, Pencil, Trash2, Plus, GitBranch, ChevronUp, ChevronDown } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Card, CardAction, CardContent, CardHeader } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -91,6 +91,13 @@ function ModelCard({ chain, onView, onEdit, onDelete }: ModelCardProps) {
   )
 }
 
+type SectionKind = 'single' | 'distributed'
+
+const SECTION_LABEL: Record<SectionKind, string> = {
+  single: 'Single models',
+  distributed: 'Distributed models',
+}
+
 export default function ModelList() {
   const notify = useNotify()
   const navigate = useNavigate()
@@ -99,6 +106,9 @@ export default function ModelList() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
   const [viewing, setViewing] = useState<MLModel | null>(null)
+  // Single models above distributed by default - user-reorderable from
+  // there (swap the two rows), not persisted across reloads.
+  const [sectionOrder, setSectionOrder] = useState<SectionKind[]>(['single', 'distributed'])
 
   useEffect(() => {
     getModels()
@@ -144,6 +154,25 @@ export default function ModelList() {
   // to match it - CSS grid rows default to matching the tallest cell.
   const distributedChains = useMemo(() => filtered.filter((chain) => chain.length > 1), [filtered])
   const singleModels = useMemo(() => filtered.filter((chain) => chain.length === 1), [filtered])
+  const chainsByKind: Record<SectionKind, MLModel[][]> = { single: singleModels, distributed: distributedChains }
+
+  // Only sections that actually have something to show, in the user's
+  // chosen order - a section with nothing in it never renders (no empty
+  // row, no heading), and when only one section has content there's
+  // nothing to distinguish it from, so its heading/reorder controls
+  // don't render either.
+  const visibleSections = sectionOrder.filter((kind) => chainsByKind[kind].length > 0)
+
+  function moveSection(kind: SectionKind, direction: -1 | 1) {
+    setSectionOrder((order) => {
+      const from = order.indexOf(kind)
+      const to = from + direction
+      if (to < 0 || to >= order.length) return order
+      const next = [...order]
+      ;[next[from], next[to]] = [next[to], next[from]]
+      return next
+    })
+  }
 
   function confirmDelete(id: number) {
     confirm({
@@ -183,27 +212,38 @@ export default function ModelList() {
         <p className="py-8 text-center text-muted-foreground">{loading ? 'Loading…' : 'No models.'}</p>
       )}
 
-      {distributedChains.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground">Distributed models</h2>
+      {visibleSections.map((kind, index) => (
+        <div key={kind} className="space-y-3">
+          {visibleSections.length > 1 && (
+            <div className="flex items-center gap-1">
+              <h2 className="text-sm font-semibold text-muted-foreground">{SECTION_LABEL[kind]}</h2>
+              <TooltipIconButton
+                variant="ghost"
+                size="icon-sm"
+                tooltip="Move up"
+                disabled={index === 0}
+                onClick={() => moveSection(kind, -1)}
+              >
+                <ChevronUp className="size-3.5" />
+              </TooltipIconButton>
+              <TooltipIconButton
+                variant="ghost"
+                size="icon-sm"
+                tooltip="Move down"
+                disabled={index === visibleSections.length - 1}
+                onClick={() => moveSection(kind, 1)}
+              >
+                <ChevronDown className="size-3.5" />
+              </TooltipIconButton>
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {distributedChains.map((chain) => (
+            {chainsByKind[kind].map((chain) => (
               <ModelCard key={chain[0].id} chain={chain} onView={setViewing} onEdit={onEdit} onDelete={confirmDelete} />
             ))}
           </div>
         </div>
-      )}
-
-      {singleModels.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground">Single models</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {singleModels.map((chain) => (
-              <ModelCard key={chain[0].id} chain={chain} onView={setViewing} onEdit={onEdit} onDelete={confirmDelete} />
-            ))}
-          </div>
-        </div>
-      )}
+      ))}
 
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
         <DialogContent className="max-w-lg sm:max-w-2xl">

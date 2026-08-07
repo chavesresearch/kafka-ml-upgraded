@@ -519,6 +519,28 @@ made both issues visible at actual size:
   verified live in both light and dark mode against the real seeded
   cloud/fog/edge chain plus the two single models.
 
+**Section order (2026-08-07)**: "Single models" renders above
+"Distributed models" by default, per explicit request - a `sectionOrder:
+SectionKind[]` state (`['single', 'distributed']`) drives render order,
+with `ChevronUp`/`ChevronDown` `TooltipIconButton`s next to each visible
+heading to swap the two rows (`moveSection` swaps adjacent entries in
+the order array - generic beyond just 2 sections, though only 2 exist
+today). Not persisted across reloads - no requirement to, and every
+other piece of view-local UI state in this app (filters, dialog open
+state, etc.) already resets on remount the same way.
+
+When only one of the two groups has any content, its heading and the
+reorder controls don't render at all - nothing to distinguish it from
+or reorder against when there's only one row. `visibleSections =
+sectionOrder.filter(kind => chainsByKind[kind].length > 0)` drives both
+the loop and this condition (`visibleSections.length > 1`), so a single-
+group state renders as a plain unlabeled grid, same as the view looked
+before either row concept existed. Verified live: default order is
+single-above-distributed, clicking "Move down" on the top row swaps
+both position and disabled-state of the chevrons correctly (top row's
+"Move up" and bottom row's "Move down" are disabled), and filtering
+down to only one group's results removes the heading/controls entirely.
+
 ## Remaining work
 
 1. **Feature-parity audit vs. the old Vue app hasn't been done by a human

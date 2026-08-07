@@ -1858,3 +1858,15 @@ one of these comes up again - "not planned" is a scoping call made on
    the project's own `README.md` Usage ToC, not invented. `pnpm
    typecheck`/`test:run` (106/106)/`build`/`lint`/`test:e2e` (3/3) all
    pass; verified live in both themes against the real seeded data.
+
+   **Third follow-up, same day**: "Single models" now renders above
+   "Distributed models" by default (was the other way round), and the
+   two rows are user-reorderable via `ChevronUp`/`ChevronDown` buttons
+   next to each heading - swaps adjacent entries in a `sectionOrder`
+   state array. When only one of the two groups actually has content,
+   its heading and the reorder controls don't render at all (nothing to
+   distinguish or reorder against with a single row) - the view falls
+   back to a plain, unlabeled grid exactly like before either row
+   concept existed. Verified live: default order, the swap (and each
+   row's now-correctly-disabled chevron at the top/bottom), and the
+   filtered-down-to-one-group case all behave as described.
