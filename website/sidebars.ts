@@ -20,6 +20,7 @@ const sidebars: SidebarsConfig = {
         'usage/blockchain-traced-training',
         'usage/iot-tflite-deployment',
         'usage/comparing-results',
+        'usage/importing-a-trained-model',
       ],
     },
     {

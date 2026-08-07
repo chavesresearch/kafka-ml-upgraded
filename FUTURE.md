@@ -960,6 +960,44 @@ one of these comes up again - "not planned" is a scoping call made on
     this additional memory-pressure caveat specific to this local
     verification attempt.
 
+27. **New feature: import an already-trained model for inference,
+    without a real training Job.** Requested directly by the user
+    ("I want a feature to add new models already trained, in order to
+    serve them for inference"). No schema change needed - `TrainingResult`
+    already requires a `Deployment`/`MLModel`, so this reuses that exact
+    chain with the Kubernetes training step skipped: `POST /deployments/
+    import` (multipart: `configuration`, `trained_model` file, optional
+    JSON `metrics`) creates a `Deployment` + one already-`"finished"`
+    `TrainingResult`, after validating the upload against a new
+    `/validate_model/` endpoint on the matching mlcode_executor service
+    (`tf.keras.models.load_model()` for TF; `exec()` the model's own code
+    + `load_state_dict()` the upload for PyTorch - so for PyTorch, `code`
+    must be the exact architecture that produced the weights). Only
+    single (non-distributed) models are supported. Every downstream
+    consumer (real-time inference, IoT/TFLite deploy, download, compare,
+    chart view) works completely unmodified, since an imported result is
+    indistinguishable from a normally-trained one once created. New
+    frontend `ImportDeploymentView.tsx` (`/import/:id`, reached from
+    `ConfigurationList`'s new "Import trained model" menu item).
+
+    Verified for real, not just via each layer's own test suite: built
+    and deployed the real `backend`/`tfexecutor`/`pthexecutor`/`frontend`
+    images to the live cluster; imported a real `.h5` and a real `.pth`
+    via direct API calls, confirmed both landed as real finished results
+    with the uploaded bytes on disk; confirmed the TF import could
+    actually be deployed for real-time inference and produce a real
+    prediction from a real running pod; confirmed a garbage upload is
+    rejected with the real underlying error at both the executor and
+    backend layers; and separately drove the **real frontend form** with
+    Playwright against the live cluster end to end (upload a real file,
+    click Import, confirm the success toast, the navigation, and the new
+    result actually appearing in Deployments) - zero console errors.
+    `backend`: 6 new tests (`test_deployments.py -k import`, 40/40 total).
+    `tfexecutor`: 3 new tests (13/13 total). `pthexecutor`: 4 new tests
+    (16/16 total). `frontend`: 7 new tests (`ImportDeploymentView.test.tsx`,
+    106/106 total), `pnpm typecheck`/`build`/`test:e2e` (3/3) all pass.
+    New Usage doc: `website/docs/usage/importing-a-trained-model.md`.
+
 ### Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated

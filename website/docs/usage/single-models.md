@@ -142,6 +142,10 @@ TensorFlow models can also be deployed straight to a physical IoT
 device instead of a Kubernetes inference pod — see [IoT / TFLite
 Deployment](./iot-tflite-deployment).
 
+Already have a trained model from outside Kafka-ML? See [Importing a
+Trained Model](./importing-a-trained-model) to skip training entirely
+and go straight to a deployable result.
+
 Input-stream parameters are pre-filled from the training data seen
 earlier (you can still change them). Mainly you'll set the number of
 inference replicas and the input/output Kafka topics.
