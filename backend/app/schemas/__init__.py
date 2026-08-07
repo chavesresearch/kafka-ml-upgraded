@@ -24,7 +24,7 @@ from app.models import (
 def simple_model_dict(model: MLModel | None) -> dict[str, Any] | None:
     if model is None:
         return None
-    return {"id": model.id, "name": model.name}
+    return {"id": model.id, "name": model.name, "framework": model.framework}
 
 
 def model_dict(model: MLModel) -> dict[str, Any]:

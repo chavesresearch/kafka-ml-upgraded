@@ -191,9 +191,11 @@ export default function ResultList() {
             <DropdownMenuContent align="end">
               {result.status === 'finished' && (
                 <>
-                  <DropdownMenuItem onClick={() => navigate(`/results/inference-iot/${result.id}`)}>
-                    <Wifi /> Deploy on IoT
-                  </DropdownMenuItem>
+                  {result.model.framework === 'tf' && (
+                    <DropdownMenuItem onClick={() => navigate(`/results/inference-iot/${result.id}`)}>
+                      <Wifi /> Deploy on IoT
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => downloadTrainedModel(result.id)}>
                     <Download /> Download
                   </DropdownMenuItem>

@@ -97,7 +97,7 @@ def test_create_distributed_father_child(client):
     assert resp.status_code == 201
 
     child = next(m for m in client.get("/models/").json() if m["name"] == "test-child")
-    assert child["father"] == {"id": father_id, "name": "test-father"}
+    assert child["father"] == {"id": father_id, "name": "test-father", "framework": "tf"}
 
     distributed = client.get("/models/distributed").json()
     assert {m["name"] for m in distributed} >= {"test-father", "test-child"}

@@ -20,7 +20,7 @@ export interface MockModel {
   imports: string
   code: string
   distributed: boolean
-  father: { id: number; name: string } | null
+  father: { id: number; name: string; framework: 'tf' | 'pth' } | null
   framework: 'tf' | 'pth'
 }
 
@@ -28,7 +28,7 @@ export interface MockConfiguration {
   id: number
   name: string
   description: string
-  ml_models: { id: number; name: string }[]
+  ml_models: { id: number; name: string; framework: 'tf' | 'pth' }[]
   deployments: { id: number; time: string }[]
 }
 
@@ -48,7 +48,7 @@ export interface MockResult {
   val_metrics: Record<string, number[]> | null
   test_metrics: Record<string, number[]> | null
   training_time?: number | null
-  model: { id: number; name: string }
+  model: { id: number; name: string; framework: 'tf' | 'pth' }
   deployment: number
 }
 
@@ -127,7 +127,7 @@ export class MockBackend {
         imports: (data.imports as string) ?? '',
         code: data.code as string,
         distributed: Boolean(data.distributed),
-        father: father ? { id: father.id, name: father.name } : null,
+        father: father ? { id: father.id, name: father.name, framework: father.framework } : null,
         framework: data.framework as 'tf' | 'pth',
       })
       return this.empty(route, 201)
@@ -157,7 +157,7 @@ export class MockBackend {
         ml_models: modelIds
           .map((mid) => this.models.find((m) => m.id === mid))
           .filter((m): m is MockModel => !!m)
-          .map((m) => ({ id: m.id, name: m.name })),
+          .map((m) => ({ id: m.id, name: m.name, framework: m.framework })),
         deployments: [],
       })
       return this.empty(route, 201)

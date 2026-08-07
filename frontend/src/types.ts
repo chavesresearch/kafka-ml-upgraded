@@ -5,6 +5,7 @@
 export interface SimpleModel {
   id: number
   name: string
+  framework: Framework
 }
 
 export type Framework = 'tf' | 'pth'

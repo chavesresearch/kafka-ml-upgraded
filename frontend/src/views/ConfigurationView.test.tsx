@@ -104,7 +104,7 @@ describe('ConfigurationView (edit mode)', () => {
       id: 5,
       name: 'Existing',
       description: '',
-      ml_models: [1] as unknown as { id: number; name: string }[],
+      ml_models: [1] as unknown as { id: number; name: string; framework: 'tf' }[],
     })
     vi.mocked(editConfiguration).mockResolvedValueOnce(undefined)
     renderAt('/configuration/5')

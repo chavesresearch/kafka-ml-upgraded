@@ -49,7 +49,7 @@ describe('ModelList', () => {
         imports: '',
         code: '',
         distributed: true,
-        father: { id: 1, name: 'Cloud model' },
+        father: { id: 1, name: 'Cloud model', framework: 'tf' },
         framework: 'tf',
       },
     ])
