@@ -58,7 +58,7 @@ test.describe('golden path: model -> configuration -> deployment -> training -> 
     await createModelButton.click()
 
     await expect(page).toHaveURL(/\/models$/)
-    await expect(page.getByRole('cell', { name: modelName })).toBeVisible()
+    await expect(page.getByText(modelName)).toBeVisible()
     expect(backend.models).toHaveLength(1)
     expect(backend.models[0]).toMatchObject({ name: modelName, framework: 'tf' })
     // Not a byte-exact comparison against MODEL_CODE - Monaco's real
@@ -197,15 +197,17 @@ test.describe('golden path: model -> configuration -> deployment -> training -> 
       distributed: false,
       father: null,
       framework: 'tf',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
 
     await page.goto('/models')
-    await expect(page.getByRole('cell', { name: 'to-delete' })).toBeVisible()
+    await expect(page.getByText('to-delete')).toBeVisible()
 
     await page.getByRole('button', { name: 'Delete model' }).click()
     await page.getByRole('button', { name: 'Confirm' }).click()
 
-    await expect(page.getByRole('cell', { name: 'to-delete' })).not.toBeVisible()
+    await expect(page.getByText('to-delete')).not.toBeVisible()
     expect(backend.models).toHaveLength(0)
   })
 })

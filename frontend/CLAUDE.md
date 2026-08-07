@@ -396,6 +396,77 @@ arrow, fades/zooms in) - confirmed it's genuinely the shadcn component
 rendering, not just that no error was thrown. `pnpm typecheck`/
 `test:run` (106/106)/`build`/`lint`/`test:e2e` (3/3) all pass.
 
+## `ModelList` card grid, distributed chains, and a real `CodeEditor` bug (2026-08-07)
+
+Prompted directly: the plain `DataTable` (id/name/description/imports/
+code truncated/`distributed` as literal "true"/"false" text/an "Upper
+layer" column showing just the father's name) was the one list view not
+on the card grid `ConfigurationList`/`DeploymentList` already use, with
+no framework affordance and no way to see when a model was last edited.
+Now a card grid: each root model (`father === null`) gets a
+`FrameworkIcon` (new `src/components/FrameworkIcon.tsx` - a small,
+deliberately non-trademarked abstract TF/PyTorch badge, not the official
+logos, colored close to each brand's real accent) and its last-edited
+date; `View` opens a read-only `Dialog` (description/imports/code)
+instead of navigating away; `Edit` routes to the existing `/model/:id`
+form (already supported edit-in-place - `PUT /models/{id}` and
+`ModelView.tsx`'s pre-fill both already existed, no new backend endpoint
+needed); `Delete` unchanged.
+
+**Distributed models are a strict linked list, not a tree** - confirmed
+against `backend/app/models.py` before assuming otherwise:
+`father_id` is `unique=True` and `child` is `uselist=False`, so a model
+has at most one child. Each chain is walked client-side from
+`getModels()`'s already-fetched flat list (every model already carries
+its own `father`, so a `father.id -> child` map reconstructs every full
+chain with zero new endpoints or requests) and rendered nested inside
+the root card, in descendance order, each row with a `GitBranch` icon
+and its own View/Edit/Delete actions.
+
+The last-edited date needed a real backend change - `MLModel` had no
+`created_at`/`updated_at` at all (see `backend/CLAUDE.md`'s matching
+section for the model/migration/listener details). `types.ts`'s
+`MLModel` gained both fields; every test fixture constructing an
+`MLModel` (`ModelList.test.tsx`, `ConfigurationView.test.tsx`,
+`e2e/mock-backend.ts`) needed them added too, since TypeScript now
+requires them.
+
+**Found and fixed a real, unrelated bug while verifying Edit live**:
+`CodeEditor.tsx`'s mount effect loads Monaco via an async `import()` but
+created the editor instance with the `value` *prop from its own
+first-render closure* - fine for every existing call site (all start
+with a real value already in hand), but `ModelView.tsx`'s edit path
+mounts with `value=""` before `getModel()` resolves, then re-renders
+with the real code once it does. When that re-render lands before the
+async Monaco chunk finishes loading (the common case - a network fetch
+racing a JS chunk load), the editor got created with the stale, already-
+superseded empty string, and the existing `[value]`-sync effect couldn't
+rescue it either (it already ran and no-opped once, since
+`editorRef.current` was still null at that point - its `if (editor &&
+...)` guard skips updating `lastEditorValueRef` too when that happens).
+Net effect: editing any real model silently showed an empty Code field.
+Reproduced live first (Playwright screenshot of a real deployed model's
+`/model/:id` page showed an empty editor despite `GET /models/{id}`
+genuinely returning code), then fixed by mirroring `value` into a ref
+(`valueRef`, same pattern as the existing `onChangeRef`/`ariaLabelRef`)
+and reading `valueRef.current` at editor-creation time instead of the
+closured prop - re-verified live afterward, code now loads correctly on
+first paint. (A full automated regression test wasn't practical: the
+existing `src/test-mocks/monaco-editor.ts` stub used by `router.test.ts`
+only covers the `editor` namespace, not `languages` -
+`monacoEnvironment.ts`'s own `monaco.languages.register(...)` call
+throws against it, silently swallowed by the mount effect's unhandled
+promise chain, so `editor.create` never actually gets called under
+vitest. Covered by the live verification below instead.)
+
+Verified live end-to-end against the real deployed cluster: created a
+real 2-model distributed TF chain and a real PyTorch model through the
+actual UI, confirmed the chain renders nested with the branch icon in
+both light and dark mode, the View modal shows real code, and Edit
+loads *and* round-trips a real change (`updated_at` genuinely bumped
+past `created_at` afterward). `pnpm typecheck`/`test:run` (106/106)/
+`build`/`lint`/`test:e2e` (3/3) all pass.
+
 ## Remaining work
 
 1. **Feature-parity audit vs. the old Vue app hasn't been done by a human

@@ -33,8 +33,30 @@ describe('ModelList', () => {
 
   it('fetches models on mount and renders their names', async () => {
     vi.mocked(getModels).mockResolvedValueOnce([
-      { id: 1, name: 'MNIST classifier', description: '', imports: '', code: '', distributed: false, father: null, framework: 'tf' },
-      { id: 2, name: 'CIFAR model', description: '', imports: '', code: '', distributed: false, father: null, framework: 'tf' },
+      {
+        id: 1,
+        name: 'MNIST classifier',
+        description: '',
+        imports: '',
+        code: '',
+        distributed: false,
+        father: null,
+        framework: 'tf',
+        created_at: '2026-01-01T00:00:00',
+        updated_at: '2026-01-01T00:00:00',
+      },
+      {
+        id: 2,
+        name: 'CIFAR model',
+        description: '',
+        imports: '',
+        code: '',
+        distributed: false,
+        father: null,
+        framework: 'tf',
+        created_at: '2026-01-01T00:00:00',
+        updated_at: '2026-01-02T00:00:00',
+      },
     ])
     renderModelList()
 
@@ -43,8 +65,24 @@ describe('ModelList', () => {
     expect(getModels).toHaveBeenCalledOnce()
   })
 
-  it('renders the upper-layer model name for distributed models', async () => {
+  it('nests a distributed model chain under its root card, in order of descendance', async () => {
+    // Distributed models are a strict father -> child chain on the backend
+    // (father_id is unique) - the full flat list always includes both ends,
+    // never just the child pointing at a father id that isn't itself in the
+    // list (that would be an orphaned row the real API never produces).
     vi.mocked(getModels).mockResolvedValueOnce([
+      {
+        id: 1,
+        name: 'Cloud model',
+        description: '',
+        imports: '',
+        code: '',
+        distributed: true,
+        father: null,
+        framework: 'tf',
+        created_at: '2026-01-01T00:00:00',
+        updated_at: '2026-01-01T00:00:00',
+      },
       {
         id: 3,
         name: 'Edge model',
@@ -54,16 +92,30 @@ describe('ModelList', () => {
         distributed: true,
         father: { id: 1, name: 'Cloud model', framework: 'tf' },
         framework: 'tf',
+        created_at: '2026-01-01T00:00:00',
+        updated_at: '2026-01-01T00:00:00',
       },
     ])
     renderModelList()
     expect(await screen.findByText('Cloud model')).toBeInTheDocument()
+    expect(screen.getByText('Edge model')).toBeInTheDocument()
   })
 
   it('deleting a model calls the API and removes it from the table', async () => {
     const user = userEvent.setup()
     vi.mocked(getModels).mockResolvedValueOnce([
-      { id: 1, name: 'To be deleted', description: '', imports: '', code: '', distributed: false, father: null, framework: 'tf' },
+      {
+        id: 1,
+        name: 'To be deleted',
+        description: '',
+        imports: '',
+        code: '',
+        distributed: false,
+        father: null,
+        framework: 'tf',
+        created_at: '2026-01-01T00:00:00',
+        updated_at: '2026-01-01T00:00:00',
+      },
     ])
     vi.mocked(deleteModel).mockResolvedValueOnce(undefined)
     renderModelList()

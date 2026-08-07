@@ -15,7 +15,18 @@ import { getFatherModels, getConfiguration, createConfiguration, editConfigurati
 import type { MLModel } from '@/types'
 
 function fatherModel(id: number, name: string): MLModel {
-  return { id, name, description: '', imports: '', code: '', distributed: false, father: null, framework: 'tf' }
+  return {
+    id,
+    name,
+    description: '',
+    imports: '',
+    code: '',
+    distributed: false,
+    father: null,
+    framework: 'tf',
+    created_at: '2026-01-01T00:00:00',
+    updated_at: '2026-01-01T00:00:00',
+  }
 }
 
 function renderAt(path: string) {

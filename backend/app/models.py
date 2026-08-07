@@ -50,6 +50,8 @@ class MLModel(Base):
         ForeignKey("ml_model.id", ondelete="SET NULL"), unique=True, nullable=True
     )
     framework: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     father: Mapped["MLModel | None"] = relationship(
         remote_side=[id], back_populates="child", foreign_keys=[father_id]
@@ -231,12 +233,27 @@ class IoTDevice(Base):
     mqtt_password: Mapped[str] = mapped_column(Text)
 
 
+_ML_MODEL_WATCHED_FIELDS = (
+    "name",
+    "description",
+    "imports",
+    "code",
+    "distributed",
+    "father_id",
+    "framework",
+)
+
+
 @event.listens_for(Session, "before_flush")
 def _touch_status_changed(session: Session, flush_context, instances) -> None:
     """Reproduces django-model-utils' MonitorField: whenever ``status`` changes
-    on a dirty TrainingResult/Inference, bump ``status_changed`` to now."""
+    on a dirty TrainingResult/Inference, bump ``status_changed`` to now. Same
+    idea for MLModel's ``updated_at``, watching its editable fields instead."""
     for obj in session.dirty:
-        if not isinstance(obj, (TrainingResult, Inference)):
-            continue
-        if sa_inspect(obj).attrs.status.history.has_changes():
-            obj.status_changed = utcnow()
+        if isinstance(obj, (TrainingResult, Inference)):
+            if sa_inspect(obj).attrs.status.history.has_changes():
+                obj.status_changed = utcnow()
+        elif isinstance(obj, MLModel):
+            state = sa_inspect(obj)
+            if any(getattr(state.attrs, field).history.has_changes() for field in _ML_MODEL_WATCHED_FIELDS):
+                obj.updated_at = utcnow()

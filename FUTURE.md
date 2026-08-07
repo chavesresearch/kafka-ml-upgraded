@@ -1761,3 +1761,69 @@ one of these comes up again - "not planned" is a scoping call made on
    every list view (`ModelList`, `ConfigurationList`, `DeploymentList`,
    `ResultList`, `DatasourceList`, `IoTDeviceList`) picks it up for free
    since they all share this one component.
+
+8. ~~`ModelList` was a plain `DataTable` (id/name/description/imports/code
+   truncated to 20 chars/`distributed` as literal "true"/"false"/an
+   "Upper layer" text column), the only list view not on the card grid
+   pattern `ConfigurationList`/`DeploymentList` already use, no framework
+   affordance, no last-edited date, and distributed models only showed a
+   flat upward pointer instead of the actual father→child chain~~ —
+   **done** (2026-08-07). Converted to the same card grid as
+   `ConfigurationList`/`DeploymentList`: each root model (`father ===
+   null`) is one card with a `FrameworkIcon` (new small component - an
+   abstract, non-trademarked TF/PyTorch badge, not the official logos)
+   and its last-edited date; View opens a read-only modal (description/
+   imports/code) instead of navigating away, Edit routes to the existing
+   `/model/:id` form (already supported edit-in-place - no new backend
+   endpoint needed), Delete unchanged. Distributed models: the backend's
+   father/child relationship is a **strict linked list**, not a branching
+   tree (`father_id` is `unique=True`, `child` is `uselist=False` - a
+   model has at most one child) - confirmed against `app/models.py`
+   before assuming a tree UI was needed. Each chain is walked client-side
+   from `getModels()`'s already-fetched flat list (each model already
+   carries its own `father`, so a `father.id -> child` map reconstructs
+   every chain with no new endpoint) and rendered nested inside the root's
+   card, in descendance order, each with a `GitBranch` icon and its own
+   View/Edit/Delete actions.
+
+   Last-edited date required a real backend change: `MLModel` had no
+   `created_at`/`updated_at` columns at all (unlike every other model in
+   the schema). Added both (`app/models.py`, migration
+   `ba0b7ea5c381_add_ml_model_created_at_and_updated_at`, backfilled via a
+   `server_default=CURRENT_TIMESTAMP` dropped again right after so future
+   inserts still rely on the ORM-side `default=utcnow`, matching every
+   other timestamp column), extended the existing `before_flush`
+   `MonitorField`-style listener (previously only watched
+   `TrainingResult`/`Inference.status`) to also bump `MLModel.updated_at`
+   whenever any of its editable fields actually change, and added both
+   fields to `model_dict()`. `uv run pytest -v` (40/40, 2 new assertions
+   in `test_models.py`).
+
+   **Found and fixed a real, unrelated bug while verifying Edit live**:
+   `CodeEditor.tsx`'s mount effect loads Monaco via an async `import()`,
+   but created the editor instance with the `value` prop from its own
+   *first-render* closure - fine for every existing call site (all start
+   with a real value already in hand), but `ModelView.tsx`'s edit path
+   mounts with `value=""` before `getModel()` resolves, then re-renders
+   with the real code once it does. If that re-render lands before the
+   async Monaco chunk finishes loading (the common case), the editor gets
+   created with the stale, already-superseded empty string, and the
+   existing `[value]`-sync effect can't rescue it either (it already ran
+   and skipped once, since `editorRef.current` was still null at that
+   point) - net effect: editing any model with real code showed an empty
+   Code field, silently. Reproduced live (Playwright screenshot of
+   `/model/:id` on a real deployed model showed an empty editor despite
+   `GET /models/{id}` returning the real code), fixed by mirroring `value`
+   into a ref (`valueRef`, same pattern already used for `onChangeRef`/
+   `ariaLabelRef`) and reading `valueRef.current` at editor-creation time
+   instead of the closured prop - re-verified live afterward, code now
+   loads correctly on first paint.
+
+   Verified live end-to-end against the real deployed cluster, not just
+   the pytest/vitest suites: created a real distributed TF chain (2
+   models) and a real PyTorch model through the actual UI, confirmed the
+   chain renders nested with the branch icon, the View modal shows real
+   code, Edit loads and round-trips a real change (confirmed
+   `updated_at` bumped past `created_at`), both framework badges render
+   distinctly in light and dark mode. `pnpm typecheck`/`test:run`
+   (106/106)/`build`/`lint`/`test:e2e` (3/3) all pass.

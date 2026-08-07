@@ -19,6 +19,8 @@ export interface MLModel {
   distributed: boolean
   father: SimpleModel | null
   framework: Framework
+  created_at: string
+  updated_at: string
 }
 
 export interface ModelPayload {

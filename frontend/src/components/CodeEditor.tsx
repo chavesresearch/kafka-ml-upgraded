@@ -51,6 +51,16 @@ export default function CodeEditor({
   onChangeRef.current = onChange
   const ariaLabelRef = useRef(ariaLabel)
   ariaLabelRef.current = ariaLabel
+  // Mirrors `value` for the mount effect below to read from - that effect's
+  // own `value` closure is captured once, at the first render, but Monaco's
+  // chunk is loaded with an async import() that can resolve well after a
+  // later render already updated `value` (e.g. ModelView's edit form: mounts
+  // with value="" before `getModel()` resolves, then re-renders with the
+  // real code once it does). Reading `valueRef.current` instead of the
+  // closured `value` at editor-creation time picks up whatever the latest
+  // value actually is, not whatever it was when this effect first ran.
+  const valueRef = useRef(value)
+  valueRef.current = value
   // The last value the editor itself produced (echoed up via onChange).
   // Lets the [value]-sync effect below tell "value changed because the
   // editor just reported it" apart from a genuinely external change (e.g.
@@ -73,7 +83,7 @@ export default function CodeEditor({
         monacoApiRef.current = api
 
         const instance = api.editor.create(containerRef.current, {
-          value,
+          value: valueRef.current,
           language,
           theme: monacoTheme(isDark),
           readOnly,
@@ -92,6 +102,8 @@ export default function CodeEditor({
           scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
         })
         editorRef.current = instance
+        lastEditorValueRef.current = valueRef.current
+        setIsEmpty(valueRef.current.length === 0)
 
         instance.onDidChangeModelContent(() => {
           const next = instance.getValue()

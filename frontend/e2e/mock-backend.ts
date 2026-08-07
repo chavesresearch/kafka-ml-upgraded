@@ -22,6 +22,8 @@ export interface MockModel {
   distributed: boolean
   father: { id: number; name: string; framework: 'tf' | 'pth' } | null
   framework: 'tf' | 'pth'
+  created_at: string
+  updated_at: string
 }
 
 export interface MockConfiguration {
@@ -120,6 +122,7 @@ export class MockBackend {
       const data = this.body(route)
       const id = this.newId('model')
       const father = data.father != null ? this.models.find((m) => m.id === data.father) : null
+      const now = new Date().toISOString()
       this.models.push({
         id,
         name: data.name as string,
@@ -129,6 +132,8 @@ export class MockBackend {
         distributed: Boolean(data.distributed),
         father: father ? { id: father.id, name: father.name, framework: father.framework } : null,
         framework: data.framework as 'tf' | 'pth',
+        created_at: now,
+        updated_at: now,
       })
       return this.empty(route, 201)
     }

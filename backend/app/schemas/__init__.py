@@ -37,6 +37,8 @@ def model_dict(model: MLModel) -> dict[str, Any]:
         "distributed": model.distributed,
         "father": simple_model_dict(model.father),
         "framework": model.framework,
+        "created_at": model.created_at,
+        "updated_at": model.updated_at,
     }
 
 

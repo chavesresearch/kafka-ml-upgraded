@@ -38,6 +38,8 @@ def test_create_and_get_model(client):
     resp = client.get(f"/models/{match['id']}")
     assert resp.status_code == 200
     assert resp.json()["name"] == "test-create"
+    assert match["created_at"] is not None
+    assert match["updated_at"] is not None
 
 
 def test_create_model_fails_validation(client):
@@ -56,8 +58,16 @@ def test_update_model(client):
         resp = client.put(f"/models/{model_id}", json={"name": "test-updated", "code": CODE, "framework": "tf"})
     assert resp.status_code == 200
 
+    created = client.get(f"/models/{model_id}").json()
+    with _mock_valid():
+        resp = client.put(
+            f"/models/{model_id}", json={"name": "test-updated-again", "code": CODE, "framework": "tf"}
+        )
+    assert resp.status_code == 200
     updated = client.get(f"/models/{model_id}").json()
-    assert updated["name"] == "test-updated"
+    assert updated["name"] == "test-updated-again"
+    assert updated["created_at"] == created["created_at"]
+    assert updated["updated_at"] >= created["updated_at"]
 
 
 def test_delete_model(client):

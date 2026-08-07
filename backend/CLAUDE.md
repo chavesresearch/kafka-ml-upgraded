@@ -185,6 +185,29 @@ signature not found)`).
 external call, to the executor's `/validate_model/`), not the executor
 service itself.
 
+## `MLModel.created_at`/`updated_at` (2026-08-07)
+
+Added for the frontend's card-based `ModelList` redesign (see
+`frontend/CLAUDE.md`'s matching section), which wanted a last-edited
+date per model - `MLModel` was the only model in the whole schema with
+no timestamp column at all (every other table already has `time`/
+`status_changed`). Migration
+`ba0b7ea5c381_add_ml_model_created_at_and_updated_at` adds both as
+`DateTime(timezone=True)` with a `server_default=CURRENT_TIMESTAMP`
+backfill for existing rows, dropped again in the same migration right
+after so future inserts still rely on the ORM-side `default=utcnow`,
+matching every other timestamp column in this schema rather than
+leaving a lingering server-side default nothing else uses.
+
+`updated_at` is kept current the same way `status_changed` already is:
+the existing `before_flush` listener (`_touch_status_changed`, `app/
+models.py`) was extended to also watch `MLModel`'s editable fields
+(`name`, `description`, `imports`, `code`, `distributed`, `father_id`,
+`framework`) and bump `updated_at` on a dirty `MLModel` if any of them
+actually changed - same `MonitorField`-style pattern, one shared
+listener function, not a second event handler. Both fields added to
+`model_dict()`. `uv run pytest -v` (40/40).
+
 ## Bugs found in the Django backend and fixed here
 
 Don't reintroduce these while porting more of the old Django backend's
