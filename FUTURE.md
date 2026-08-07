@@ -754,6 +754,38 @@ one of these comes up again - "not planned" is a scoping call made on
     typecheck`, `pnpm test:run` (99/99, new frontend test), `pnpm build`,
     and `pnpm test:e2e` (3/3) all pass.
 
+19. ~~IoT/TFLite deploy (`POST /results/inference-iot/{id}`) always failed
+    model conversion for every TensorFlow result~~ — **done** (2026-08-07,
+    found by a full build+deploy+real-training regression pass, not a
+    pre-existing known issue). `backend/app/controllers/iot_devices.py`
+    posts the model via httpx as `files={f"{result_id}.h5": model_bytes}`
+    - a bare `bytes` value, not a `(filename, content)` tuple. httpx's
+    `FileField` only uses the dict key as the multipart field *name*; for
+    a bare-bytes value with no `.name` attribute it falls back to a
+    literal filename of `"upload"` (confirmed via `httpx/_multipart.py`'s
+    own source, not assumed). `mlcode_executor/tfexecutor/app.py`'s
+    `convert_to_tflite` correctly matched the upload by field name
+    (`name.endswith('.h5')` - this field-name-is-the-filename contract is
+    intentional and documented in `mlcode_executor/CLAUDE.md`'s Gotcha 3),
+    but then called `_convert_model_to_tflite(model_bytes,
+    model_file.filename, ...)` - using the never-set `.filename`
+    ("upload") instead of the field name it had already matched on. Keras
+    3's `load_model` can't format-detect an extensionless path, so every
+    real IoT deploy failed with `File format not supported: filepath=./
+    tmp/upload`. The existing test (`test_convert_to_tflite_no_
+    quantization_returns_flatbuffer`) never caught this because it
+    happens to pass an explicit `("42.h5", ...)` tuple, which does carry
+    a filename - it tests a shape the real backend never actually sends.
+    Fixed by using the matched field name throughout instead of
+    `model_file.filename`; added
+    `test_convert_to_tflite_matches_backends_actual_upload_shape`, which
+    replicates the backend's real bare-bytes request shape so this can't
+    silently regress again. `uv run pytest` (10/10) passes; verified live
+    against the real deployed cluster too - `POST /results/inference-iot/2`
+    against a real finished CASE=1 result now returns `200` and produces
+    a real `.tflite` file (confirmed via `kubectl exec` into the backend
+    pod), not just a passing unit test.
+
 ### Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated
@@ -1464,3 +1496,16 @@ one of these comes up again - "not planned" is a scoping call made on
    ~579 kB gzipped isn't a good trade. No action taken; revisit only if
    Monaco's size becomes an actual measured problem, not a theoretical
    one.
+
+7. ~~Training-result metric charts (`PlotView`, `ResultCompareView`) and
+   the live-streaming regression chart (`VisualizationView`) labeled
+   their x-axis starting at 0 instead of 1~~ — **done** (2026-08-07).
+   `logic/plot.ts`'s `buildChartData`/`buildComparisonChartData` both
+   built `labels` via `Array.from({length}, (_, i) => i)` - the first
+   epoch plotted as "0", which nobody trains for. Fixed both to `i + 1`.
+   `pnpm typecheck`/`test:run` (99/99, updated label assertions) pass.
+   Also added the standard rows-per-page selector (10/25/50/100) to the
+   shared `DataTable.tsx`, next to the existing Previous/Next controls -
+   every list view (`ModelList`, `ConfigurationList`, `DeploymentList`,
+   `ResultList`, `DatasourceList`, `IoTDeviceList`) picks it up for free
+   since they all share this one component.
