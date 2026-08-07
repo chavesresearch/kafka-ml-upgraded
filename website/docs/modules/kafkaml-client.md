@@ -37,18 +37,21 @@ package's actual code, not a bypassed path.
 kafkaml-client/
 ├── src/kafkaml_client/
 │   ├── __init__.py     # re-exports KafkaMLClient, KafkaMLError
-│   └── client.py        # the entire implementation
+│   ├── client.py        # the REST client
+│   └── datasets.py      # optional numpy/pandas -> Kafka datasource support
 ├── tests/
-│   ├── conftest.py       # FakeBackend + httpx.MockTransport fixture
-│   └── test_client.py
+│   ├── conftest.py       # FakeBackend + httpx.MockTransport, plus Kafka fakes
+│   ├── test_client.py
+│   └── test_datasets.py
 └── pyproject.toml
 ```
 
-The whole implementation lives in one module, `client.py` — there's no
-separate models/resources/transport split. `KafkaMLClient` is a single
-class with one method group per backend resource (models,
-configurations, deployments, results, inference), plus two internal
-helpers (`_request`, `_find_id_by_name`).
+The REST client lives in one module, `client.py` — there's no separate
+models/resources/transport split. `KafkaMLClient` is a single class with
+one method group per backend resource (models, configurations,
+deployments, results, inference), plus two internal helpers (`_request`,
+`_find_id_by_name`). `datasets.py` is a separate module on purpose — see
+"Sending datasets" below.
 
 ## The HTTP layer
 
@@ -90,10 +93,53 @@ an HTTP-layer failure.
 
 It wraps `/models/`, `/configurations/`, `/deployments/`, `/results/`,
 `/results/inference/{id}`, and `/inferences/{id}` — the core CRUD plus
-the training-completion polling loop. It does not wrap datasource
-creation, IoT device endpoints, or the `/ws/` visualization relay;
-sending actual training/inference data is [`kafkaml-datasources`](./datasources)'
-job, used alongside this client rather than through it.
+the training-completion polling loop — and, via `send_dataset`/
+`send_dataframe` (below), sending an actual dataset to Kafka and
+registering it as a datasource. It does not wrap IoT device endpoints or
+the `/ws/` visualization relay.
+
+## Sending datasets
+
+Datasource registration doesn't go through the REST API at all — it
+happens when a `kafkaml_datasources.RawSink` is `.close()`d, which
+publishes a control-topic message that `kafka_control_logger` forwards
+to `backend`'s `POST /datasources/`. Every
+`examples/*/*_dataset_training_example.py` script in this repo
+hand-rolls that same pattern directly (construct a `RawSink`, loop
+`sink.send(data=x, label=y)` over the rows, `.close()`).
+`kafkaml_client.datasets.send_dataset`/`send_dataframe` — also exposed
+as `KafkaMLClient.send_dataset`/`.send_dataframe` — collapse it into one
+call, accepting numpy `ndarray`s or pandas `Series`/`DataFrame`s
+directly (converted via `.to_numpy()`):
+
+```python
+client.send_dataset(
+    "localhost:9094", topic="my-topic", deployment_id=deployment_id,
+    data=X, labels=y,
+)
+# or, for a single DataFrame holding both features and label:
+client.send_dataframe(
+    "localhost:9094", topic="my-topic", deployment_id=deployment_id,
+    dataframe=df, label_column="y",
+)
+```
+
+This needs the `datasets` extra (`pip install kafkaml-client[datasets]`,
+pulling in `kafkaml-datasources` + `numpy` + `pandas`) — every import of
+those three happens lazily, inside `datasets.py`'s functions, so plain
+`import kafkaml_client` and REST-only usage never require any of them.
+`kafkaml-datasources` is wired in via a local `path` source
+(`[tool.uv.sources]`), the same monorepo pattern
+[tf-kafka-dataset](./tf-kafka-dataset)'s consumers use.
+
+`send_dataset` checks `len(data) == len(labels)` before constructing the
+underlying `RawSink` — a mismatch fails immediately, before any Kafka
+client exists, rather than partway through a real send or silently
+truncating via `zip`. If a row-level send *does* fail mid-stream, the
+sink's `.close()` still runs from a `finally` block, so a partial send
+still gets registered with whatever row count it actually reached,
+rather than leaving already-published Kafka data completely
+unregistered.
 
 ## Testing approach
 
@@ -119,12 +165,22 @@ Docker-image service projects elsewhere in the repo, since this
 package's own `requires-python = ">=3.9"` is a real compatibility
 promise to external callers and `pytest 9` dropped Python 3.9 support.
 
+`test_datasets.py` (10 more tests) covers `send_dataset`/`send_dataframe`
+against a faked `kafka.KafkaConsumer`/`KafkaProducer` — but with real
+numpy arrays and pandas `DataFrame`/`Series` as the actual dataset
+objects sent through, exercising the genuine duck-typing contract
+`RawSink` expects rather than a stand-in for it. The fake consumer's
+`end_offsets` counts real messages the paired fake producer sent (rather
+than a constant), since `RawSink`'s `total_msg` control-message field is
+computed from that offset diff — a constant would silently make any
+`total_msg` assertion meaningless regardless of how many rows were
+actually sent.
+
 ## Status
 
 Draft/PoC. If it's adopted more broadly, natural next steps (not yet
-done) would be datasource-creation helpers so a caller doesn't need both
-this package and `kafkaml-datasources` to drive an end-to-end flow,
-typed response models, and an async client to match `backend`'s own
+done) would be IoT device / websocket visualization coverage, typed
+response models, and an async client to match `backend`'s own
 fully-async design.
 
 ## See also

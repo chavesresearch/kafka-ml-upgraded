@@ -12,6 +12,15 @@ uv add kafkaml-client
 # or: pip install kafkaml-client
 ```
 
+Add the `datasets` extra to also send numpy/pandas datasets to Kafka and
+register them as datasources (`client.send_dataset`/`.send_dataframe` -
+see Usage below):
+
+```
+uv add "kafkaml-client[datasets]"
+# or: pip install "kafkaml-client[datasets]"
+```
+
 ## Usage
 
 ```python
@@ -34,8 +43,13 @@ with KafkaMLClient("http://localhost:8000") as client:
         tf_kwargs_fit="epochs=1",
     )
 
-    # ... send training data to Kafka, e.g. with kafkaml-datasources'
-    # RawSink(deployment_id=deployment_id, ...) ...
+    # Sends a numpy/pandas dataset to Kafka and registers it as a
+    # datasource for this deployment - needs `pip install
+    # kafkaml-client[datasets]`.
+    import numpy as np
+    X = np.random.rand(100, 1).astype("float32")
+    y = (X[:, 0] > 0.5).astype("uint8")
+    client.send_dataset("localhost:9094", topic="my-topic", deployment_id=deployment_id, data=X, labels=y)
 
     results = client.wait_for_results(deployment_id, timeout=120)
     print(results[0]["train_metrics"])
@@ -62,6 +76,13 @@ per endpoint (in particular `create_deployment`'s `**fields` - TensorFlow
 vs. PyTorch kwargs use different key names, and incremental/distributed/
 federated deployments each need their own extra fields).
 
+Datasource registration itself happens over Kafka, not this REST API (see
+`kafkaml_client/datasets.py`) - `send_dataset`/`send_dataframe` (needs the
+`datasets` extra) send a numpy/pandas dataset to Kafka directly and
+register it automatically, the same flow this project's own
+`examples/*/*_dataset_training_example.py` scripts hand-roll with
+`kafkaml_datasources.RawSink`.
+
 ## Status
 
 A draft/proof-of-concept, not a polished, versioned SDK. Built by lifting
@@ -70,6 +91,7 @@ the request-building/polling logic that
 `integration-tests/` suite needed anyway (see that directory's
 `common.py`, which now just re-exports from this package) - covers the
 core CRUD + the "wait until a real training result finishes" polling loop
-that almost every real usage needs, not the backend's entire surface
-(datasources, IoT devices, websocket visualization, etc. aren't wrapped
-here yet).
+that almost every real usage needs, plus (with the `datasets` extra)
+sending a dataset to Kafka and registering it. Not the backend's entire
+surface though - IoT devices and websocket visualization aren't wrapped
+here yet.

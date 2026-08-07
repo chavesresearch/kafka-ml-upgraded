@@ -54,6 +54,60 @@ backend's behavior (that's `backend/tests`' job). Same Python-3.9-safe
 `pytest==8.4.2` pin as `datasources` - see that package's `CLAUDE.md` for
 why.
 
+## Numpy/pandas dataset -> datasource support (2026-08-07)
+
+`kafkaml_client.datasets.send_dataset`/`send_dataframe` (also exposed as
+`KafkaMLClient.send_dataset`/`.send_dataframe`) send a numpy/pandas
+dataset to Kafka and register it as a datasource for a deployment - the
+same flow every `examples/*/*_dataset_training_example.py` script
+hand-rolls with `kafkaml_datasources.RawSink` directly (construct a
+`RawSink`, loop `sink.send(data=x, label=y)` over the rows, `.close()` -
+which is what actually registers the datasource, via the control-topic
+message `kafka_control_logger` forwards to the backend), collapsed into
+one call. `send_dataset(bootstrap_servers, topic, deployment_id, data,
+labels, **kwargs)` takes two array-likes (numpy `ndarray`, or pandas
+`Series`/`DataFrame` converted via `.to_numpy()`); `send_dataframe(...,
+dataframe, label_column)` is a convenience wrapper for a single
+`DataFrame` holding both features and label in one table.
+
+**Answers the "datasource creation helpers" gap this file's own Status
+section used to flag** - a caller no longer needs `kafkaml-datasources`
+as a *second*, separately-installed dependency to fully drive an
+end-to-end flow through just this package.
+
+Gated behind the `datasets` extra (`pip install kafkaml-client[datasets]`,
+pulling in `kafkaml-datasources` + `numpy` + `pandas`), not a base
+dependency - every import of these three is done lazily, inside the
+functions themselves, so `import kafkaml_client` and the plain REST
+`KafkaMLClient` usage never require any of them. `kafkaml-datasources` is
+wired in via a local `path` source (`[tool.uv.sources]`), same monorepo
+pattern `tf-kafka-dataset`'s two consumers already use - not how a real
+external release would resolve it.
+
+`send_dataset` checks `len(data) == len(labels)` **before** constructing
+the underlying `RawSink` (and therefore before any Kafka client exists at
+all) - a mismatch fails immediately and cleanly rather than partway
+through a real send, or worse, silently truncating via `zip`. If a *later*
+row-level send does fail mid-stream (a row that isn't actually
+array-shaped, say), the sink's `.close()` still fires from a `finally` -
+a partial send still gets registered with whatever `total_msg` it
+actually reached, rather than leaving already-published Kafka data
+completely unregistered and orphaned.
+
+Tested (`tests/test_datasets.py`, 10 tests) against a faked
+`kafka.KafkaConsumer`/`KafkaProducer` (`tests/conftest.py`'s
+`patch_kafka` fixture - duplicated from, not shared with, `../datasources/
+tests/conftest.py`'s equivalent, since it's a handful of lines and this
+suite shouldn't depend on that package's test layout) - but with **real**
+numpy arrays and pandas `DataFrame`/`Series` as the actual dataset
+objects sent through, so the tests exercise the genuine duck-typing
+contract `RawSink` expects (`type(x).__name__` containing `"ndarray"`),
+not a hand-wavy stand-in for it. The fake consumer's `end_offsets` counts
+real messages the paired fake producer sent, rather than returning a
+constant - otherwise `total_msg` in the control message would always
+read 0 regardless of how many rows were actually sent, silently
+defeating any test that checks it.
+
 ## Design notes worth keeping if this is extended
 
 - `create_model`/`create_configuration`/`create_deployment`/
@@ -88,8 +142,7 @@ one polling loop, no async client, no typed response models (dicts
 straight from the JSON body, matching the backend's own loose
 `dict[str, Any]` request/response style - see `backend/CLAUDE.md`
 for why that's a deliberate choice on the backend side too). If this gets
-adopted for real, worth adding: datasource creation helpers (so a caller
-doesn't need `kafkaml-datasources` *and* this package to fully drive an
-end-to-end flow from one dependency), typed dataclasses/TypedDicts for the
-response shapes, and async support to match `backend`'s own
-fully-async design.
+adopted for real, still worth adding: IoT device / websocket visualization
+coverage (still unwrapped, see "What it wraps" above), typed
+dataclasses/TypedDicts for the response shapes, and async support to
+match `backend`'s own fully-async design.

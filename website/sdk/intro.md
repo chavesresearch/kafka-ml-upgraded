@@ -11,9 +11,9 @@ exact field names.
 
 :::note Status
 This is a draft/proof-of-concept, not a polished, versioned SDK yet. It
-covers the core CRUD operations plus the "wait until a real training
-result finishes" polling loop that almost every real usage needs — not
-the backend's entire surface (datasources, IoT devices, and the
+covers the core CRUD operations, the "wait until a real training result
+finishes" polling loop, and (with the `datasets` extra) sending a
+dataset to Kafka — not the backend's entire surface (IoT devices and the
 websocket visualization relay aren't wrapped here yet). Every method
 returns plain `dict`/`list[dict]` straight from the JSON response, not
 typed models.
@@ -24,6 +24,14 @@ typed models.
 ```bash
 uv add kafkaml-client
 # or: pip install kafkaml-client
+```
+
+Add the `datasets` extra to also send numpy/pandas datasets to Kafka
+(see [Sending Datasets](./sending-datasets)):
+
+```bash
+uv add "kafkaml-client[datasets]"
+# or: pip install "kafkaml-client[datasets]"
 ```
 
 ## Usage
@@ -48,8 +56,12 @@ with KafkaMLClient("http://localhost:8000") as client:
         tf_kwargs_fit="epochs=1",
     )
 
-    # ... send training data to Kafka, e.g. with kafkaml-datasources'
-    # RawSink(deployment_id=deployment_id, ...) ...
+    # Send a numpy/pandas dataset to Kafka and register it as a
+    # datasource for this deployment (needs the `datasets` extra):
+    import numpy as np
+    X = np.random.rand(100, 1).astype("float32")
+    y = (X[:, 0] > 0.5).astype("uint8")
+    client.send_dataset("localhost:9094", topic="my-topic", deployment_id=deployment_id, data=X, labels=y)
 
     results = client.wait_for_results(deployment_id, timeout=120)
     print(results[0]["train_metrics"])
@@ -73,5 +85,6 @@ Web UI itself uses.
 
 - [Creating Models](./creating-models) — single and distributed models
 - [Deployments & Training Modes](./deployments-and-training-modes) — every field `create_deployment` accepts, mapped to which training mode it produces
+- [Sending Datasets](./sending-datasets) — getting a numpy/pandas dataset into Kafka and registered as a datasource
 - [Waiting for Results & Inference](./waiting-for-results-and-inference) — polling, timeouts, and real-time inference
 - [API Reference](./api-reference) — every method, in full

@@ -123,3 +123,87 @@ def client(backend):
     c._http = httpx.Client(transport=httpx.MockTransport(backend.handler), base_url="http://backend")
     with c:
         yield c
+
+
+# -- fakes for kafkaml_client.datasets (RawSink/Kafka), not the REST API --
+#
+# `kafkaml_client.datasets.send_dataset`/`send_dataframe` build a real
+# `kafkaml_datasources.RawSink`, which talks to Kafka (not the REST API
+# above) the moment it's constructed. Same broker-free-fake approach as
+# `../../datasources/tests/conftest.py` itself uses to test RawSink -
+# duplicated here rather than imported, since it's a handful of lines and
+# this test suite shouldn't depend on datasources' own tests/ package
+# layout.
+
+
+class FakeKafkaConsumer:
+    """Stands in for `kafka.KafkaConsumer` - `KafkaMLSink.__init__` uses
+    one only to look up partition offsets (`partitions_for_topic`,
+    `end_offsets`), never to actually read messages.
+
+    `end_offsets` counts how many messages the most recently constructed
+    `FakeKafkaProducer` has actually `send()`t to each requested topic so
+    far - a real broker's offsets would advance the same way as `RawSink`
+    publishes data rows. Without this, `end_offsets` returning a constant
+    (e.g. always 0) would make `RawSink`'s own before/after offset diff -
+    the mechanism `total_msg` in the control message is computed from -
+    always report 0 sent messages regardless of how many rows were
+    actually sent, silently defeating any test that checks `total_msg`."""
+
+    instances: list["FakeKafkaConsumer"] = []
+
+    def __init__(self, *args, **kwargs):
+        self.kwargs = kwargs
+        FakeKafkaConsumer.instances.append(self)
+
+    def partitions_for_topic(self, topic):
+        return None if topic is None else {0}
+
+    def end_offsets(self, topic_partitions):
+        producer = FakeKafkaProducer.instances[-1] if FakeKafkaProducer.instances else None
+        return {
+            tp: (0 if producer is None else sum(1 for m in producer.sent if m["topic"] == tp.topic))
+            for tp in topic_partitions
+        }
+
+    def close(self, autocommit=False):
+        pass
+
+
+class FakeKafkaProducer:
+    """Stands in for `kafka.KafkaProducer` - records every `send()`
+    instead of writing to a real broker, so a test can inspect exactly
+    what `RawSink` published (data rows, and the final control message)."""
+
+    instances: list["FakeKafkaProducer"] = []
+
+    def __init__(self, *args, **kwargs):
+        self.kwargs = kwargs
+        self.sent: list[dict] = []
+        FakeKafkaProducer.instances.append(self)
+
+    def send(self, topic, value=None, key=None):
+        self.sent.append({"topic": topic, "key": key, "value": value})
+
+    def flush(self):
+        pass
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def patch_kafka(monkeypatch):
+    """Patches `kafka.KafkaConsumer`/`kafka.KafkaProducer` everywhere
+    `kafkaml_datasources` holds a reference to them, so constructing a
+    `RawSink` (via `send_dataset`/`send_dataframe`) needs no real broker.
+    Returns the fake classes so a test can inspect `.instances`."""
+    import kafkaml_datasources.sink as sink_mod
+
+    FakeKafkaConsumer.instances = []
+    FakeKafkaProducer.instances = []
+
+    monkeypatch.setattr(sink_mod, "KafkaConsumer", FakeKafkaConsumer)
+    monkeypatch.setattr(sink_mod, "KafkaProducer", FakeKafkaProducer)
+
+    return {"consumer": FakeKafkaConsumer, "producer": FakeKafkaProducer}

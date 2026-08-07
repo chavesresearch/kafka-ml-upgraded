@@ -15,7 +15,10 @@ names.
     deployment_id = client.create_deployment(
         configuration=config_id, batch=4, tf_kwargs_fit="epochs=1",
     )
-    # ... send training data to Kafka via kafkaml-datasources ...
+    # Sends a numpy/pandas dataset to Kafka and registers it as a
+    # datasource for this deployment - needs the 'datasets' extra
+    # (`pip install kafkaml-client[datasets]`); see kafkaml_client.datasets.
+    client.send_dataset("localhost:9094", topic="my-topic", deployment_id=deployment_id, data=X, labels=y)
     results = client.wait_for_results(deployment_id, timeout=120)
 """
 

@@ -1,6 +1,6 @@
 [project]
 name = "kafkaml-client"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Python client for the Kafka-ML backend REST API - create models, configurations, deployments, and inferences from code instead of raw HTTP calls"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -8,12 +8,36 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[project.optional-dependencies]
+# kafkaml_client.datasets (send_dataset/send_dataframe/KafkaMLClient.
+# send_dataset/.send_dataframe) needs these to actually talk to Kafka and
+# accept numpy/pandas input - kept optional so the base REST client
+# doesn't force a numpy/pandas/kafka-python install on a caller who never
+# touches that feature. `pip install kafkaml-client[datasets]`.
+datasets = [
+    "kafkaml-datasources",
+    "numpy>=1.24",
+    "pandas>=2.0",
+]
+
+[tool.uv.sources]
+# Local, same-repo path dependency - same pattern tf-kafka-dataset's two
+# real consumers already use (see tf-kafka-dataset/CLAUDE.md), appropriate
+# for a monorepo but not how a real standalone release would resolve this.
+kafkaml-datasources = { path = "../datasources" }
+
 [dependency-groups]
 # pytest==9.x dropped Python 3.9 support - see datasources/pyproject.toml's
 # identical comment for why this package stays on the latest 8.x instead
 # of the pytest 9 bump every service project in this repo already made.
+# numpy/pandas/kafkaml-datasources here (not just under
+# [project.optional-dependencies]) so the test suite can actually exercise
+# the `datasets` extra's code paths without a separate install step.
 dev = [
     "pytest==8.4.2",
+    "kafkaml-datasources",
+    "numpy>=1.24",
+    "pandas>=2.0",
 ]
 
 [tool.pytest.ini_options]

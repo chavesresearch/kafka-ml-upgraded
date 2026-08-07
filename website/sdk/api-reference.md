@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 6
 ---
 
 # API Reference
@@ -47,6 +47,16 @@ client as a context manager (`with KafkaMLClient(...) as client:`).
 | `create_deployment(configuration, batch=1, **fields)` | `int` | Submits real Kubernetes training Job(s). See [Deployments & Training Modes](./deployments-and-training-modes) for the full `**fields` reference. |
 | `list_deployments()` | `list[dict]` | |
 | `delete_deployment(deployment_id)` | `None` | |
+
+## Datasets
+
+Needs the `datasets` extra (`pip install kafkaml-client[datasets]`). See
+[Sending Datasets](./sending-datasets) for the full explanation.
+
+| Method | Returns | Notes |
+|---|---|---|
+| `send_dataset(bootstrap_servers, topic, deployment_id, data, labels, *, description="", validation_rate=0.0, test_rate=0.0, control_topic="KAFKA_ML_CONTROL_TOPIC", group_id="sink")` | `None` | `data`/`labels` accept a numpy `ndarray` or a pandas `Series`/`DataFrame`. Registers the datasource automatically. Raises `ValueError` if `data`/`labels` have different lengths. |
+| `send_dataframe(bootstrap_servers, topic, deployment_id, dataframe, label_column, **kwargs)` | `None` | Convenience wrapper for a single `DataFrame` holding both features and label; splits `label_column` off and calls `send_dataset`. Same `**kwargs` as `send_dataset`. |
 
 ## Results
 

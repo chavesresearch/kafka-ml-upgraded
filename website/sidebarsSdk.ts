@@ -5,6 +5,7 @@ const sidebars: SidebarsConfig = {
     'intro',
     'creating-models',
     'deployments-and-training-modes',
+    'sending-datasets',
     'waiting-for-results-and-inference',
     'api-reference',
   ],

@@ -234,6 +234,45 @@ class KafkaMLClient:
     def delete_inference(self, inference_id: int) -> None:
         self._request("DELETE", f"/inferences/{inference_id}")
 
+    # -- datasets (needs the 'datasets' extra) --------------------------
+
+    def send_dataset(
+        self,
+        bootstrap_servers: str,
+        topic: str,
+        deployment_id: int,
+        data: Any,
+        labels: Any,
+        **kwargs,
+    ) -> None:
+        """Sends a numpy/pandas `data`/`labels` pair to Kafka and
+        registers it as a datasource for `deployment_id` - see
+        `kafkaml_client.datasets.send_dataset` for the full behavior and
+        accepted `kwargs` (`description`, `validation_rate`, `test_rate`,
+        `control_topic`, `group_id`). Needs the `datasets` extra (`pip
+        install kafkaml-client[datasets]`); imported lazily here so
+        constructing a plain `KafkaMLClient` never requires it."""
+        from .datasets import send_dataset as _send_dataset
+
+        _send_dataset(bootstrap_servers, topic, deployment_id, data, labels, **kwargs)
+
+    def send_dataframe(
+        self,
+        bootstrap_servers: str,
+        topic: str,
+        deployment_id: int,
+        dataframe: Any,
+        label_column: str,
+        **kwargs,
+    ) -> None:
+        """Sends a single pandas `DataFrame` (features + a `label_column`)
+        to Kafka and registers it as a datasource for `deployment_id` -
+        see `kafkaml_client.datasets.send_dataframe`. Needs the `datasets`
+        extra, same as `send_dataset`."""
+        from .datasets import send_dataframe as _send_dataframe
+
+        _send_dataframe(bootstrap_servers, topic, deployment_id, dataframe, label_column, **kwargs)
+
     # -- internal ----------------------------------------------------
 
     def _find_id_by_name(self, list_path: str, name: str) -> int:
