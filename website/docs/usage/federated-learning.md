@@ -45,7 +45,10 @@ Federated learning composes with the other training modes: a federated
 model can also be distributed (a father/child submodel chain trained
 federatively) or incremental (a continuous streaming federated round),
 and a federated round can optionally be coordinated on-chain with real
-ERC-20 token rewards paid out to participating devices by contribution.
+ERC-20 token rewards paid out to participating devices by contribution —
+see [Blockchain-Traced Training](./blockchain-traced-training) for the
+operational how-to (chain setup, wallet Secret, enabling it) once you're
+ready to actually run it, not just watch it.
 
 The [Interactive Showcase](/showcase) covers every combination
 (9 modes total) with an animated walkthrough of each — a good next stop

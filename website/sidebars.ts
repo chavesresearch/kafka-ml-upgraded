@@ -17,6 +17,7 @@ const sidebars: SidebarsConfig = {
         'usage/semi-supervised-learning',
         'usage/incremental-training',
         'usage/federated-learning',
+        'usage/blockchain-traced-training',
       ],
     },
     {
