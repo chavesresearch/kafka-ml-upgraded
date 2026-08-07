@@ -120,6 +120,21 @@ async def create_deployment(
     if configuration is None:
         raise HTTPException(status_code=400, detail="Configuration not found")
 
+    # PyTorch has no federated training at any layer - model_training/
+    # pytorch/training.py has no CASE dispatch at all, and
+    # federated-module/federated_model_training/pytorch doesn't exist
+    # (see FUTURE.md's CASE_2_9_PLAN.md). Without this check, a PyTorch
+    # model deployed as federated wouldn't error - it would silently run
+    # plain classic training in a Job labeled/tracked as federated,
+    # ignoring every federated setting. The frontend already gates this
+    # (DeploymentView.tsx hides the checkbox when a PyTorch model is
+    # detected), this is defense in depth for anyone calling the API
+    # directly.
+    if data.get("federated", False) and any(m.framework == "pth" for m in configuration.ml_models):
+        raise HTTPException(
+            status_code=400, detail="Federated learning is only supported for TensorFlow models."
+        )
+
     # Real Kubernetes Jobs created for a root model earlier in the loop
     # below, tracked so a later model's failure can clean them up - see the
     # except block, this list is read there.

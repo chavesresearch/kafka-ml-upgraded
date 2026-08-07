@@ -146,10 +146,12 @@ export default function DeploymentView() {
                 <Checkbox checked={form.incremental} onCheckedChange={(v) => set('incremental', v === true)} />
                 Incremental training
               </label>
-              <label className="flex items-center gap-2 text-sm font-normal">
-                <Checkbox checked={form.federated} onCheckedChange={(v) => set('federated', v === true)} />
-                Federated learning
-              </label>
+              {!hasPth && (
+                <label className="flex items-center gap-2 text-sm font-normal">
+                  <Checkbox checked={form.federated} onCheckedChange={(v) => set('federated', v === true)} />
+                  Federated learning
+                </label>
+              )}
             </div>
             {showIndefinite && (
               <label className="flex items-center gap-2 text-sm font-normal">

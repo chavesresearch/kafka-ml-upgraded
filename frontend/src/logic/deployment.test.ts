@@ -120,6 +120,23 @@ describe('isDeploymentFormInvalid', () => {
       isDeploymentFormInvalid(baseForm({ tf_kwargs_fit: '', pth_kwargs_fit: 'max_epochs=5' }), context)
     ).toBe(false)
   })
+
+  it('rejects federated deployments when a PyTorch model is present, even if otherwise complete', () => {
+    // PyTorch has no CASE dispatch and no federated_model_training/pytorch
+    // edge worker - a federated deployment including a PyTorch model
+    // would otherwise silently run plain classic training instead of
+    // erroring (FUTURE.md High item 4).
+    const context = { detectedFrameworks: ['tf', 'pth'], hasTf: true, hasPth: true }
+    const form = baseForm({
+      federated: true,
+      agg_rounds: 15,
+      min_data: 1000,
+      data_restriction: '{}',
+      agg_strategy: 'FedAvg',
+      pth_kwargs_fit: 'max_epochs=5'
+    })
+    expect(isDeploymentFormInvalid(form, context)).toBe(true)
+  })
 })
 
 describe('visibility helpers', () => {

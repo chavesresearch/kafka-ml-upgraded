@@ -71,3 +71,45 @@ def test_partial_job_failure_cleans_up_the_earlier_already_created_job(client):
     # survives a failed create_deployment call.
     deployments = client.get(f"/deployments/{config_id}").json()
     assert deployments == []
+
+
+def test_federated_deployment_with_pytorch_model_is_rejected(client):
+    """PyTorch has no CASE dispatch and no federated_model_training/pytorch
+    edge worker at all - without this check, a federated deployment
+    including a PyTorch model would silently run plain classic training
+    while backend records the deployment as federated (FUTURE.md High
+    item 4). No Kubernetes mocking needed - this must reject before ever
+    reaching the Job-creation loop."""
+    with patch("app.controllers.models._check_model_code", new=AsyncMock(return_value=True)):
+        client.post(
+            "/models/",
+            json={"name": "deploy-pth-federated-model-pth", "code": CODE, "framework": "pth"},
+        )
+    pth_model_id = next(
+        m["id"] for m in client.get("/models/").json() if m["name"] == "deploy-pth-federated-model-pth"
+    )
+
+    client.post(
+        "/configurations/",
+        json={"name": "deploy-pth-federated-cfg", "ml_models": [pth_model_id]},
+    )
+    config_id = next(
+        c["id"] for c in client.get("/configurations/").json() if c["name"] == "deploy-pth-federated-cfg"
+    )
+
+    response = client.post(
+        "/deployments/",
+        json={
+            "configuration": config_id,
+            "batch": 4,
+            "federated": True,
+            "agg_rounds": 1,
+            "min_data": 1,
+            "data_restriction": "{}",
+            "agg_strategy": "FedAvg",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "TensorFlow" in response.json()["detail"]
+    assert client.get(f"/deployments/{config_id}").json() == []

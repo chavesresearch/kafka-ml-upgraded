@@ -105,6 +105,13 @@ export function isDeploymentFormInvalid(form: DeploymentForm, context: Framework
   if (hasPth && form.pth_kwargs_val && !KWARGS_RE.test(form.pth_kwargs_val)) return true
   if (showIndefiniteFields(form) && (!form.monitoring_metric || !form.change)) return true
   if (form.federated) {
+    // PyTorch training has no CASE dispatch at all - federated_model_
+    // training/pytorch doesn't exist at any layer (see FUTURE.md's
+    // CASE_2_9_PLAN.md). A federated deployment including a PyTorch
+    // model wouldn't error, it would silently run plain classic training
+    // while backend still records the deployment as federated - reject
+    // it here rather than let that happen.
+    if (hasPth) return true
     if (form.agg_rounds == null || !form.data_restriction || !form.agg_strategy) return true
     if (!form.incremental && form.min_data == null) return true
   }
