@@ -15,6 +15,7 @@ import type { Datasource } from '@/types'
 export default function DatasourceList() {
   const notify = useNotify()
   const [datasources, setDatasources] = useState<Datasource[]>([])
+  const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedDatasource, setSelectedDatasource] = useState<Datasource | null>(null)
   const [targetDeployment, setTargetDeployment] = useState<number | null>(null)
@@ -24,6 +25,7 @@ export default function DatasourceList() {
     getDatasources()
       .then(setDatasources)
       .catch(() => notify.error('Error connecting with the server'))
+      .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -151,7 +153,7 @@ export default function DatasourceList() {
         </DialogContent>
       </Dialog>
 
-      <DataTable columns={columns} data={datasources} />
+      <DataTable columns={columns} data={datasources} loading={loading} />
     </div>
   )
 }

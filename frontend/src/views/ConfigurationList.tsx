@@ -16,12 +16,14 @@ export default function ConfigurationList() {
   const navigate = useNavigate()
   const { confirm, dialog } = useConfirm()
   const [configurations, setConfigurations] = useState<Configuration[]>([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
 
   useEffect(() => {
     getConfigurations()
       .then(setConfigurations)
       .catch(() => notify.error('Error connecting with the server'))
+      .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -61,6 +63,10 @@ export default function ConfigurationList() {
       </div>
 
       <Input placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-xs" />
+
+      {filtered.length === 0 && (
+        <p className="py-8 text-center text-muted-foreground">{loading ? 'Loading…' : 'No configurations.'}</p>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((configuration) => (

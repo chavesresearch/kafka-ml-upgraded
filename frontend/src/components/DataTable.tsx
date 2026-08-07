@@ -25,9 +25,13 @@ interface DataTableProps<T> {
   columns: ColumnDef<T, unknown>[]
   data: T[]
   getRowId?: (row: T) => string
+  // While true and `data` is empty, shows a "Loading…" row instead of
+  // "No results." - without this, every list view briefly claims no
+  // data exists at all while its initial fetch is still in flight.
+  loading?: boolean
 }
 
-export default function DataTable<T>({ columns, data, getRowId }: DataTableProps<T>) {
+export default function DataTable<T>({ columns, data, getRowId, loading }: DataTableProps<T>) {
   const [globalFilter, setGlobalFilter] = useState('')
   const [sorting, setSorting] = useState<SortingState>([])
 
@@ -89,7 +93,7 @@ export default function DataTable<T>({ columns, data, getRowId }: DataTableProps
             {table.getRowModel().rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                  No results.
+                  {loading ? 'Loading…' : 'No results.'}
                 </TableCell>
               </TableRow>
             ) : (

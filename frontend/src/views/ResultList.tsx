@@ -52,6 +52,7 @@ export default function ResultList() {
 
   const deploymentID = id ? Number(id) : undefined
   const [results, setResults] = useState<TrainingResult[]>([])
+  const [loading, setLoading] = useState(true)
   const [metricsDialogOpen, setMetricsDialogOpen] = useState(false)
   const [metricsDialogData, setMetricsDialogData] = useState<TrainingResult | null>(null)
   const [compareIds, setCompareIds] = useState<string[]>([])
@@ -61,6 +62,8 @@ export default function ResultList() {
       setResults(deploymentID !== undefined ? await getResultsOfDeployment(deploymentID) : await getResults())
     } catch {
       notify.error('Error connecting with the server')
+    } finally {
+      setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentID])
@@ -249,7 +252,7 @@ export default function ResultList() {
         </div>
       )}
 
-      <DataTable columns={columns} data={results} getRowId={(r) => String(r.id)} />
+      <DataTable columns={columns} data={results} getRowId={(r) => String(r.id)} loading={loading} />
 
       <Dialog open={metricsDialogOpen} onOpenChange={setMetricsDialogOpen}>
         <DialogContent className="sm:max-w-lg">

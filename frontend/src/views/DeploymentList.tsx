@@ -38,6 +38,7 @@ export default function DeploymentList() {
   const configurationID = id ? Number(id) : undefined
   const [configuration, setConfiguration] = useState<Configuration | null>(null)
   const [deployments, setDeployments] = useState<DeploymentInfo[]>([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
 
   useEffect(() => {
@@ -51,6 +52,8 @@ export default function DeploymentList() {
         }
       } catch {
         notify.error('Error connecting with the server')
+      } finally {
+        setLoading(false)
       }
     }
     load()
@@ -89,6 +92,10 @@ export default function DeploymentList() {
       </div>
 
       <Input placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-xs" />
+
+      {filtered.length === 0 && (
+        <p className="py-8 text-center text-muted-foreground">{loading ? 'Loading…' : 'No deployments.'}</p>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((deployment) => (

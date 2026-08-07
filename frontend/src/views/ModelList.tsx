@@ -14,11 +14,13 @@ export default function ModelList() {
   const notify = useNotify()
   const { confirm, dialog } = useConfirm()
   const [models, setModels] = useState<MLModel[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     getModels()
       .then(setModels)
       .catch(() => notify.error('Error connecting with the server'))
+      .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -96,7 +98,7 @@ export default function ModelList() {
         </Button>
       </div>
 
-      <DataTable columns={columns} data={models} getRowId={(m) => String(m.id)} />
+      <DataTable columns={columns} data={models} getRowId={(m) => String(m.id)} loading={loading} />
       {dialog}
     </div>
   )

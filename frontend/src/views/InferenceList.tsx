@@ -17,6 +17,7 @@ export default function InferenceList() {
   const notify = useNotify()
   const { confirm, dialog } = useConfirm()
   const [inferences, setInferences] = useState<Inference[]>([])
+  const [loading, setLoading] = useState(true)
   const [infoDialogOpen, setInfoDialogOpen] = useState(false)
   const [infoDialogData, setInfoDialogData] = useState<Inference | null>(null)
 
@@ -25,6 +26,8 @@ export default function InferenceList() {
       setInferences(await getInferences())
     } catch {
       notify.error('Error connecting with the server')
+    } finally {
+      setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -152,7 +155,7 @@ export default function InferenceList() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Inference</h1>
-      <DataTable columns={columns} data={inferences} getRowId={(i) => String(i.id)} />
+      <DataTable columns={columns} data={inferences} getRowId={(i) => String(i.id)} loading={loading} />
 
       <Dialog open={infoDialogOpen} onOpenChange={setInfoDialogOpen}>
         <DialogContent className="sm:max-w-lg">

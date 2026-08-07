@@ -13,11 +13,13 @@ export default function IoTDeviceList() {
   const notify = useNotify()
   const { confirm, dialog } = useConfirm()
   const [devices, setDevices] = useState<IoTDevice[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     getIoTDevices()
       .then(setDevices)
       .catch(() => notify.error('Error connecting with the server'))
+      .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -112,7 +114,7 @@ export default function IoTDeviceList() {
         </Button>
       </div>
 
-      <DataTable columns={columns} data={devices} getRowId={(d) => String(d.id)} />
+      <DataTable columns={columns} data={devices} getRowId={(d) => String(d.id)} loading={loading} />
       {dialog}
     </div>
   )
