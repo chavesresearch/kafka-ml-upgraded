@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -12,6 +13,23 @@ from app.matching import check_colission
 from app.models import Datasource, ModelSource
 
 logger = logging.getLogger(__name__)
+
+# Serializes the select-candidates -> deploy -> mark-consumed critical
+# section across both handlers below. Without this, two registrations
+# arriving close together can both SELECT the same counterpart row
+# before either request's delete has committed - `await
+# deploy_on_kubernetes(...)` is a real await point (Kubernetes API call
+# latency), so the event loop can switch to the other request's coroutine
+# mid-match, and both proceed to deploy against the same row (see
+# FUTURE.md's Not-planned-turned-fixed entry for this bug). This service
+# runs as a single uvicorn worker/process (start.sh has no --workers
+# flag) with a SQLite backend (no real row-level locking available -
+# SQLite is single-writer at the file level, `SELECT ... FOR UPDATE`
+# isn't meaningful here), so a plain in-process asyncio.Lock is both
+# sufficient and the simplest correct fix - it fully serializes matching
+# across concurrent requests without needing a database-level primitive
+# this backend doesn't have.
+_match_lock = asyncio.Lock()
 
 
 def _model_source_dict(m: ModelSource) -> dict[str, Any]:
@@ -82,23 +100,35 @@ async def create_datasource(data: dict[str, Any], db_session: AsyncSession) -> N
     ds_data = _datasource_dict(datasource)
     logger.info("Checking for models that can be trained...")
 
-    result = await db_session.execute(select(ModelSource))
-    for model_source in result.scalars().all():
-        ms_data = _model_source_dict(model_source)
+    async with _match_lock:
+        result = await db_session.execute(select(ModelSource))
+        for model_source in result.scalars().all():
+            ms_data = _model_source_dict(model_source)
 
-        if not ms_data["distributed"]:
-            if not ds_data["incremental"]:
-                case = 1 if ms_data["blockchain"] == {} else 5
+            if not ms_data["distributed"]:
+                if not ds_data["incremental"]:
+                    case = 1 if ms_data["blockchain"] == {} else 5
+                else:
+                    case = 2
             else:
-                case = 2
-        else:
-            case = 4 if ds_data["incremental"] else 3
+                case = 4 if ds_data["incremental"] else 3
 
-        if check_colission(ds_data, ms_data, case):
-            logger.info("Datasource and model are compatible. Deploying model...")
-            await deploy_on_kubernetes(ds_data, ms_data, ms_data["framework"], case)
-            await db_session.delete(model_source)
-            await db_session.delete(datasource)
+            if check_colission(ds_data, ms_data, case):
+                logger.info("Datasource and model are compatible. Deploying model...")
+                await deploy_on_kubernetes(ds_data, ms_data, ms_data["framework"], case)
+                await db_session.delete(model_source)
+                await db_session.delete(datasource)
+
+        # Committed here, still inside the lock - not left for
+        # provide_db_session's outer session.begin() to commit after this
+        # handler returns. The lock alone only serializes the in-Python
+        # critical section; without an early commit, a matched row's
+        # delete stays invisible to the next lock-acquirer's own fresh
+        # SELECT (each request gets its own AsyncSession) until this
+        # request's transaction actually lands, reopening the exact same
+        # race window at the database level instead of the event-loop
+        # level.
+        await db_session.commit()
 
 
 @post("/model-control-logger/", tags=["federated"])
@@ -155,21 +185,27 @@ async def model_from_control_logger(data: dict[str, Any], db_session: AsyncSessi
         case = 4 if incremental else 3
 
     logger.info("Checking for datasources that can be used to train the model...")
-    result = await db_session.execute(select(Datasource))
-    for datasource in result.scalars().all():
-        ds_data = _datasource_dict(datasource)
+    async with _match_lock:
+        result = await db_session.execute(select(Datasource))
+        for datasource in result.scalars().all():
+            ds_data = _datasource_dict(datasource)
 
-        # Non-incremental cases still wait for the datasource to have
-        # finished sending (total_msg populated) - check_colission's own
-        # case-based branch already skips the total_msg>=min_data
-        # comparison for incremental cases (2, 4), so it doesn't need
-        # gating here too.
-        if incremental or ds_data["total_msg"] is not None:
-            if check_colission(ds_data, ms_data, case):
-                logger.info("Datasource and model are compatible. Deploying model...")
-                await deploy_on_kubernetes(ds_data, ms_data, framework, case)
-                await db_session.delete(datasource)
-                await db_session.delete(model_source)
+            # Non-incremental cases still wait for the datasource to have
+            # finished sending (total_msg populated) - check_colission's own
+            # case-based branch already skips the total_msg>=min_data
+            # comparison for incremental cases (2, 4), so it doesn't need
+            # gating here too.
+            if incremental or ds_data["total_msg"] is not None:
+                if check_colission(ds_data, ms_data, case):
+                    logger.info("Datasource and model are compatible. Deploying model...")
+                    await deploy_on_kubernetes(ds_data, ms_data, framework, case)
+                    await db_session.delete(datasource)
+                    await db_session.delete(model_source)
+
+        # See create_datasource's identical comment above - committed
+        # here, still inside the lock, so the next lock-acquirer's own
+        # fresh SELECT can't still see a row this request already matched.
+        await db_session.commit()
 
 
 router = Router(path="/", route_handlers=[create_datasource, model_from_control_logger])

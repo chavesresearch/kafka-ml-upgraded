@@ -176,3 +176,87 @@ def test_model_from_control_logger_persists_and_matches_existing_datasource(mock
     mock_deploy.assert_awaited_once()
     assert _count(ModelSource) == 0
     assert _count(Datasource) == 0
+
+
+@patch("app.controllers.deploy_on_kubernetes", new_callable=AsyncMock)
+def test_concurrent_matching_datasources_only_deploy_once(mock_deploy, client):
+    """Smoke test for `_match_lock` (app/controllers.py): two registrations
+    that both match the same ModelSource, fired concurrently, must still
+    only deploy once. Uses AsyncTestClient + asyncio.gather for genuine
+    concurrent requests through the real ASGI app (a plain TestClient
+    can't overlap two in-flight requests).
+
+    Honest caveat, checked empirically (not assumed) before writing this
+    docstring: this test currently passes **with or without** `_match_lock`
+    - each handler does its own `db_session.add(...)` + `await
+    db_session.flush()` (a real write) before ever reaching the match
+    section, and SQLite only allows one writer transaction at a time, so
+    the second concurrent request's own flush already blocks until the
+    first request's entire transaction (match, deploy, delete, commit)
+    finishes - the interleaving the original finding described can't
+    actually occur against *this* SQLite-backed deployment. `_match_lock`
+    plus committing before releasing it are kept anyway: they make the
+    critical section correct on its own logical merits, independent of
+    incidentally relying on SQLite's single-writer behavior - would still
+    matter if this service's storage backend ever changed to something
+    with real concurrent writers (e.g. Postgres). This test is real
+    concurrent-request coverage either way, just not a test that would
+    have failed before the fix.
+    """
+    import anyio
+    from litestar.testing import AsyncTestClient
+
+    from app.main import app
+
+    async def _slow_deploy(*args, **kwargs):
+        await anyio.sleep(0.05)
+
+    mock_deploy.side_effect = _slow_deploy
+
+    _seed(
+        ModelSource(
+            federated_string_id="fed-1",
+            input_shape="10",
+            output_shape="1",
+            data_restriction="{}",
+            min_data=1,
+            framework="tf",
+            distributed=False,
+            blockchain={},
+        )
+    )
+
+    def _payload(topic: str) -> dict:
+        return {
+            "incremental": False,
+            "topic": topic,
+            "unsupervised_topic": "",
+            "input_format": "RAW",
+            "input_config": '{"data_reshape": "10"}',
+            "description": "",
+            "dataset_restrictions": "{}",
+            "validation_rate": 0.2,
+            "test_rate": 0.1,
+            "total_msg": 100,
+            "time": "2026-01-01T00:00:00",
+        }
+
+    async def _fire_both():
+        async with AsyncTestClient(app=app) as async_client:
+            return await asyncio.gather(
+                async_client.post("/federated-datasources/", json=_payload("t1")),
+                async_client.post("/federated-datasources/", json=_payload("t2")),
+            )
+
+    responses = asyncio.run(_fire_both())
+
+    assert all(r.status_code == 201 for r in responses)
+    # Exactly one of the two requests found the ModelSource still there -
+    # the other's fresh SELECT (its own AsyncSession) must see it already
+    # gone, not race it into a second, duplicate deploy.
+    assert mock_deploy.await_count == 1
+    assert _count(ModelSource) == 0
+    # The matched request's own Datasource was deleted alongside the
+    # ModelSource; the other request's Datasource never matched anything
+    # (by the time its locked section ran) and survives.
+    assert _count(Datasource) == 1
