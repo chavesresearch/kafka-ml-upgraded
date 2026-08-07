@@ -3,6 +3,7 @@ import logging
 import os
 from typing import Annotated, Any, Optional
 
+import anyio
 import httpx
 import msgspec
 from litestar import Router, get, post, delete
@@ -225,7 +226,12 @@ async def download_trained_model(result_id: int, db_session: AsyncSession) -> Re
 
     try:
         file_path = settings.MEDIA_ROOT / result.trained_model_path
-        content = file_path.read_bytes()
+        # Offloaded to a thread - this is a single-worker event loop, and a
+        # large trained-model file read would otherwise block every other
+        # in-flight request (including the live /ws/ relay) for its
+        # duration. See iot_devices.py's deploy_to_iot_devices for the
+        # same fix applied to its own model-file read.
+        content = await anyio.to_thread.run_sync(file_path.read_bytes)
     except Exception as e:
         logger.error(str(e))
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -250,7 +256,7 @@ async def download_confusion_matrix(result_id: int, db_session: AsyncSession) ->
 
     try:
         file_path = settings.MEDIA_ROOT / (result.confusion_mat_img_path or "")
-        content = file_path.read_bytes()
+        content = await anyio.to_thread.run_sync(file_path.read_bytes)
     except Exception as e:
         logger.error(str(e))
         raise HTTPException(status_code=400, detail=str(e)) from e

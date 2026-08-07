@@ -14,6 +14,7 @@ from litestar.exceptions import HTTPException
 from litestar.response import File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models import IoTDevice, TrainingResult
@@ -217,9 +218,23 @@ async def deploy_to_iot_devices(
             status_code=400, detail="Missing required fields: 'code' or 'device_token'."
         )
 
-    training_result = await db_session.get(TrainingResult, result_id)
+    training_result = await db_session.get(
+        TrainingResult, result_id, options=[selectinload(TrainingResult.model)]
+    )
     if training_result is None:
         raise HTTPException(status_code=404, detail="Model result not found.")
+
+    # IoT/TFLite export only exists on the TensorFlow side
+    # (mlcode_executor/pthexecutor has no /convert_to_tflite/ equivalent,
+    # and PyTorch results are stored as .pth, not .h5 - see the
+    # model_path check below) - name the actual problem here instead of
+    # letting a PyTorch result fall through to a generic "Model file not
+    # found" a few lines down.
+    if training_result.model.framework != "tf":
+        raise HTTPException(
+            status_code=400,
+            detail="IoT/TFLite deployment is only supported for TensorFlow models.",
+        )
 
     devices = (
         await db_session.execute(select(IoTDevice).where(IoTDevice.token.in_(device_tokens)))
@@ -245,9 +260,15 @@ async def deploy_to_iot_devices(
         # consumer_timeout_ms) before conversion even starts, so this needs
         # the shared client's full timeout (see app/main.py's lifespan), not
         # a shorter one that guarantees a timeout on a real deployment.
+        # Offloaded to a thread, not a plain model_path.read_bytes() call -
+        # this is a single-worker event loop (see app/db.py's "one
+        # transaction per request" note), and a large model file read
+        # would otherwise block every other in-flight request, including
+        # the live /ws/ Kafka-to-browser relay, for its duration.
+        model_bytes = await anyio.to_thread.run_sync(model_path.read_bytes)
         resp = await http_client.post(
             settings.TENSORFLOW_EXECUTOR_URL + "convert_to_tflite/",
-            files={f"{result_id}.h5": model_path.read_bytes()},
+            files={f"{result_id}.h5": model_bytes},
             data=tflite_parser_config,
         )
     except httpx.HTTPError as e:
