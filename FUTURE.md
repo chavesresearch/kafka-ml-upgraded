@@ -1827,3 +1827,13 @@ one of these comes up again - "not planned" is a scoping call made on
    `updated_at` bumped past `created_at`), both framework badges render
    distinctly in light and dark mode. `pnpm typecheck`/`test:run`
    (106/106)/`build`/`lint`/`test:e2e` (3/3) all pass.
+
+   **Follow-up, same day**: the first pass's `FrameworkIcon` was a
+   hand-drawn abstract badge, deliberately avoiding the official logos -
+   flagged as not displaying properly once real seeded models made it
+   visible at actual size. Swapped in the real TensorFlow/PyTorch marks
+   (path data from Simple Icons, CC0-licensed for exactly this purpose),
+   colored with each brand's real accent rather than `currentColor` so
+   it stays legible in both themes without a separate dark variant -
+   same component interface, no other file changed. Verified live in
+   both light and dark mode.

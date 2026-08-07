@@ -404,10 +404,8 @@ layer" column showing just the father's name) was the one list view not
 on the card grid `ConfigurationList`/`DeploymentList` already use, with
 no framework affordance and no way to see when a model was last edited.
 Now a card grid: each root model (`father === null`) gets a
-`FrameworkIcon` (new `src/components/FrameworkIcon.tsx` - a small,
-deliberately non-trademarked abstract TF/PyTorch badge, not the official
-logos, colored close to each brand's real accent) and its last-edited
-date; `View` opens a read-only `Dialog` (description/imports/code)
+`FrameworkIcon` (new `src/components/FrameworkIcon.tsx`) and its
+last-edited date; `View` opens a read-only `Dialog` (description/imports/code)
 instead of navigating away; `Edit` routes to the existing `/model/:id`
 form (already supported edit-in-place - `PUT /models/{id}` and
 `ModelView.tsx`'s pre-fill both already existed, no new backend endpoint
@@ -466,6 +464,22 @@ both light and dark mode, the View modal shows real code, and Edit
 loads *and* round-trips a real change (`updated_at` genuinely bumped
 past `created_at` afterward). `pnpm typecheck`/`test:run` (106/106)/
 `build`/`lint`/`test:e2e` (3/3) all pass.
+
+**`FrameworkIcon` uses the real logos, not a hand-drawn abstraction
+(2026-08-07)**: the first pass deliberately avoided the official
+TensorFlow/PyTorch marks (hand-rolled geometric badges instead) - looked
+wrong at a glance once actually seeded with real models (see the
+`backend`'s "seeded example data" note), not just visually generic.
+Replaced with the real path data from
+[Simple Icons](https://simpleicons.org/) (CC0-licensed monochrome brand
+glyphs - the standard source for embedding brand marks in an app's own
+UI, distinct from the multi-color official logo lockups, which aren't
+CC0), colored with each brand's real accent (`#FF6F00` TensorFlow,
+`#EE4C2C` PyTorch) rather than `currentColor`, so the badge stays
+recognizable in both light and dark mode without a separate per-theme
+variant. Same component interface (`framework`/`className` props) - no
+other file needed to change. Verified live: both logos render crisp and
+legible at the card's small icon size, in both themes.
 
 ## Remaining work
 
