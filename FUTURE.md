@@ -19,16 +19,20 @@ removed, so the history of what used to be true here isn't lost.
 Re-evaluate before acting — some items may already be stale by the time
 you read this.
 
-Split into two top-level sections, **TODO** and **Completed** (added
-2026-08-07 - before this, open and resolved items were interleaved within
-each severity level, which made it hard to see the real remaining backlog
-at a glance). Each is itself ordered by severity
-(Critical → High → Medium → Low, then the frontend-specific follow-ups),
-and items are renumbered sequentially within each severity subsection of
-each top-level section - a numbered cross-reference like "High item 9"
-always means item 9 of whichever of the two subsections (TODO/Completed)
-it's actually pointing at, called out explicitly wherever that isn't the
-same section the reference itself lives in.
+Split into three top-level sections, **TODO**, **Not planned (short
+term)**, and **Completed** (the TODO/Completed split added 2026-08-07 -
+before this, open and resolved items were interleaved within each
+severity level, which made it hard to see the real remaining backlog at
+a glance; "Not planned" carved out the same day, for real findings that
+just aren't worth doing yet - see that section's own intro for why that's
+different from simply not tracking them). Each is itself ordered by
+severity (Critical → High → Medium → Low, then the frontend-specific
+follow-ups), and items are renumbered sequentially within each severity
+subsection of each top-level section - a numbered cross-reference like
+"High item 9" always means item 9 of whichever of the three subsections
+(TODO/Not planned/Completed) it's actually pointing at, called out
+explicitly wherever that isn't the same section the reference itself
+lives in.
 
 Severity guide: **Critical** = security/availability risk or actively
 breaks correctness guarantees today. **High** = real cost or risk, no active
@@ -127,148 +131,33 @@ nice-to-have polish.
 
 ### Medium
 
-1. **`backend` is stuck on Python 3.12 while 7 sibling `python:3.12-slim`
-   services successfully moved to 3.14** (2026-08-05 dependency-audit
-   pass) - `sqlalchemy==2.0.36`'s typing internals
-   (`util/typing.py::make_union_type`) raise `TypeError: descriptor
-   '__getitem__' requires a 'typing.Union' object but received a 'tuple'`
-   on Python 3.14, hit while importing `app/models.py`'s `Mapped[...]`
-   annotations - not a test-only issue, the app wouldn't boot. Confirmed
-   empirically (a real failed `pytest` collection, not assumed from a
-   changelog) before reverting just this one service back to
-   `python:3.12-slim`. Revisit once SQLAlchemy ships a 3.14-compatible
-   stable release (2.1 was still beta as of this check - also blocked
-   from bumping to for a different reason, no stable release yet).
+1. **No CI job runs `integration-tests/` automatically.** A
+   `workflow_dispatch`-triggered job (`.github/workflows/
+   integration-tests.yml`) is prepared and ready to dispatch on a
+   `[self-hosted, kafka-ml-local-cluster]` runner - it can't run on a
+   GitHub-hosted runner at all, since `integration-tests/README.md`'s own
+   Prerequisites need a real local Kubernetes cluster with `backend`/
+   `kafka`/`tfexecutor`/`pthexecutor` already deployed and reachable at
+   `localhost:8000`/`localhost:9094`. **Blocked on registering an actual
+   self-hosted runner with that label** (Settings -> Actions -> Runners ->
+   New self-hosted runner on a machine that already satisfies those
+   prerequisites) - the workflow itself has a fail-fast reachability
+   check (`curl localhost:8000/results/`) and accepts an optional
+   `test_pattern` input (pytest `-k` expression) or a
+   `run_real_mnist_case` input (one `mnist_case*.py` script) so a partial
+   run doesn't require dispatching the whole multi-minute suite. Prepared
+   2026-08-07; not yet actually dispatched/verified against a real
+   runner - say so explicitly if asked whether this has run in CI, not
+   just whether the workflow file exists.
 
-2. **`website/`'s `typescript` pin is stuck at `~6.0.2` while `frontend/`
-   moved to `~7.0.2` cleanly** (2026-08-05) - TypeScript 7 removed the
-   `baseUrl` compiler option entirely, and `website/tsconfig.json` extends
-   `@docusaurus/tsconfig@3.10.2`, which still sets `baseUrl` itself - not
-   fixable from this repo (can't edit a third-party package's own
-   tsconfig). Revisit once a `@docusaurus/tsconfig` release drops
-   `baseUrl` for `paths`.
-
-3. **No resource `requests`/`limits` or liveness/readiness probes on any
-    of the 6 base Deployments** (`backend`, `frontend`, `tf-executor`,
-    `pth-executor`, `kafka-control-logger`, `federated-backend` - grepped
-    every manifest under `kustomize/base/resources/`, zero hits on either
-    field), **and none on dynamically-generated training/inference Jobs
-    either** (`backend/app/job_manifest_generator.py`,
-    `federated_backend/app/kubernetes_deploy.py` - grepped, nothing).
-    Distinct from the GPU-specific resource-limit code path this project
-    already has for `-gpu` variants. Without requests/limits, a runaway
-    training container (TensorFlow/PyTorch have no built-in memory cap)
-    can starve or OOM-kill neighboring pods on the same node instead of
-    being contained to its own; without probes, Kubernetes has no signal
-    to restart a hung-but-still-running pod (e.g. the exact "degraded
-    subprocess state" scenario documented in this project's own debugging
-    history required a manual `kubectl rollout restart` - a readiness
-    probe wired to a real health check could have caught it
-    automatically). Found in a 2026-08-07 audit.
-
-4. **Kafka has no transport security anywhere in the stack.** Grepped
-    every `KafkaProducer`/`KafkaConsumer`/`AIOKafkaConsumer` construction
-    repo-wide (`datasources`, `model_training/*`, `model_inference/*`,
-    `mlcode_executor/tfexecutor`, `kafka_control_logger`,
-    `federated-module/*`, `backend/app/websocket.py`) - zero SASL/SSL
-    config anywhere; every client connects to `BOOTSTRAP_SERVERS` in
-    plaintext with no authentication. This is more a deployment-topology
-    assumption than a code defect (fine inside a trusted cluster network,
-    which is the only topology this project currently documents/tests
-    against), but it's undocumented in the README's threat-model section
-    - anyone deploying across a less-trusted network boundary should know
-    every model weight, training datum, and control message is
-    unauthenticated plaintext on the wire. Found in a 2026-08-07 audit.
-
-5. **Blocking synchronous file I/O in async route handlers, on a
-    single-worker event loop.** `backend/app/controllers/
-    training_results.py` (two call sites) and `iot_devices.py` call
-    `.read_bytes()` directly inside `async def` handlers - unlike
-    `mlcode_executor`'s own `_convert_model_to_tflite`, which explicitly
-    offloads equivalent work via `anyio.to_thread.run_sync` for exactly
-    this reason (see `mlcode_executor/CLAUDE.md` gotcha 2). A large model
-    file read stalls the entire event loop for its duration, including
-    the live `/ws/` Kafka-to-browser visualization relay other requests
-    depend on. Found in a 2026-08-07 audit.
-
-6. **No CI job runs `integration-tests/` at all**, not even as a manual
-    `workflow_dispatch` - grepped every workflow file, no reference to
-    that directory anywhere. It's the only suite that exercises real
-    9-CASE training + inference end-to-end (see
-    `integration-tests/README.md`), and it currently only ever runs by
-    hand. A `workflow_dispatch`-triggered job (it needs a real cluster,
-    so not viable as a normal PR gate) would at least make it runnable
-    on demand without a local checkout. Found in a 2026-08-07 audit.
-
-7. **`model_training/pytorch`'s helper functions (`download_model`,
-    `select_gpu`, `load_environment_vars`, etc. in `utils.py`/
-    `training.py`) have zero test coverage** - an asymmetry versus the
-    `tensorflow` sibling's coverage of equivalent helpers. Found in a
-    2026-08-07 audit.
-
-8. **No PodDisruptionBudget anywhere in the repo.** Muted impact today
-    since every base Deployment is already `replicas: 1` (a PDB can't
-    protect a true singleton from eviction, only guarantee *how many* of
-    several replicas stay up), but worth revisiting if any service is
-    ever scaled past 1 replica - right now a voluntary node drain simply
-    takes each one down with no eviction guard at all. Found in a
-    2026-08-07 audit.
-
-9. **`website/docs/security.md`'s "Mitigations in place" list is stale**
-    - it omits both the `mlcode_executor` multiprocessing+60s-timeout
-    sandbox (Critical item 3 / High item 12 in the Completed section
-    below) and the blockchain wallet key moving to a real Kubernetes
-    Secret (Critical item 5, also below), even though both already
-    shipped per this file. Found in a 2026-08-07
-    audit; worth a follow-up pass through this doc against the current
-    state of this file's own Critical/High sections.
-
-10. **All 7 frontend list views show a misleading "No results." empty
-    state during the initial fetch** - `ModelList`, `ConfigurationList`,
-    `ResultList`, `DatasourceList`, `IoTDeviceList`, `DeploymentList`, and
-    `InferenceList` all render the empty-state message whenever their
-    array is empty, with no separate loading flag tracked while the
-    initial `get*()` call is still in flight - so a user on a slow
-    connection briefly sees "no data exists" before it flips to the real
-    rows. Found in a 2026-08-07 audit.
-
-11. **IoT/TFLite edge deployment is TensorFlow-only end-to-end, but
-    nothing tells a user that before they hit a confusing generic error.**
-    `mlcode_executor/pthexecutor/app.py` has no `/convert_to_tflite/`
-    equivalent (grepped - only `/exec_pth/` and `/check_deploy_config/`
-    exist); `backend/app/controllers/iot_devices.py`'s
-    `deploy_to_iot_devices` unconditionally looks for `{result_id}.h5`
-    and always calls `TENSORFLOW_EXECUTOR_URL`, regardless of the
-    result's actual framework (PyTorch results are stored as `.pth` -
-    see `training_results.py`). `frontend/src/views/InferenceIoTView.tsx`
-    applies no framework filter when picking a training result. Net
-    effect: a user with a finished PyTorch result can walk through the
-    entire IoT-deploy form (pick devices, write a Berry script) and only
-    get a generic `404 "Model file not found."` at submit time - no
-    indication anywhere that this path is TF-only. Fix by filtering the
-    result picker to `framework === 'tf'` (same pattern the distributed
-    checkbox in `ModelView.tsx` already uses) and/or a clearer backend
-    error message naming the actual problem. Found in a 2026-08-07 audit.
-
-12. **The blockchain-traced training feature (CASE=9) has no
-    operator/user-facing setup documentation anywhere** - not the root
-    README (grepped for "blockchain", zero matches), not
-    `website/docs/`. This is a fully implemented, end-to-end-verified
-    feature (see Completed/Critical item 5 and Completed/High item 5
-    above) with its own Kubernetes Secret, `ENABLE_FEDML_BLOCKCHAIN` env
-    var, and dedicated contract-deployment code
-    (`backend/app/blockchain.py`), but nothing explains how to actually
-    enable/use it - `website/docs/usage/federated-learning.md` mentions
-    it in one paragraph and defers to the `/showcase` page, which is
-    explicitly illustrative/simulated, not operational guidance. A user
-    who wants to actually run CASE=9 (not just watch the showcase
-    animation) has no page to follow: what wallet/devnet is needed, how
-    to create the credentials Secret, what the "Blockchain-traced
-    training" checkbox requires. Distinct from the existing TODO Medium
-    item 9 above (which flags `security.md`'s *mitigations list* as
-    stale re: the wallet secret specifically) - this is about the
-    complete absence of how-to documentation for the feature itself.
-    Found in a 2026-08-07 audit.
+2. **All 7 frontend list views show a misleading "No results." empty
+   state during the initial fetch** - `ModelList`, `ConfigurationList`,
+   `ResultList`, `DatasourceList`, `IoTDeviceList`, `DeploymentList`, and
+   `InferenceList` all render the empty-state message whenever their
+   array is empty, with no separate loading flag tracked while the
+   initial `get*()` call is still in flight - so a user on a slow
+   connection briefly sees "no data exists" before it flips to the real
+   rows. Found in a 2026-08-07 audit.
 
 ### Low
 
@@ -340,6 +229,67 @@ nice-to-have polish.
    Gotcha #5). Acceptable for now; if it becomes a real problem, evaluate a
    lighter editor (CodeMirror 6) or loading Monaco from a CDN instead of
    bundling it. Same order of magnitude as the Vue app's own ~594 kB figure.
+
+## Not planned (short term)
+
+Real, verified findings that aren't going to be worked on soon - not
+because they're wrong, but because fixing them properly needs either a
+design decision (not just a patch) or infrastructure this project
+doesn't have reason to invest in yet. Re-evaluate rather than dismiss if
+one of these comes up again - "not planned" is a scoping call made on
+2026-08-07, not a permanent judgment that the finding is unimportant.
+
+### Medium
+
+1. **No resource `requests`/`limits` or liveness/readiness probes on any
+   of the 6 base Deployments** (`backend`, `frontend`, `tf-executor`,
+   `pth-executor`, `kafka-control-logger`, `federated-backend` - grepped
+   every manifest under `kustomize/base/resources/`, zero hits on either
+   field), **and none on dynamically-generated training/inference Jobs
+   either** (`backend/app/job_manifest_generator.py`,
+   `federated_backend/app/kubernetes_deploy.py` - grepped, nothing).
+   Distinct from the GPU-specific resource-limit code path this project
+   already has for `-gpu` variants. Without requests/limits, a runaway
+   training container (TensorFlow/PyTorch have no built-in memory cap)
+   can starve or OOM-kill neighboring pods on the same node instead of
+   being contained to its own; without probes, Kubernetes has no signal
+   to restart a hung-but-still-running pod. Found in a 2026-08-07 audit.
+   **Why not now**: real values need real load-testing per service (a
+   too-tight memory limit on a training Job would OOM-kill legitimate
+   training runs, not just runaway ones) - this is a tuning exercise, not
+   a mechanical fix, and this project's own local-dev/single-node
+   verification loop doesn't exercise multi-tenant resource pressure at
+   all. Worth doing before any real multi-tenant or production
+   deployment, not before then.
+
+2. **Kafka has no transport security anywhere in the stack.** Grepped
+   every `KafkaProducer`/`KafkaConsumer`/`AIOKafkaConsumer` construction
+   repo-wide (`datasources`, `model_training/*`, `model_inference/*`,
+   `mlcode_executor/tfexecutor`, `kafka_control_logger`,
+   `federated-module/*`, `backend/app/websocket.py`) - zero SASL/SSL
+   config anywhere; every client connects to `BOOTSTRAP_SERVERS` in
+   plaintext with no authentication. Found in a 2026-08-07 audit; now
+   documented in `website/docs/security.md`'s "Not done" section (see
+   Completed/Medium item 21 in the Completed section below) so it's at
+   least disclosed, even unfixed. **Why not now**: this is a
+   deployment-topology assumption
+   (fine inside a trusted cluster network, the only topology this
+   project currently documents/tests against), not a single code
+   change - every one of the ~10 services listed above would need its
+   own SASL/SSL config plumbed through from Kafka broker setup down to
+   each client construction, and there's no broker-with-auth in this
+   project's own local dev/CI loop to verify against. Worth doing before
+   deploying across any less-trusted network boundary, not before then.
+
+3. **No PodDisruptionBudget anywhere in the repo.** Muted impact today
+   since every base Deployment is already `replicas: 1` (a PDB can't
+   protect a true singleton from eviction, only guarantee *how many* of
+   several replicas stay up). Found in a 2026-08-07 audit. **Why not
+   now**: genuinely low value until something in this repo actually runs
+   at more than 1 replica - adding PDBs today would be unverifiable
+   (nothing to test the "protects N-1 replicas" behavior against) and
+   pure boilerplate. Revisit the moment any service's `replicas` moves
+   past 1.
 
 ## Completed
 
@@ -1201,6 +1151,109 @@ nice-to-have polish.
     navigating away from a crashed view resets the boundary instead of
     leaving the user stuck on the fallback UI. `pnpm typecheck`, `pnpm
     test:run` (98/98), and `pnpm build` all pass clean.
+
+17. ~~`backend` is stuck on Python 3.12 while 7 sibling
+    `python:3.12-slim` services successfully moved to 3.14~~ — **done**
+    (2026-08-07). `sqlalchemy==2.0.36`'s typing internals used to raise
+    `TypeError: descriptor '__getitem__' requires a 'typing.Union' object
+    but received a 'tuple'` on Python 3.14, hit while importing
+    `app/models.py`'s `Mapped[...]` annotations - not a test-only issue,
+    the app wouldn't boot. Confirmed empirically (a real `uv sync
+    --python 3.14` + `uv run pytest`, not assumed from a changelog) that
+    `sqlalchemy==2.0.51` fixes it - bumped both `backend/pyproject.toml`
+    and `federated-module/federated_backend/pyproject.toml` (the exact
+    same bug, independently confirmed there too), `requires-python` to
+    `>=3.12,<3.15` in both, and both `Dockerfile`s to `python:3.14-slim`,
+    matching the other 7 services. `uv.lock` regenerated for both, real
+    `.venv` confirmed running actual Python 3.14.6, full pytest suites
+    (33/33 backend, 14/14 federated_backend) pass.
+
+18. ~~`website/`'s `typescript` pin is stuck at `~6.0.2` while `frontend/`
+    moved to `~7.0.2` cleanly~~ — **done** (2026-08-07). TypeScript 7
+    removed the `baseUrl` compiler option entirely
+    (`error TS5102: Option 'baseUrl' has been removed`), and
+    `website/tsconfig.json` extended `@docusaurus/tsconfig@3.10.2`, which
+    still sets `baseUrl` in its own file - not editable from this repo.
+    Confirmed the exact failure mode empirically first (a scratch copy
+    with `typescript` bumped alone fails on the *inherited* `baseUrl`,
+    not just the local one) before concluding it needed more than a
+    version bump. Fixed by dropping the `extends` entirely and inlining
+    the handful of options this project actually needs from
+    `@docusaurus/tsconfig` directly into `website/tsconfig.json`, using
+    `"paths": {"@site/*": ["./*"]}` instead of `baseUrl` - confirmed
+    against `@docusaurus/tsconfig@3.10.2`'s own file, not guessed.
+    `@docusaurus/tsconfig` dropped from `devDependencies` (nothing else
+    referenced it). `pnpm typecheck` and `pnpm build` both verified clean
+    on the real `typescript@7.0.2` install, not just a scratch copy.
+
+19. ~~Blocking synchronous file I/O in async route handlers, on a
+    single-worker event loop~~ — **done** (2026-08-07).
+    `backend/app/controllers/training_results.py` (two call sites) and
+    `iot_devices.py` called `.read_bytes()` directly inside `async def`
+    handlers - unlike `mlcode_executor`'s own `_convert_model_to_tflite`,
+    which explicitly offloads equivalent work via `anyio.to_thread.
+    run_sync` for exactly this reason. Fixed all three call sites the
+    same way - a large model file read no longer stalls the single
+    event loop (including the live `/ws/` relay) for its duration. `uv
+    run pytest -v` (33/33) still passes.
+
+20. ~~`model_training/pytorch`'s helper functions (`download_model`,
+    `select_gpu`, `load_environment_vars`, etc.) have zero test
+    coverage~~ — **done** (2026-08-07). Added `tests/test_training.py`
+    (select_gpu's nvidia-smi-parsing/missing-binary branches,
+    load_environment_vars' env-var parsing including a missing-required-
+    var failure case, split_fit_params/split_val_params' ignite-kwarg
+    bucketing) and `tests/test_utils.py` (download_model's success,
+    retry-then-succeed, and retries-exhausted-returns-None paths) - 13
+    new tests, all against mocked `subprocess`/`requests`/`os.environ`,
+    no real Kafka/cluster needed, matching the existing
+    `test_training_kafka_dataset.py`'s isolation approach. `uv run
+    pytest -v` (16/16) passes.
+
+21. ~~`website/docs/security.md`'s "Mitigations in place" list is
+    stale~~ — **done** (2026-08-07). Added the two missing mitigations
+    (the `mlcode_executor` multiprocessing+60s-timeout sandbox, the
+    blockchain wallet key's real Kubernetes Secret) plus two more that
+    shipped the same day this item was found (the exec()'d-code queue-
+    deadlock fix, `ast.literal_eval` replacing `eval()` on `backend`'s
+    own `kwargs_fit`/`kwargs_val` parsing), and added a new "Not done"
+    entry documenting Kafka's plaintext-everywhere transport (see "Not
+    planned (short term)"/Medium item 2 above for the underlying,
+    still-open code-level finding - this doc update is just the
+    disclosure the threat model was missing, not a fix for that item).
+
+22. ~~IoT/TFLite edge deployment is TensorFlow-only end-to-end, but
+    nothing tells a user that before they hit a confusing generic
+    error~~ — **done** (2026-08-07). `mlcode_executor/pthexecutor` has no
+    `/convert_to_tflite/` equivalent, and `backend/app/controllers/
+    iot_devices.py`'s `deploy_to_iot_devices` used to unconditionally
+    look for `{result_id}.h5` regardless of the result's actual
+    framework. Fixed on three levels: (1) backend now eager-loads the
+    result's model and returns a clear
+    `400 "IoT/TFLite deployment is only supported for TensorFlow
+    models."` instead of a generic 404 for a non-TF result; (2)
+    `simple_model_dict` (used for every `SimpleModel`-shaped API field,
+    including `TrainingResult.model`) now includes `framework`, so the
+    frontend can actually know a result's framework without a second
+    fetch; (3) `ResultList.tsx`'s "Deploy on IoT" menu item is now
+    hidden for non-TF results (same pattern the distributed checkbox in
+    `ModelView.tsx` already used), and `InferenceIoTView.tsx` itself
+    guards direct URL navigation with a friendly message instead of
+    rendering a doomed form. `uv run pytest -v` (33/33, including an
+    updated `test_create_distributed_father_child` assertion for the new
+    `framework` field), `pnpm typecheck`, `pnpm test:run` (98/98), `pnpm
+    build`, and `pnpm test:e2e` (3/3) all pass.
+
+23. ~~The blockchain-traced training feature (CASE=9) has no
+    operator/user-facing setup documentation anywhere~~ — **done**
+    (2026-08-07). New `website/docs/usage/blockchain-traced-training.md`
+    - what's needed (a reachable chain, a funded wallet, the
+    `kafkaml-blockchain-credentials` Secret), every `fedml.blockchain.*`
+    ConfigMap key with `kustomize/local`'s own values as a worked
+    example, how to enable and use it, and a brief note on what actually
+    happens on-chain per round. Linked from `federated-learning.md`'s
+    existing one-paragraph mention and wired into `sidebars.ts`.
+    `pnpm build` confirms no broken links.
 
 ### Low
 
