@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, MoreVertical, Play, ExternalLink, Trash2, Plus, Upload } from 'lucide-react'
+import { Eye, Play, ExternalLink, Trash2, Plus, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useConfirm } from '@/hooks/useConfirm'
 import { getConfigurations, deleteConfiguration } from '@/api'
 import { useNotify } from '@/notify'
@@ -76,30 +75,38 @@ export default function ConfigurationList() {
                 <h3 className="font-semibold">{configuration.name}</h3>
                 <p className="text-sm text-muted-foreground">{configuration.description}</p>
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <MoreVertical className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => navigate(`/configuration/${configuration.id}`)}>
-                    <Eye /> View
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/deploy/${configuration.id}`)}>
-                    <Play /> Deploy
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/import/${configuration.id}`)}>
-                    <Upload /> Import trained model
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/deployments/${configuration.id}`)}>
-                    <ExternalLink /> Deployments
-                  </DropdownMenuItem>
-                  <DropdownMenuItem variant="destructive" onClick={() => confirmDelete(configuration.id)}>
-                    <Trash2 /> Remove
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="flex gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="View"
+                  onClick={() => navigate(`/configuration/${configuration.id}`)}
+                >
+                  <Eye className="size-4" />
+                </Button>
+                <Button variant="ghost" size="icon" title="Deploy" onClick={() => navigate(`/deploy/${configuration.id}`)}>
+                  <Play className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Import trained model"
+                  onClick={() => navigate(`/import/${configuration.id}`)}
+                >
+                  <Upload className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Deployments"
+                  onClick={() => navigate(`/deployments/${configuration.id}`)}
+                >
+                  <ExternalLink className="size-4" />
+                </Button>
+                <Button variant="ghost" size="icon" title="Remove" onClick={() => confirmDelete(configuration.id)}>
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>

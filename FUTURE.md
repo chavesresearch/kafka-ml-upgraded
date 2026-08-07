@@ -998,6 +998,21 @@ one of these comes up again - "not planned" is a scoping call made on
     106/106 total), `pnpm typecheck`/`build`/`test:e2e` (3/3) all pass.
     New Usage doc: `website/docs/usage/importing-a-trained-model.md`.
 
+28. **`ConfigurationList`/`DeploymentList` hid their actions behind a "⋮"
+    dropdown, unlike every other list view in the app** (`ModelList`,
+    `DatasourceList`, etc., which all show inline ghost icon buttons with
+    a `title` tooltip directly). Found the hard way: the user couldn't
+    find the new "Import trained model" action (item 27 above) because it
+    was inside that hidden menu. Fixed by converting both cards' action
+    areas to the same inline-icon-buttons-with-tooltips pattern already
+    used everywhere else - `Eye`/`Play`/`Upload`/`ExternalLink`/`Trash2`
+    for `ConfigurationList`, `Eye`/`Trash2` for `DeploymentList`, both
+    `variant="ghost"` (not `destructive` red for Remove, matching
+    `ModelList`'s own existing convention for the same action). Verified
+    live with Playwright against the real deployed cluster - all 5/2
+    actions visible and correctly wired, zero console errors.
+    `pnpm typecheck`/`test:run` (106/106)/`build`/`lint` all still pass.
+
 ### Medium
 
 1. ~~`federated-module/` duplicates the main backend~~ — **evaluated
