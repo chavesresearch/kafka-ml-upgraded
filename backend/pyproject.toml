@@ -1,16 +1,16 @@
 [project]
 name = "kafka-ml-backend"
 version = "0.1.0"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.15"
 # sqlalchemy==2.0.36's typing internals (util/typing.py's make_union_type)
-# raise `TypeError: descriptor '__getitem__' requires a 'typing.Union'
-# object but received a 'tuple'` on Python 3.14 - hit during ORM model
-# import (app/models.py's Mapped[...] annotations), not just under
-# pytest, so this isn't a test-only issue - the app itself wouldn't boot.
-# Confirmed empirically (a real `uv run pytest` collection failure, not
-# assumed from changelogs) before reverting this pin. Revisit once
-# SQLAlchemy ships a 3.14-compatible release (2.1 is still beta as of
-# this check).
+# used to raise `TypeError: descriptor '__getitem__' requires a
+# 'typing.Union' object but received a 'tuple'` on Python 3.14 - hit
+# during ORM model import (app/models.py's Mapped[...] annotations), not
+# just under pytest, so it wasn't a test-only issue - the app itself
+# wouldn't boot. Fixed upstream by 2.0.51 (2.1 is still beta) - confirmed
+# empirically (a real `uv sync --python 3.14` + `uv run pytest`, not
+# assumed from changelogs) before bumping both this pin and the Docker
+# base image below.
 dependencies = [
     "aiokafka==0.14.0",
     "aiosqlite==0.22.1",
@@ -24,7 +24,7 @@ dependencies = [
     "msgspec==0.21.1",
     "paho-mqtt==2.1.0",
     "python-multipart==0.0.32",
-    "sqlalchemy==2.0.36",
+    "sqlalchemy==2.0.51",
     "uvicorn==0.52.1",
     # web3==7.16.0 (bumped 2026-08-05 from 5.28.0, 3 majors behind - see
     # FUTURE.md Medium item 5). This dropped the whole

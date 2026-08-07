@@ -1,18 +1,19 @@
 [project]
 name = "kafka-ml-federated-backend"
 version = "0.1.0"
-requires-python = ">=3.12,<3.13"
-# sqlalchemy==2.0.36's typing internals break on Python 3.14 - same bug
-# as ../../backend/pyproject.toml, see FUTURE.md Medium item 6 for the
-# full diagnosis (a real TypeError in make_union_type, hit at import time
-# for any Mapped[X | None] column). Confirmed here too before pinning
-# down, not assumed just because backend hit it.
+requires-python = ">=3.12,<3.15"
+# sqlalchemy==2.0.36's typing internals used to break on Python 3.14 -
+# same bug as ../../backend/pyproject.toml (see its own comment there for
+# the full diagnosis: a real TypeError in make_union_type, hit at import
+# time for any Mapped[X | None] column). Fixed upstream by 2.0.51 -
+# confirmed here too (a real `uv sync --python 3.14` + `uv run pytest`),
+# not assumed just because backend's own fix worked.
 dependencies = [
     "aiosqlite==0.22.1",
     "greenlet==3.5.4",
     "kubernetes-asyncio==36.1.0",
     "litestar==2.24.0",
-    "sqlalchemy==2.0.36",
+    "sqlalchemy==2.0.51",
     "uvicorn==0.52.1",
 ]
 
