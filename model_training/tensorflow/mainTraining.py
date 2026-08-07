@@ -613,12 +613,12 @@ class MainTraining(object):
             if not k.startswith("val_"):
                 try:
                     epoch_training_metrics[k].append(v)
-                except:
+                except KeyError:
                     epoch_training_metrics[k] = v
             else:
                 try:
                     epoch_validation_metrics[k[4:]].append(v)
-                except:
+                except KeyError:
                     epoch_validation_metrics[k[4:]] = v
         
         return epoch_training_metrics, epoch_validation_metrics, {}
@@ -637,12 +637,12 @@ class MainTraining(object):
                     if not k.startswith("val_"):
                         try:
                             train_dic[k[len(m.name)+1:]].append(v)
-                        except:
+                        except KeyError:
                             train_dic[k[len(m.name)+1:]] = v
                     else:
                         try:
                             val_dic[k[4+len(m.name)+1:]].append(v)
-                        except:
+                        except KeyError:
                             val_dic[k[4+len(m.name)+1:]] = v
             epoch_training_metrics.append(train_dic)
             epoch_validation_metrics.append(val_dic)
@@ -702,8 +702,14 @@ class MainTraining(object):
 
                 cf_generated = True
                 logging.info("Generated confussion matrix successfully")
-            except:
-                logging.info("Could not generate confussion matrix")
+            except Exception:
+                # logging.exception (not .info) - a real regression here
+                # (e.g. a shape mismatch after a future Keras bump) must
+                # not run silently forever with nothing but an easy-to-miss
+                # INFO line. cf_generated stays False either way, so
+                # training itself still succeeds without a confusion
+                # matrix - only the visibility of *why* changes here.
+                logging.exception("Could not generate confussion matrix")
 
         return cf_generated, cf_matrix
     

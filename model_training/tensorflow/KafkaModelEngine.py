@@ -40,7 +40,7 @@ class KafkaModelEngine():
                     res[k] = [m.__name__ for m in model_compile_args[k]]
                 else:
                     res[k] = model_compile_args[k]
-            except:
+            except Exception:
                 res[k] = model_compile_args[k] # If none in one of above, return None.
         return res
 
@@ -57,7 +57,7 @@ class KafkaModelEngine():
                     res[k] = compile_args[k]
                 else:
                     res[k] = compile_args[k]
-            except:
+            except Exception:
                 res[k] = compile_args[k] # If none in one of above, return None.
         return res
       

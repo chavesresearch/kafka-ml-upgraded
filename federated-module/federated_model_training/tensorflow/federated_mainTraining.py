@@ -393,12 +393,12 @@ class MainTraining(object):
             if not k.startswith("val_"):
                 try:
                     epoch_training_metrics[k].append(v)
-                except:
+                except KeyError:
                     epoch_training_metrics[k] = v
             else:
                 try:
                     epoch_validation_metrics[k[4:]].append(v)
-                except:
+                except KeyError:
                     epoch_validation_metrics[k[4:]] = v
         
         return epoch_training_metrics, epoch_validation_metrics

@@ -269,7 +269,7 @@ if __name__ == '__main__':
               for k, v in engine_metrics_items:
                 try:
                   epochs_metric_dict[k].append(v)
-                except:
+                except KeyError:
                   epochs_metric_dict[k] = [v]
             
             def send_epoch_metrics(res):
@@ -360,8 +360,10 @@ if __name__ == '__main__':
 
                 cf_generated = True
                 logging.info("Generated confussion matrix successfully")
-              except:
-                 logging.info("Could not generate confussion matrix")
+              except Exception:
+                 # logging.exception (not .info) - see the tensorflow
+                 # sibling's mainTraining.py for the same fix and why.
+                 logging.exception("Could not generate confussion matrix")
 
 
             retry, finished = 0, False

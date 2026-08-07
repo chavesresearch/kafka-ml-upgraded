@@ -33,7 +33,7 @@ class KafkaModelEngine():
                     res[k] = compile_args[k]
                 else:
                     res[k] = compile_args[k]
-            except:
+            except Exception:
                 res[k] = compile_args[k] # If none in one of above, return None.
         return res
       
