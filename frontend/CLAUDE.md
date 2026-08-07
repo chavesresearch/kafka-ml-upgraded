@@ -326,6 +326,36 @@ back to one plain-text class) and that the editor's own language indicator
 reads "berry", not "lua" — screenshot-verified keyword/comment/string/number
 coloring is genuinely differentiated, zero console errors.
 
+## Importing a trained model (2026-08-07)
+
+`ImportDeploymentView.tsx` (`/import/:id`, reached from
+`ConfigurationList`'s "Import trained model" dropdown item) has no Vue-app
+equivalent - this is a genuinely new screen, not a port, since the
+feature itself is new (see `backend/CLAUDE.md`'s matching section). Loads
+the configuration + `getDistributedConfiguration`, same pattern
+`DeploymentView.tsx` already uses, and shows an explanatory message
+instead of the form when the configuration isn't exactly one
+non-distributed model (distributed gets its own specific message, not
+the generic one, matching the backend's own error-ordering choice).
+
+`api.ts`'s `importDeployment` is the first `multipart/form-data` write
+this frontend makes - every other write goes through `request()`'s
+shared JSON-encoding helper, so this one bypasses it and builds a
+`FormData`/`fetch` call directly rather than trying to force a file
+upload through a JSON-only helper.
+
+Metrics (train/val/test, all optional) are entered as raw JSON strings
+in plain `Input`s, same convention `DeploymentView.tsx`'s federated
+`data_restriction` field already uses for free-form JSON - not a
+structured form, since metric shapes are arbitrary dicts.
+
+Verified live end-to-end against the real deployed cluster (not just
+`ImportDeploymentView.test.tsx`'s 7 mocked-API tests): real model +
+configuration created via the actual API, a real `.h5` file uploaded
+through the real rendered form and Import button, confirmed the success
+toast, the navigation to `/deployments/:id`, and the new finished result
+actually appearing there - zero console errors throughout.
+
 ## Remaining work
 
 1. **Feature-parity audit vs. the old Vue app hasn't been done by a human

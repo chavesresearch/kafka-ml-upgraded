@@ -78,6 +78,33 @@ export const getDeploymentsOfConfiguration = (id: number) =>
 export const deploy = (data: DeploymentPayload) => post<unknown>('/deployments/', data)
 export const deleteDeployment = (id: number) => del<unknown>(`/deployments/${id}`)
 
+export interface ImportDeploymentMetrics {
+  train_metrics?: Record<string, number[]>
+  val_metrics?: Record<string, number[]>
+  test_metrics?: Record<string, number[]>
+  training_time?: number
+}
+
+// Not JSON like every other write here - a real .h5/.pth file has to go
+// as multipart/form-data, so this bypasses the shared post() helper
+// (which always JSON-encodes) and builds the request directly.
+export async function importDeployment(
+  configurationId: number,
+  trainedModel: File,
+  metrics?: ImportDeploymentMetrics
+): Promise<void> {
+  const form = new FormData()
+  form.append('configuration', String(configurationId))
+  form.append('trained_model', trainedModel)
+  if (metrics) form.append('metrics', JSON.stringify(metrics))
+
+  const res = await fetch(baseUrl + '/deployments/import', { method: 'POST', body: form })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || `${res.status} ${res.statusText}`)
+  }
+}
+
 /* Training results */
 export const getResults = () => get<TrainingResult[]>('/results/')
 export const getResultsOfDeployment = (id: number) =>

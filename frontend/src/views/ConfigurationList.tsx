@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, MoreVertical, Play, ExternalLink, Trash2, Plus } from 'lucide-react'
+import { Eye, MoreVertical, Play, ExternalLink, Trash2, Plus, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -88,6 +88,9 @@ export default function ConfigurationList() {
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate(`/deploy/${configuration.id}`)}>
                     <Play /> Deploy
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate(`/import/${configuration.id}`)}>
+                    <Upload /> Import trained model
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate(`/deployments/${configuration.id}`)}>
                     <ExternalLink /> Deployments

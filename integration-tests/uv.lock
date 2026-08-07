@@ -137,17 +137,29 @@ wheels = [
 
 [[package]]
 name = "kafkaml-client"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "../kafkaml-client" }
 dependencies = [
     { name = "httpx" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "kafka-python", marker = "extra == 'datasets'", specifier = "==3.0.10" },
+    { name = "kafkaml-datasources", marker = "extra == 'datasets'", directory = "../datasources" },
+    { name = "numpy", marker = "extra == 'datasets'", specifier = ">=1.24" },
+    { name = "pandas", marker = "extra == 'datasets'", specifier = ">=2.0" },
+]
+provides-extras = ["datasets"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = "==8.4.2" }]
+dev = [
+    { name = "kafkaml-datasources", directory = "../datasources" },
+    { name = "numpy", specifier = ">=1.24" },
+    { name = "pandas", specifier = ">=2.0" },
+    { name = "pytest", specifier = "==8.4.2" },
+]
 
 [[package]]
 name = "kafkaml-datasources"

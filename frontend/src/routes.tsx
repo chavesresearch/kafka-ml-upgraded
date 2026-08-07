@@ -10,6 +10,7 @@ const ModelView = lazy(() => import('./views/ModelView'))
 const ConfigurationList = lazy(() => import('./views/ConfigurationList'))
 const ConfigurationView = lazy(() => import('./views/ConfigurationView'))
 const DeploymentView = lazy(() => import('./views/DeploymentView'))
+const ImportDeploymentView = lazy(() => import('./views/ImportDeploymentView'))
 const DeploymentList = lazy(() => import('./views/DeploymentList'))
 const ResultList = lazy(() => import('./views/ResultList'))
 const InferenceView = lazy(() => import('./views/InferenceView'))
@@ -31,6 +32,7 @@ export const routes: RouteObject[] = [
   { path: '/configuration-create', element: <ConfigurationView /> },
   { path: '/configuration/:id', element: <ConfigurationView /> },
   { path: '/deploy/:id', element: <DeploymentView /> },
+  { path: '/import/:id', element: <ImportDeploymentView /> },
   { path: '/deployments', element: <DeploymentList /> },
   { path: '/deployments/:id', element: <DeploymentList /> },
   { path: '/results', element: <ResultList /> },
