@@ -7,6 +7,10 @@ sidebar_position: 2
 A distributed model splits work across a hierarchy of sub-models (e.g.
 edge → fog → cloud), each trained together as one chain.
 
+Currently only TensorFlow supports distributed models. The setup is the
+same as [Single Models](./single-models), with each sub-model marked
+distributed and linked to its parent.
+
 ## 1. Define a distributed model
 
 This three-tier MNIST example is a simple way to start:
