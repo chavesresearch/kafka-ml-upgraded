@@ -41,94 +41,6 @@ nice-to-have polish.
 
 ## TODO
 
-### High
-
-1. **`mlcode_executor`'s multiprocessing timeout/kill escalation ladder
-    (High item 12 in the Completed section below, and its queue-deadlock
-    regression fix) has zero test
-    coverage of the slow/hanging-code branch in either `tfexecutor` or
-    `pthexecutor`'s test suites - only happy/error paths are tested.**
-    Found in a 2026-08-07 audit. A regression here (like the deadlock
-    above) would only surface via a real cluster hang, not CI. Worth a
-    test that submits genuinely slow/large-payload model code against a
-    live `TestClient` and asserts the timeout/kill path actually returns
-    within a bounded wall-clock window, for both services.
-
-2. **Race condition in `federated_backend`'s collision-matching can
-    launch duplicate edge worker Jobs even after the "mark consumed" fix**
-    (High item 9 in the Completed section below).
-    `federated-module/federated_backend/app/
-    controllers.py`: select matching rows -> `await
-    deploy_on_kubernetes(...)` (a real await point, Kubernetes API call
-    latency) -> delete the matched rows, all on a single-process asyncio
-    event loop with no row locking (e.g. `SELECT ... FOR UPDATE` or an
-    application-level mutex). Two registrations arriving close enough
-    together can both match the same counterpart row before either
-    request's delete has committed, launching two edge worker Jobs for
-    one logical pairing. Distinct from the already-fixed bug (which only
-    prevented *reuse* of a row after a successful match's delete had
-    already committed) - this is a narrower, harder-to-hit window in the
-    delete-hasn't-happened-yet gap. Found in a 2026-08-07 audit, not yet
-    fixed.
-
-3. **`federated_backend` has the same SQLite-on-ephemeral-filesystem
-    design as `backend`, undocumented for this service specifically.**
-    `federated-module/federated_backend/app/config.py` defaults to
-    `sqlite+aiosqlite:///.../db.sqlite3`; neither
-    `kustomize/base/resources/backend-deployment.yaml` nor
-    `federated-backend-deployment.yaml` mounts any volume, so every
-    `kubectl rollout restart deployment/federated-backend` silently wipes
-    every registered `ModelSource`/`Datasource` row (any federated
-    registration mid-flight at restart time is lost, not just delayed).
-    Worth either a PVC for both databases or, more in line with how small
-    `federated_backend`'s schema is (2 tables), documenting the
-    restart-wipes-state behavior explicitly next to the `backend` one so
-    an operator doesn't get surprised twice.
-
-4. **Deploying a PyTorch model with "Federated learning" checked doesn't
-   error - it silently does plain, non-federated training while the
-   deployment is labeled and tracked as federated.**
-   `frontend/src/views/DeploymentView.tsx`'s federated-learning checkbox
-   and `frontend/src/logic/deployment.ts`'s `isDeploymentFormInvalid`/
-   `showBlockchainToggle` never check the model's framework - unlike the
-   "distributed" checkbox in `ModelView.tsx`, which is already gated to
-   `form.framework === 'tf'`. `backend/app/controllers/deployments.py`
-   picks the plain `PYTORCH_TRAINING_MODEL_IMAGE` and calls
-   `job_manifest_generator.single_federated_training(...)` regardless,
-   setting federated env vars/topics on a container running
-   `model_training/pytorch/training.py` - which has no `CASE` dispatch
-   at all (grepped, none) and always just runs single classic training.
-   Worse than a crash: the Job silently ignores every federated setting
-   while `backend` still records the deployment as federated. Fix by
-   adding the same framework gate the distributed checkbox already has
-   (frontend) and/or rejecting `framework=pth` + `federated=True` server
-   -side. Distinct from the already-known "PyTorch federated training
-   doesn't exist upstream" fact (that's about the missing
-   `federated_model_training/pytorch` directory) - this is about the
-   silently-wrong reachable path through the UI/backend that exists
-   because of it. Found in a 2026-08-07 audit.
-
-5. **PyTorch training only supports CASE=1 (single, non-distributed,
-   non-incremental, non-federated classic training) - `model_training/
-   pytorch/training.py` has no `CASE` env var dispatch at all, while
-   TensorFlow implements all 9 CASEs.** Nothing in the backend or
-   frontend gates this - `backend/app/job_manifest_generator.py` and
-   `frontend/src/views/DeploymentView.tsx` are both 100%
-   framework-agnostic, so a user can already configure a PyTorch
-   deployment as distributed/incremental/federated/blockchain today (see
-   item 4 above for the specific silently-wrong federated case). A full
-   phased implementation plan - dispatch skeleton, then CASE 2
-   (incremental, moderate cost, has a proven TF blueprint to port from),
-   CASE 3/4 (distributed, expensive, no PyTorch precedent for the
-   submodel-chaining design), CASE 5-8 (federated, expensive, additionally
-   blocked on a completely nonexistent `federated-module/
-   federated_model_training/pytorch/` edge-worker service - confirmed
-   only a `.gitkeep`), CASE 9 (blockchain, expensive but cheaper once
-   CASE 5 exists) - is written up in
-   `model_training/pytorch/CASE_2_9_PLAN.md`, including a suggested
-   one-day scope (Phase 0 + CASE 2) and per-phase verification bars.
-   Found/scoped in a 2026-08-07 audit.
-
 ### Medium
 
 1. **No CI job runs `integration-tests/` automatically.** A
@@ -179,6 +91,56 @@ design decision (not just a patch) or infrastructure this project
 doesn't have reason to invest in yet. Re-evaluate rather than dismiss if
 one of these comes up again - "not planned" is a scoping call made on
 2026-08-07, not a permanent judgment that the finding is unimportant.
+
+### High
+
+1. **`federated_backend` has the same SQLite-on-ephemeral-filesystem
+   design as `backend`, undocumented for this service specifically.**
+   `federated-module/federated_backend/app/config.py` defaults to
+   `sqlite+aiosqlite:///.../db.sqlite3`; neither
+   `kustomize/base/resources/backend-deployment.yaml` nor
+   `federated-backend-deployment.yaml` mounts any volume, so every
+   `kubectl rollout restart deployment/federated-backend` silently wipes
+   every registered `ModelSource`/`Datasource` row (any federated
+   registration mid-flight at restart time is lost, not just delayed).
+   Found in a 2026-08-07 audit. **Why not now**: mounting a PVC ourselves
+   in the base kustomize manifests would mean assuming a `StorageClass`
+   exists on whatever cluster this gets deployed to (e.g. a
+   `local-path-provisioner`-style dynamic provisioner) - true for this
+   project's own Docker Desktop dev setup, but not something the base
+   manifests should assume on someone else's cluster. Deliberately **not
+   mounting anything** rather than guessing - if you need
+   `federated_backend` to survive restarts, add your own `PersistentVolume`/
+   `PersistentVolumeClaim` to the deployment, sized and classed for your
+   own cluster's storage, and point `DATABASE_URL` at a path under that
+   mount. Worth documenting this explicitly next to `backend`'s identical
+   restart-wipes-state behavior (same underlying design, same reasoning
+   for not solving it at the base-manifest level).
+
+2. **PyTorch training only supports CASE=1 (single, non-distributed,
+   non-incremental, non-federated classic training) - `model_training/
+   pytorch/training.py` has no `CASE` env var dispatch at all, while
+   TensorFlow implements all 9 CASEs.** Nothing in the backend or
+   frontend gated this until 2026-08-07 (see Completed/High item 18
+   below for the fix that closed the specific silently-wrong federated
+   case) - a PyTorch deployment configured as distributed/incremental
+   still isn't implemented, just no longer silently mishandled for the
+   federated case specifically. A full phased implementation plan -
+   dispatch skeleton, then CASE 2 (incremental, moderate cost, has a
+   proven TF blueprint to port from), CASE 3/4 (distributed, expensive,
+   no PyTorch precedent for the submodel-chaining design), CASE 5-8
+   (federated, expensive, additionally blocked on a completely
+   nonexistent `federated-module/federated_model_training/pytorch/`
+   edge-worker service - confirmed only a `.gitkeep`), CASE 9
+   (blockchain, expensive but cheaper once CASE 5 exists) - is written up
+   in `model_training/pytorch/CASE_2_9_PLAN.md`, including a suggested
+   one-day scope (Phase 0 + CASE 2) and per-phase verification bars.
+   Found/scoped in a 2026-08-07 audit. **Why not now**: this is a real
+   feature-development effort (the plan's own cost assessment puts
+   several phases at "expensive, no in-repo precedent"), not a bug fix or
+   hardening pass - scoped as its own future work, not squeezed into a
+   backlog-clearing session. Pick up via the linked plan whenever PyTorch
+   parity becomes the priority.
 
 ### Medium
 
@@ -730,6 +692,67 @@ one of these comes up again - "not planned" is a scoping call made on
     expression that needs full `eval()`, and `literal_eval` can only
     ever produce a literal, not execute arbitrary code. `uv run pytest -v`
     (33/33) still passes.
+
+16. ~~`mlcode_executor`'s multiprocessing timeout/kill escalation ladder
+    has zero test coverage of the slow/hanging-code branch~~ — **done**
+    (2026-08-07). Added `test_exec_tf_hanging_code_is_killed_within_bounded_time`/
+    `test_exec_pth_hanging_code_is_killed_within_bounded_time` to both
+    services' test suites - submits a genuine `while True: pass` model,
+    with `EXEC_TIMEOUT_S` monkeypatched down from the production 60s (2s)
+    so the suite itself stays fast, and asserts the request returns
+    `400`/empty body within a bounded wall-clock window (15s, comfortably
+    covering the 2s timeout plus both terminate/kill join windows). A
+    regression back to the join-before-read deadlock this timeout ladder
+    itself once had would now fail this test instead of only surfacing as
+    a real cluster hang. `uv run pytest -v`: 9/9 tfexecutor, 8/8
+    pthexecutor.
+
+17. ~~Race condition in `federated_backend`'s collision-matching can
+    launch duplicate edge worker Jobs even after the "mark consumed"
+    fix~~ — **done** (2026-08-07). `app/controllers.py`'s
+    select-candidates -> deploy -> mark-consumed section (both
+    `create_datasource` and `model_from_control_logger`) now runs inside
+    a module-level `asyncio.Lock`, with an explicit `db_session.commit()`
+    before releasing it rather than leaving the commit to
+    `provide_db_session`'s outer `session.begin()` (a lock alone only
+    serializes the in-Python critical section - without committing before
+    release, a matched row's delete would still be invisible to the next
+    lock-acquirer's own fresh `AsyncSession` until this request's
+    transaction actually landed, reopening the same race at the database
+    level instead of the event-loop level). **Honest empirical caveat,
+    checked directly, not assumed**: a real concurrent-request test
+    (`test_concurrent_matching_datasources_only_deploy_once`,
+    `AsyncTestClient` + `asyncio.gather`) passes identically with or
+    without this fix - each handler's own `db_session.add(...)` + `await
+    db_session.flush()` (a real write) happens before the match section,
+    and SQLite only allows one writer transaction at a time, so a second
+    concurrent request's own flush already blocks on the first request's
+    uncommitted write until it fully finishes - the interleaving the
+    original finding described can't actually occur against this
+    SQLite-backed deployment as it stands today. The lock + early-commit
+    are kept anyway: they make the critical section correct on its own
+    logical merits rather than incidentally-correct because of SQLite's
+    single-writer behavior, and would matter if this service's storage
+    backend ever changed to something with real concurrent writers (e.g.
+    Postgres). `uv run pytest -v` (15/15) passes.
+
+18. ~~Deploying a PyTorch model with "Federated learning" checked doesn't
+    error - it silently does plain, non-federated training while the
+    deployment is labeled and tracked as federated~~ — **done**
+    (2026-08-07). Fixed on three levels: (1) `frontend/src/logic/
+    deployment.ts`'s `isDeploymentFormInvalid` now rejects
+    `form.federated && hasPth`; (2) `DeploymentView.tsx` hides the
+    "Federated learning" checkbox entirely when the configuration
+    contains a PyTorch model, matching the same pattern the distributed
+    checkbox in `ModelView.tsx` already used; (3) `backend/app/
+    controllers/deployments.py`'s `create_deployment` rejects
+    `federated=True` + any PyTorch model in the configuration with a
+    clear `400`, server-side, before ever reaching the Job-creation loop
+    - defense in depth for anyone calling the API directly, not just
+    through the UI. `uv run pytest -v` (34/34, new
+    `test_federated_deployment_with_pytorch_model_is_rejected`), `pnpm
+    typecheck`, `pnpm test:run` (99/99, new frontend test), `pnpm build`,
+    and `pnpm test:e2e` (3/3) all pass.
 
 ### Medium
 
