@@ -6,6 +6,7 @@ from typing import Annotated, Any, Optional
 import anyio
 import httpx
 import msgspec
+from kubernetes_asyncio import client as k8s_client, config as k8s_config
 from litestar import Router, get, post, delete
 from litestar.datastructures import UploadFile
 from litestar.enums import RequestEncodingType
@@ -19,6 +20,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.models import TrainingResult
 from app.schemas import training_result_dict
+from app.utils import kubernetes_api_client
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +168,79 @@ async def upload_result(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+async def _find_training_job_name(batch_api: k8s_client.BatchV1Api, result_id: int) -> str | None:
+    """Finds the Kubernetes Job training a given result.
+
+    Job names aren't simply ``model-training-{result_id}`` in this port -
+    `job_manifest_generator.py` uses different prefixes per mode (plain/
+    incremental/federated/blockchain) and, for a distributed chain, ONE
+    job trains every submodel's result together, with every result id
+    appended to the name (e.g. ``distributed-model-training-7-8-9``).
+    Reconstructing that naming byte-for-byte here (chain order, mode
+    dispatch) would duplicate `create_deployment`'s own dispatch logic and
+    drift the moment either changes. Listing Jobs and matching by the
+    trailing dash-separated id segments instead is naming-scheme-agnostic
+    and self-updating.
+    """
+    jobs = await batch_api.list_namespaced_job(namespace=settings.KUBE_NAMESPACE)
+    for job in jobs.items:
+        name = job.metadata.name
+        ids: list[int] = []
+        for part in reversed(name.split("-")):
+            if not part.isdigit():
+                break
+            ids.append(int(part))
+        if result_id in ids:
+            return name
+    return None
+
+
+@post("/results/stop/{result_id:int}", tags=["results"], status_code=200)
+async def stop_result(result_id: int, db_session: AsyncSession) -> None:
+    """Stops a currently-training result: deletes its Kubernetes training
+    Job (best-effort - a Job that already finished/was already deleted is
+    not an error) and marks it ``stopped``.
+
+    Mirrors the original Django `TrainingResultStop` view's contract
+    (`POST /results/stop/{pk}`, only valid while `status == "deployed"`) -
+    this port never implemented it at all (a real gap: the frontend's
+    "Stop" action called it and always got a 404). Job-name resolution is
+    the one real behavior change - see `_find_training_job_name` for why
+    a lookup is more correct here than Django's hardcoded
+    `"model-training-" + str(pk)` (which was never right for
+    incremental/distributed/federated jobs to begin with).
+    """
+    result = await db_session.get(TrainingResult, result_id)
+    if result is None or result.status != "deployed":
+        raise HTTPException(status_code=400, detail="Result not found or not running")
+
+    k8s_config.load_incluster_config()
+    api_client = kubernetes_api_client(
+        token=os.environ.get("KUBE_TOKEN"), external_host=os.environ.get("KUBE_HOST")
+    )
+    async with api_client:
+        batch_api = k8s_client.BatchV1Api(api_client)
+        try:
+            job_name = await _find_training_job_name(batch_api, result_id)
+            if job_name is not None:
+                await batch_api.delete_namespaced_job(
+                    name=job_name,
+                    namespace=settings.KUBE_NAMESPACE,
+                    body=k8s_client.V1DeleteOptions(
+                        propagation_policy="Foreground", grace_period_seconds=5
+                    ),
+                )
+        except Exception as e:
+            # Best-effort, matching the original view: the Job may have
+            # already finished/been cleaned up (ttlSecondsAfterFinished)
+            # between the status check above and this call - the result
+            # is still marked stopped either way, same as Django's version
+            # swallowed this and proceeded.
+            logger.error("Failed to delete training job for result %s: %s", result_id, str(e))
+
+    result.status = "stopped"
+
+
 @delete("/results/{result_id:int}", tags=["results"], status_code=200)
 async def delete_result(result_id: int, db_session: AsyncSession) -> None:
     result = await db_session.get(TrainingResult, result_id)
@@ -275,6 +350,7 @@ router = Router(
         get_result_model_file,
         upload_epoch_metrics,
         upload_result,
+        stop_result,
         delete_result,
         get_result_metrics_chart,
         download_trained_model,

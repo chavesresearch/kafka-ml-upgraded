@@ -23,6 +23,7 @@ sync HTTP calls) sidesteps that entirely.
 
 import asyncio
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.db import async_session_maker
 from app.models import Configuration, Deployment, MLModel, TrainingResult
@@ -30,20 +31,30 @@ from app.models import Configuration, Deployment, MLModel, TrainingResult
 CODE = 'model = "not real code"'
 
 
-async def _seed_training_result_async(name_prefix: str) -> int:
+async def _seed_training_result_async(name_prefix: str, status: str = "created") -> int:
     async with async_session_maker() as session:
         async with session.begin():
             model = MLModel(name=f"{name_prefix}-model", code=CODE, framework="tf")
             config = Configuration(name=f"{name_prefix}-cfg", ml_models=[model])
             deployment = Deployment(configuration=config, batch=4)
-            result = TrainingResult(deployment=deployment, model=model)
+            result = TrainingResult(deployment=deployment, model=model, status=status)
             session.add(result)
             await session.flush()
             return result.id
 
 
-def _seed_training_result(name_prefix: str) -> int:
-    return asyncio.run(_seed_training_result_async(name_prefix))
+def _seed_training_result(name_prefix: str, status: str = "created") -> int:
+    return asyncio.run(_seed_training_result_async(name_prefix, status))
+
+
+def _fake_k8s_client():
+    """Same pattern as test_deployments.py's helper of the same name -
+    a context-manager-compatible fake standing in for
+    kubernetes_api_client(...)'s return value."""
+    fake_client = MagicMock()
+    fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_client.__aexit__ = AsyncMock(return_value=False)
+    return fake_client
 
 
 def test_upload_result_marks_finished_with_real_metrics(client):
@@ -107,3 +118,78 @@ def test_deploy_inference_requires_finished_result(client):
         json={"input_topic": "in", "output_topic": "out"},
     )
     assert resp.status_code == 400
+
+
+def test_stop_result_deletes_the_matching_job_and_marks_stopped(client):
+    """Real gap found while seeding demo deployments: the frontend's
+    "Stop" action calls POST /results/stop/{id}, but this port never
+    implemented the endpoint at all - every real stop attempt got a 404.
+    Also confirms job-name resolution finds a *distributed* job (multiple
+    trailing result ids in the name) by result id, not just a plain
+    "model-training-{id}" name - Django's original hardcoded that name
+    unconditionally, which was never actually correct for anything but
+    a plain single-model job."""
+    result_id = _seed_training_result("res-stop", status="deployed")
+
+    # MagicMock(name=...) sets the mock's own repr name, not a `.name`
+    # attribute - must be assigned separately to actually stand in for
+    # V1ObjectMeta.name.
+    distributed_job = MagicMock()
+    distributed_job.metadata.name = "distributed-model-training-999-998-" + str(result_id)
+    unrelated_job = MagicMock()
+    unrelated_job.metadata.name = "model-training-" + str(result_id + 1000)
+
+    batch_api = MagicMock()
+    batch_api.list_namespaced_job = AsyncMock(
+        return_value=MagicMock(items=[distributed_job, unrelated_job])
+    )
+    batch_api.delete_namespaced_job = AsyncMock()
+
+    with (
+        patch("app.controllers.training_results.k8s_config.load_incluster_config"),
+        patch("app.controllers.training_results.kubernetes_api_client", return_value=_fake_k8s_client()),
+        patch("app.controllers.training_results.k8s_client.BatchV1Api", return_value=batch_api),
+    ):
+        resp = client.post(f"/results/stop/{result_id}")
+
+    assert resp.status_code == 200
+    batch_api.delete_namespaced_job.assert_awaited_once()
+    _, kwargs = batch_api.delete_namespaced_job.call_args
+    assert kwargs["name"] == "distributed-model-training-999-998-" + str(result_id)
+
+    result = next(r for r in client.get("/results/").json() if r["id"] == result_id)
+    assert result["status"] == "stopped"
+
+
+def test_stop_result_rejects_a_result_that_is_not_deployed(client):
+    result_id = _seed_training_result("res-stop-notdeployed", status="created")
+
+    resp = client.post(f"/results/stop/{result_id}")
+    assert resp.status_code == 400
+
+    result = next(r for r in client.get("/results/").json() if r["id"] == result_id)
+    assert result["status"] == "created"
+
+
+def test_stop_result_still_marks_stopped_when_the_job_is_already_gone(client):
+    """Matches the original view's own best-effort semantics: a Job can
+    legitimately already be cleaned up (ttlSecondsAfterFinished) between
+    the status check and the delete call - that's not a reason to leave
+    the result stuck at "deployed" forever."""
+    result_id = _seed_training_result("res-stop-nojob", status="deployed")
+
+    batch_api = MagicMock()
+    batch_api.list_namespaced_job = AsyncMock(return_value=MagicMock(items=[]))
+    batch_api.delete_namespaced_job = AsyncMock()
+
+    with (
+        patch("app.controllers.training_results.k8s_config.load_incluster_config"),
+        patch("app.controllers.training_results.kubernetes_api_client", return_value=_fake_k8s_client()),
+        patch("app.controllers.training_results.k8s_client.BatchV1Api", return_value=batch_api),
+    ):
+        resp = client.post(f"/results/stop/{result_id}")
+
+    assert resp.status_code == 200
+    batch_api.delete_namespaced_job.assert_not_awaited()
+    result = next(r for r in client.get("/results/").json() if r["id"] == result_id)
+    assert result["status"] == "stopped"

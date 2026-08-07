@@ -389,6 +389,37 @@ history (`../../kafka-ml/backend`) or cross-checking behavior:
     reward transfer) against the local Anvil devnet, reaching
     `accuracy: 1.0` with zero duplicate Jobs - see
     `model_training/tensorflow/CLAUDE.md`'s CASE 6-9 section.
+13. **`POST /results/stop/{result_id}` was never implemented in this
+    port at all** (2026-08-07) - `frontend`'s `stopTraining()` (its
+    "Stop" action on a `deployed` result) called it and always got a
+    404, a real, previously-undiscovered gap found while seeding demo
+    deployments and clicking "Stop" for real through the live UI, not
+    by reading the diff between backends. Added `stop_result` to
+    `app/controllers/training_results.py`, deliberately **not** a
+    byte-for-byte port of the Django `TrainingResultStop` view it
+    mirrors: that view hardcoded the training Job's name as
+    `"model-training-" + str(pk)`, which was never actually correct for
+    anything but a plain single-model classic job -
+    `job_manifest_generator.py`'s real naming varies by mode
+    (`incremental-model-training-`, `federated-model-training-
+    controller-`, `distributed-model-training` + every result id in the
+    chain appended, etc.) and, for a distributed chain, **one Job
+    trains every submodel's result together** - a single result id
+    doesn't map to its own Job name at all. Reconstructing that naming
+    scheme bit-for-bit here would duplicate `create_deployment`'s own
+    mode-dispatch logic and drift the moment either changes. Instead,
+    `_find_training_job_name` lists the namespace's Jobs and matches by
+    trailing dash-separated numeric id segments in the name (e.g.
+    `distributed-model-training-7-8-9` matches result id `7`, `8`, or
+    `9`) - naming-scheme-agnostic, self-updating, and correctly handles
+    the distributed case the original never did. Same best-effort
+    semantics as the original otherwise: only valid while `status ==
+    "deployed"`; a Job already gone (`ttlSecondsAfterFinished: 10`
+    means this is common, not an edge case) doesn't block marking the
+    result `stopped` anyway. 3 new tests in `tests/
+    test_training_results.py` (a distributed-job-name match, the
+    not-deployed rejection, and the already-gone-Job case) - `uv run
+    pytest -v` (43/43).
 
 ## Things that look like bugs but are intentionally preserved for parity
 
