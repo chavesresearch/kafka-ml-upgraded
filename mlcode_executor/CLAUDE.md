@@ -171,6 +171,41 @@ fixed. Worth fixing if int8 quantization over JSON-format datasources is
 actually something anyone uses; wasn't touched here since it's orthogonal
 to the Flask→Litestar port and the TF dependency upgrade.
 
+## `/validate_model/` - trained-model-import validation (2026-08-07)
+
+Both services now have a `/validate_model/` endpoint, added for
+`backend`'s `POST /deployments/import` (importing an already-trained
+model for inference without a real training Job - see
+`../backend/CLAUDE.md`). Neither converts or trains anything - each just
+attempts a real load and reports back whether it worked, so a bad upload
+gets rejected with the actual underlying error before `backend` persists
+anything.
+
+- `tfexecutor`: same field-name-is-the-filename multipart contract
+  `/convert_to_tflite/` already uses (a field ending in `.h5`), attempts
+  `tf.keras.models.load_model(path, compile=False)` in a thread. Shares
+  the same Keras-3 `compile=False` reasoning `_convert_model_to_tflite`
+  already documents.
+- `pthexecutor`: a **new** wire contract (fixed field names, not
+  filename-as-contract) - `imports_code`/`model_code` (the model's own
+  code, needed to actually build the untrained module) plus a
+  `trained_model` file. Runs in a subprocess, same reasoning as
+  `/exec_pth/`'s `_exec_pth_worker` - `model_code` is exec()'d
+  user-submitted code, and `load_state_dict()`'ing a potentially huge/
+  malformed file onto it should be killable the same way. A shape/key
+  mismatch between the uploaded weights and the model's own architecture
+  surfaces here as the real `torch` error (`Missing key(s) in
+  state_dict: ...` / `size mismatch for ...`).
+
+Tested with real models both ways: `tfexecutor`'s suite saves a real
+Keras model to `.h5` and confirms it validates, and separately confirms
+a garbage file is rejected with the real Keras error.  `pthexecutor`'s
+suite builds a real matching `nn.Module`'s state dict (accepted) and a
+real *mismatched*-shape one (rejected with the real `torch.nn.Module.
+load_state_dict` error) - the mismatch case is the one that actually
+matters for this feature, since it's the exact failure mode an operator
+uploading the wrong weights for their model code would hit.
+
 ## Testing approach
 
 - Verified every version pin in both `pyproject.toml` files against PyPI's

@@ -7,6 +7,7 @@ A valid Kafka-ML PyTorch model must define `loss_fn()`, `optimizer()`, and
 `get_sample_model()` for the reference shape this mirrors.
 """
 
+import io
 import time
 
 import pytest
@@ -136,6 +137,67 @@ def test_check_deploy_config_missing_max_epochs_returns_400(client):
             "kwargs_val": "{}",
         },
     )
+    assert response.status_code == 400
+
+
+def test_validate_model_accepts_a_real_matching_state_dict(client):
+    import torch
+    from torch import nn
+
+    # Must match VALID_MODEL_CODE's SampleNet exactly (same attribute name
+    # "layer", same shapes) - state_dict keys are the module's attribute
+    # path (e.g. "layer.0.weight"), not just matching tensor shapes.
+    class SampleNet(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layer = nn.Sequential(nn.Linear(2, 4), nn.Linear(4, 1))
+
+        def forward(self, x):
+            return self.layer(x)
+
+    real_model = SampleNet()
+    buf = io.BytesIO()
+    torch.save(real_model.state_dict(), buf)
+
+    response = client.post(
+        "/validate_model/",
+        data={"imports_code": "", "model_code": VALID_MODEL_CODE},
+        files={"trained_model": ("weights.pth", buf.getvalue())},
+    )
+    assert response.status_code == 200
+    assert response.content == b""
+
+
+def test_validate_model_rejects_a_mismatched_state_dict(client):
+    import torch
+    from torch import nn
+
+    # Wrong shape entirely for VALID_MODEL_CODE's architecture (2->4->1) -
+    # load_state_dict must fail with a real shape-mismatch error.
+    wrong_model = nn.Sequential(nn.Linear(10, 20), nn.Linear(20, 5))
+    buf = io.BytesIO()
+    torch.save(wrong_model.state_dict(), buf)
+
+    response = client.post(
+        "/validate_model/",
+        data={"imports_code": "", "model_code": VALID_MODEL_CODE},
+        files={"trained_model": ("weights.pth", buf.getvalue())},
+    )
+    assert response.status_code == 400
+    assert response.content  # the real torch error message, not a generic one
+
+
+def test_validate_model_rejects_a_garbage_file(client):
+    response = client.post(
+        "/validate_model/",
+        data={"imports_code": "", "model_code": VALID_MODEL_CODE},
+        files={"trained_model": ("weights.pth", b"not a real state dict")},
+    )
+    assert response.status_code == 400
+
+
+def test_validate_model_missing_fields_returns_400(client):
+    response = client.post("/validate_model/", data={})
     assert response.status_code == 400
 
 

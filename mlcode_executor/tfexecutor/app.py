@@ -340,6 +340,61 @@ def _convert_model_to_tflite(model_bytes: bytes, filename: str, quantization_par
             os.remove(model_path)
 
 
+def _validate_model_file(model_bytes: bytes, filename: str) -> None:
+    """Blocking load-attempt; run via `anyio.to_thread.run_sync` by the
+    `validate_model` handler so it doesn't block the event loop. Raises
+    whatever Keras itself raises on a bad file - the caller reports that
+    message back verbatim rather than a generic "invalid model"."""
+    os.makedirs('./tmp', exist_ok=True)
+    model_path = os.path.join('./tmp', os.path.basename(filename))
+    with open(model_path, 'wb') as f:
+        f.write(model_bytes)
+
+    try:
+        # compile=False: this only needs to prove the file is a real,
+        # loadable Keras model - same reasoning (and the same Keras 3
+        # legacy-H5 compiled-loss bug) as _convert_model_to_tflite above.
+        tf.keras.models.load_model(model_path, compile=False)
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
+
+
+@post("/validate_model/")
+async def validate_model(request: Request) -> Response:
+    """Used by backend's `POST /deployments/import` (importing an
+    already-trained model for inference, without a real training Job) to
+    confirm an uploaded `.h5` file is actually a loadable Keras model
+    before the import is accepted - same field-name-is-filename contract
+    as `/convert_to_tflite/` above."""
+    form = await request.form()
+
+    model_file: Optional[UploadFile] = None
+    model_filename: Optional[str] = None
+    for name, value in form.items():
+        if isinstance(value, UploadFile) and name.endswith('.h5'):
+            model_file = value
+            model_filename = name
+            break
+
+    if model_file is None:
+        return Response(
+            content="Invalid file type. Please upload a .h5 file.",
+            media_type="text/plain",
+            status_code=400,
+        )
+
+    model_bytes = await model_file.read()
+
+    try:
+        await anyio.to_thread.run_sync(_validate_model_file, model_bytes, model_filename)
+    except Exception as e:
+        logger.error("Model validation failed: %s", e)
+        return Response(content=str(e), media_type="text/plain", status_code=400)
+
+    return Response(content=b"", status_code=200)
+
+
 @post("/convert_to_tflite/")
 async def convert_to_tflite(request: Request) -> Response:
     form = await request.form()
@@ -384,4 +439,4 @@ async def convert_to_tflite(request: Request) -> Response:
     return Response(content=tflite_bytes, media_type="application/octet-stream", status_code=200)
 
 
-app = Litestar(route_handlers=[tensorflow_executor, check_deploy_config, convert_to_tflite])
+app = Litestar(route_handlers=[tensorflow_executor, check_deploy_config, convert_to_tflite, validate_model])

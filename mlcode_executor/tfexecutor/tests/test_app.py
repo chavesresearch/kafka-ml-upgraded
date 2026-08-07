@@ -181,6 +181,43 @@ def test_convert_to_tflite_missing_file_returns_400(client):
     assert response.status_code == 400
 
 
+def test_validate_model_accepts_a_real_keras_model(client):
+    import tensorflow as tf
+
+    model = tf.keras.models.Sequential(
+        [
+            tf.keras.layers.Dense(4, activation="relu", input_shape=(2,)),
+            tf.keras.layers.Dense(1),
+        ]
+    )
+    model.compile(loss="mse", optimizer="sgd")
+    model_path = "/tmp/tfexecutor_test_validate.h5"
+    model.save(model_path)
+    with open(model_path, "rb") as f:
+        model_bytes = f.read()
+
+    response = client.post(
+        "/validate_model/",
+        files={"42.h5": model_bytes},  # bare bytes - matches the real backend's own upload shape
+    )
+    assert response.status_code == 200
+    assert response.content == b""
+
+
+def test_validate_model_rejects_a_garbage_file_with_the_real_keras_error(client):
+    response = client.post(
+        "/validate_model/",
+        files={"42.h5": b"this is not a real h5 file"},
+    )
+    assert response.status_code == 400
+    assert response.content  # the real Keras/h5py error message, not a generic one
+
+
+def test_validate_model_missing_file_returns_400(client):
+    response = client.post("/validate_model/", data={})
+    assert response.status_code == 400
+
+
 def test_exec_tf_hanging_code_is_killed_within_bounded_time(client, monkeypatch):
     """Covers the timeout/kill escalation ladder's actual slow-path -
     previously only the happy/error paths were tested, so a regression in

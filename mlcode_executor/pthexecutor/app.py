@@ -1,8 +1,9 @@
 import json
 import logging
 import multiprocessing
+import os
 from queue import Empty
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 
@@ -21,7 +22,8 @@ import torchvision.models as models
 from ignite.metrics import *
 from ignite.engine import create_supervised_trainer, create_supervised_evaluator
 
-from litestar import Litestar, post
+from litestar import Litestar, Request, post
+from litestar.datastructures import UploadFile
 from litestar.response import Response
 
 logging.basicConfig(level=logging.INFO)
@@ -136,6 +138,88 @@ def pytorch_executor(data: dict[str, Any]) -> Response:
         logger.error("exec_pth failed: %s", payload)
         return Response(content=b"", status_code=400)
 
+def _validate_model_worker(imports_code, model_code, weights_path, result_queue) -> None:
+    """Runs in a subprocess, same reasoning as `_exec_pth_worker` above -
+    `model_code` is exec()'d user-submitted code, and building the
+    untrained module + loading a (potentially malformed/huge) state dict
+    onto it should be killable the same way `/exec_pth/` already is, not
+    run in-process."""
+    try:
+        model = exec_model(imports_code, model_code, False)
+        state_dict = torch.load(weights_path, map_location="cpu")
+        model.load_state_dict(state_dict)
+        result_queue.put(("ok", b""))
+    except Exception as e:
+        result_queue.put(("error", str(e)))
+
+
+@post("/validate_model/")
+async def validate_model(request: Request) -> Response:
+    """Used by backend's `POST /deployments/import` (importing an
+    already-trained model for inference, without a real training Job) to
+    confirm an uploaded `.pth` state dict actually loads onto the model
+    built from `model_code`/`imports_code` before the import is accepted.
+    Unlike tfexecutor's `.h5`-as-field-name convention, this is a new
+    endpoint with no legacy wire contract to match - fixed field names.
+    """
+    form = await request.form()
+
+    imports_code = form.get("imports_code") or ""
+    model_code = form.get("model_code")
+    weights_file = form.get("trained_model")
+
+    if not isinstance(model_code, str) or not isinstance(weights_file, UploadFile):
+        return Response(
+            content="Missing required fields: 'model_code' or 'trained_model'.",
+            media_type="text/plain",
+            status_code=400,
+        )
+
+    os.makedirs('./tmp', exist_ok=True)
+    weights_path = os.path.join('./tmp', 'validate_weights.pth')
+    with open(weights_path, 'wb') as f:
+        f.write(await weights_file.read())
+
+    try:
+        ctx = multiprocessing.get_context("spawn")
+        result_queue = ctx.Queue()
+        process = ctx.Process(
+            target=_validate_model_worker,
+            args=(imports_code, model_code, weights_path, result_queue),
+        )
+        process.start()
+
+        # Same read-before-join ordering as pytorch_executor above, for the
+        # same deadlock-avoidance reason.
+        try:
+            status, payload = result_queue.get(timeout=EXEC_TIMEOUT_S)
+        except Empty:
+            status, payload = None, None
+        finally:
+            process.join(5)
+            if process.is_alive():
+                process.terminate()
+                process.join(5)
+                if process.is_alive():
+                    process.kill()
+                    process.join()
+    finally:
+        if os.path.exists(weights_path):
+            os.remove(weights_path)
+
+    if status == "ok":
+        return Response(content=b"", status_code=200)
+    if status is None:
+        logger.error(
+            "validate_model timed out after %ss or exited without a result (exitcode %s)",
+            EXEC_TIMEOUT_S, process.exitcode,
+        )
+        return Response(content=b"timed out", media_type="text/plain", status_code=400)
+
+    logger.error("validate_model failed: %s", payload)
+    return Response(content=str(payload), media_type="text/plain", status_code=400)
+
+
 def get_sample_data(batch):
     x_train_data = ToTensor()(np.random.random((batch, 1)))
     y_train_data = ToTensor()(np.random.random((batch, 1)))
@@ -249,4 +333,4 @@ def check_deploy_config(data: dict[str, Any]) -> Response:
         return Response(content=b"", status_code=400)
 
 
-app = Litestar(route_handlers=[pytorch_executor, check_deploy_config])
+app = Litestar(route_handlers=[pytorch_executor, check_deploy_config, validate_model])
