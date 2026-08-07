@@ -1,11 +1,32 @@
 // This file is not used by "docusaurus start/build" commands.
 // It is here to improve your IDE experience (type-checking, autocompletion...),
 // and can also run the package.json "typecheck" script manually.
+//
+// Deliberately NOT `"extends": "@docusaurus/tsconfig"` anymore (as of the
+// TypeScript ~6 -> ~7 bump) - TypeScript 7 removed the `baseUrl` compiler
+// option entirely (`error TS5102: Option 'baseUrl' has been removed`),
+// and @docusaurus/tsconfig@3.10.2 still sets it in its own file, which a
+// consumer can't edit. Inlined the handful of options this project
+// actually needs from it instead (confirmed against
+// @docusaurus/tsconfig@3.10.2's own tsconfig.json before removing the
+// dependency), using `paths` for the `@site/*` alias instead of `baseUrl`
+// - `tsc` and `docusaurus build` both verified clean on TypeScript 7.
+// Revisit (go back to extending) once a `@docusaurus/tsconfig` release
+// drops `baseUrl` for `paths` itself.
 {
-  "extends": "@docusaurus/tsconfig",
   "compilerOptions": {
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
+    "allowJs": true,
+    "esModuleInterop": true,
+    "jsx": "preserve",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "noEmit": true,
+    "paths": {
+      "@site/*": ["./*"]
+    },
+    "skipLibCheck": true,
     "strict": true
   },
   "exclude": [".docusaurus", "build"]
