@@ -52,6 +52,18 @@ uses `pnpm`.
    correctness ultimately depends on real end-to-end behavior, not just
    unit tests.
 
+## Releases
+
+No formal versioning scheme or release schedule - a
+[GitHub release](../../releases) is cut whenever a notable feature or
+big change lands on `master`, not on a fixed cadence. That's it; there's
+no additional checklist beyond what "Making a change" above already
+covers. Every service's CI workflow already triggers on `release:
+types: [created]` (alongside its normal push/PR triggers), so cutting a
+release also builds and pushes that service's images tagged with the
+release version, on top of the floating tags a regular push to `master`
+already produces.
+
 ## Reporting bugs
 
 Open a [GitHub issue](../../issues) with:
